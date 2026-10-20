@@ -51,6 +51,30 @@ cp fab-agent/.env.example fab-agent/.env      # OPENAI_API_KEY를 채운다(지�
 
 ### 1) 한 번에 실행 — Docker (권장)
 
+프론트까지 포함한 로컬 배포는 저장소 루트에서 다음 명령을 쓴다. Docker Compose의 `!override` 지원이 필요하다(검증 환경: Compose v5.3.0).
+
+```bash
+./scripts/deploy.sh up -d --build --wait
+./scripts/deploy.sh ps
+# http://127.0.0.1:8088 — 프론트 · API · 사건 SSE가 같은 주소를 사용한다
+./scripts/deploy.sh --profile tools run --rm --build --no-deps smoke
+```
+
+이 구성은 `fab-deploy` 프로젝트와 전용 `pgdata` 볼륨을 사용한다. DB · 백엔드 · MCP는 컨테이너 내부에서 연결하고, 웹만 `127.0.0.1:8088`에 연다. 기존 개발 서버(8090 · 8771)와 PostgreSQL(55432)을 그대로 둔 채 함께 실행할 수 있다. 백엔드는 외부 Worker 모드이며 장애 주입 경로는 꺼진다. Nginx가 API와 버퍼링 없는 SSE를 중계한다.
+
+기본은 `rule` 모델 + `hash` 임베딩으로 API 키 없이 실행한다. 실제 LLM · 의미 검색 품질은 별도 검증해야 한다. 설정을 바꾸려면 `cp deploy/.env.example deploy/.env` 후 편집한다. 배포 전용 `DEPLOY_*` 변수로 기존 `fab-agent/.env` 및 셸의 개발용 키 · 모델 설정과 구분한다. 실제 API를 사용하려면 `DEPLOY_LLM=openai`, `DEPLOY_EMBEDDER=openai`, `DEPLOY_OPENAI_API_KEY`를 지정하고 다시 `up -d --wait`를 실행한다. 이때 색인 · 질의 · 분석에 API 요금이 발생한다. `deploy/.env`는 Git에서 제외된다.
+
+```bash
+./scripts/deploy.sh logs --tail=100 backend agent business-mcp rag-mcp web
+./scripts/deploy.sh restart                         # 컨테이너 재시작
+./scripts/deploy.sh down                            # 컨테이너 제거, DB 볼륨 보존
+./scripts/deploy.sh up -d --wait                     # 기존 DB로 다시 시작
+```
+
+스모크는 EV-1009에서 실제 요청 · 회신 · 보고서를 저장하므로 처음 시드된 점검 환경에서 한 번 실행한다. 재시작 후에는 로그인과 기존 보고서 조회로 상태를 확인한다. `down -v`는 DB를 삭제하므로 데이터 유지 점검에서는 사용하지 않는다. 프론트 정적 자원은 이미지에 포함되고, 데이터 팩과 원문 RAG는 호스트의 기존 경로를 읽기 전용으로 마운트하므로 다른 컴퓨터에서도 같은 파일을 준비해야 한다. 세션은 서버 메모리에 있어 백엔드 재시작 후 재로그인이 필요하다. 이 구성의 접속 범위는 로컬 컴퓨터이며, 외부 서버 공개 시 도메인 · HTTPS · 운영 인증정보를 별도로 설정한다.
+
+백엔드 · MCP · Worker만 실행하는 기존 개발 구성:
+
 ```bash
 cd fab-agent
 FAB_LLM=rule docker compose up -d --build              # Postgres · Spring · 업무 MCP · 지식 MCP · Agent Worker (OPENAI_API_KEY 필요 — 지식 MCP 임베딩)
