@@ -1,0 +1,27 @@
+{
+  "dataVersion": "causal-pack-v2-scenarios",
+  "revisionPackage": "fab-scenarios-v2",
+  "basePackage": "fab-causal-pack-v1",
+  "sources": {
+    "v1": "FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1",
+    "v2": "backend-handoff-v2/data"
+  },
+  "revisedRuns": [
+    "RUN-W-CURRENT-006-3-CMP"
+  ],
+  "addedFiles": [
+    "data/sensor-envelopes.json"
+  ],
+  "recomputedFiles": [
+    "data/current-wafer-summary.json",
+    "data/trace-manifest.json"
+  ],
+  "excluded": [
+    "evaluation/*",
+    "generate.py",
+    "prepare_knowledge.py",
+    "validate.py",
+    "*.csv"
+  ],
+  "allSynthetic": true
+}

@@ -1,0 +1,22 @@
+{
+  "indexOnly": [
+    "rag/source-chunks.jsonl"
+  ],
+  "exclude": [
+    "originals/*",
+    "selected/*",
+    "../fab-causal-pack-v1/evaluation/*"
+  ],
+  "reason": "Avoid duplicate source/page indexing and generator answer leakage.",
+  "embeddingStatus": "NOT_EMBEDDED",
+  "retrievalFilters": [
+    "process",
+    "retrievalTier",
+    "documentId",
+    "approvedForProductionAction",
+    "version"
+  ],
+  "permissions": "Apply server-side document/role/site permissions. Public reference is not an action authorization.",
+  "incrementalUpdate": "upsert by chunkId and contentHash; preserve source/page metadata",
+  "dataRetrieval": "Sensor and metrology numeric data are queried through data MCP, not this document index."
+}

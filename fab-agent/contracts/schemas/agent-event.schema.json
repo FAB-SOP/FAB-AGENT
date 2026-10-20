@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "eventId": {
+      "type": "string",
+      "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+    },
+    "incidentId": {
+      "type": "string",
+      "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+    },
+    "jobId": {
+      "type": "string",
+      "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+    },
+    "threadId": {
+      "type": "string",
+      "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "JOB_STARTED",
+        "ANALYSIS_PROGRESS",
+        "RESULT_READY",
+        "APPROVAL_REQUIRED",
+        "WAITING_REPLY",
+        "RETRY_SCHEDULED",
+        "JOB_FAILED",
+        "REPORT_DRAFT_READY"
+      ]
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "traceId": {
+      "type": "string",
+      "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "도구/분석 종류별 하위 schema는 tool-catalog.json의 계약을 적용한다."
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "incidentId",
+    "jobId",
+    "threadId",
+    "sequence",
+    "type",
+    "at",
+    "traceId",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "JOB_STARTED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "startedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "startedAt"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ANALYSIS_PROGRESS"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "stepCode": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "progressRatio": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "stepCode",
+              "message",
+              "progressRatio"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RESULT_READY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "$ref": "../public-openapi.json#/components/schemas/AnalysisResult"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "APPROVAL_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "approvalId": {
+                "type": "string"
+              },
+              "approvalVersion": {
+                "type": "integer"
+              },
+              "interruptId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "approvalId",
+              "approvalVersion",
+              "interruptId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "WAITING_REPLY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "interruptId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "requestId",
+              "interruptId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RETRY_SCHEDULED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "nextAttempt": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 3
+              },
+              "nextRetryAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "errorCode": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nextAttempt",
+              "nextRetryAt",
+              "errorCode"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "JOB_FAILED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "errorCode": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "dlqRef": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "errorCode",
+              "message",
+              "dlqRef"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "REPORT_DRAFT_READY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "report": {
+                "$ref": "../public-openapi.json#/components/schemas/Report"
+              }
+            },
+            "required": [
+              "report"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,579 @@
+{
+  "documents": [
+    {
+      "id": "DOC01",
+      "file": "01_MIT_TI_Dielectric_CMP.pdf",
+      "title": "Advanced Process Control in Dielectric Chemical Mechanical Polishing (CMP)",
+      "publisher": "Texas Instruments / MIT researchers",
+      "pages": [
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "sections": [
+        "III. CMP Process Development",
+        "IV. Thickness Control Using In-Situ Sensors",
+        "V. Thickness Control Using On-Line Metrology"
+      ],
+      "process": [
+        "CMP"
+      ],
+      "why": "투입 막·위치별 형상·소모품과 CMP 결과, 간접 신호와 직접 계측 구분",
+      "limit": "역사적 연구다. 현 시연의 균일막·고정 시간 가정이나 장비별 설정값을 검증한 문서가 아니다.",
+      "tier": "PROCESS_PRINCIPLE",
+      "sourceUrl": "https://boning.mit.edu/wp-content/uploads/2022/11/CMPMIC99_Control_final.pdf",
+      "downloadUrl": "https://boning.mit.edu/wp-content/uploads/2022/11/CMPMIC99_Control_final.pdf",
+      "downloadedOn": "2026-10-20",
+      "sourceSha256": "6c1ccb8756885a865b707b75c1e63c513119e9b44dfddc354ef902d6899afa50",
+      "originalRelativePath": "originals/01_MIT_TI_Dielectric_CMP.pdf",
+      "sourceKind": "REAL_PUBLISHED_DOCUMENT",
+      "synthetic": false,
+      "approvedForProductionAction": false,
+      "redistributionNote": "Publicly retrievable original, not a blanket reuse license. Preserve author/publisher notices; check each document terms before wider publication/fulltext service use.",
+      "originalPageCount": 8,
+      "selectedRelativePath": "selected/01_MIT_TI_Dielectric_CMP.pdf",
+      "selectedPageCount": 5
+    },
+    {
+      "id": "DOC02",
+      "file": "02_Plasma_Process_Sensing.pdf",
+      "title": "Real-Time Plasma Process Condition Sensing and Abnormal Process Detection",
+      "publisher": "Yang and Chen / Sensors (2010), DOI 10.3390/s100605703",
+      "pages": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "sections": [
+        "2. Experimental Apparatus",
+        "2.4 Design of Experiments",
+        "4. Results and Discussion",
+        "5. Conclusions (beginning)"
+      ],
+      "process": [
+        "ETCH"
+      ],
+      "why": "실제 TCP 구성과 RF·MFC·압력·온도·가스 분배 변화의 관측 실험",
+      "limit": "폴리실리콘 식각·OES 실험이다. 산화막 레시피, 정량 감도·방향·알람 기준을 그대로 적용하지 않는다. OES는 현 MVP 기본 센서가 아니다.",
+      "tier": "PROCESS_PRINCIPLE",
+      "sourceUrl": "https://mdpi-res.com/d_attachment/sensors/sensors-10-05703/article_deploy/sensors-10-05703.pdf",
+      "downloadUrl": "https://mdpi-res.com/d_attachment/sensors/sensors-10-05703/article_deploy/sensors-10-05703.pdf",
+      "downloadedOn": "2026-10-20",
+      "sourceSha256": "15edd3e5ab7c6bd9495bf004bf8fe1304d01972755e550c48c7e72efa4719eb1",
+      "originalRelativePath": "originals/02_Plasma_Process_Sensing.pdf",
+      "sourceKind": "REAL_PUBLISHED_DOCUMENT",
+      "synthetic": false,
+      "approvedForProductionAction": false,
+      "redistributionNote": "Publicly retrievable original, not a blanket reuse license. Preserve author/publisher notices; check each document terms before wider publication/fulltext service use.",
+      "originalPageCount": 21,
+      "selectedRelativePath": "selected/02_Plasma_Process_Sensing.pdf",
+      "selectedPageCount": 12
+    },
+    {
+      "id": "DOC03",
+      "file": "03_MKS_Mass_Flow_Technology.pdf",
+      "title": "Mass Flow Technology",
+      "publisher": "MKS Instruments",
+      "pages": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "sections": [
+        "Mass flow units and measurement",
+        "Thermal Mass Flow Controllers",
+        "Pressure-based Mass Flow Controllers",
+        "Applications: Vacuum/Pressure Control; Chemical Vapor Deposition"
+      ],
+      "process": [
+        "CVD",
+        "ETCH"
+      ],
+      "why": "유량 제어기의 readback·교정·가스 보정·환경 영향, 가스 유량과 압력의 결합",
+      "limit": "MFC 모델·가스·교정 조건마다 다르다. SCCM 기준 온도·압력도 연결 장비의 정의를 확인한다. 실제 고장 확정이나 허용값으로 전용하지 않는다.",
+      "tier": "SENSOR_INTERPRETATION",
+      "sourceUrl": "https://www.mks.com/mam/celum/celum_assets/mks/resources/MassFlowTechnology-TechNote.pdf?0=",
+      "downloadUrl": "https://api.p1.mks.com/mam/celum/celum_assets/mks/resources/MassFlowTechnology-TechNote.pdf?0=",
+      "downloadedOn": "2026-10-20",
+      "sourceSha256": "6f04a08eb76ecb345bb7ab6497e09a7ceb2b4683912aff9280373a485f10b9a9",
+      "originalRelativePath": "originals/03_MKS_Mass_Flow_Technology.pdf",
+      "sourceKind": "REAL_PUBLISHED_DOCUMENT",
+      "synthetic": false,
+      "approvedForProductionAction": false,
+      "redistributionNote": "Publicly retrievable original, not a blanket reuse license. Preserve author/publisher notices; check each document terms before wider publication/fulltext service use.",
+      "originalPageCount": 8,
+      "selectedRelativePath": "selected/03_MKS_Mass_Flow_Technology.pdf",
+      "selectedPageCount": 6
+    },
+    {
+      "id": "DOC04",
+      "file": "04_MKS_CVD_Physics.html",
+      "title": "Chemical Vapor Deposition Physics",
+      "publisher": "MKS Instruments",
+      "pages": [],
+      "sections": [
+        "Introduction",
+        "Precursors/Diluents",
+        "Fluid Flow/Diffusion",
+        "Energy",
+        "Transport of Product Gases"
+      ],
+      "process": [
+        "CVD"
+      ],
+      "why": "전구체 공급·수송·열/플라스마 에너지·배기가 증착에 미치는 기초 원리",
+      "limit": "CVD 전반 설명이다. PECVD와 열 CVD의 차이·반응 구간을 고려하며 특정 가스 변화의 단조 방향을 가정하지 않는다.",
+      "tier": "PROCESS_PRINCIPLE",
+      "sourceUrl": "https://www.mks.com/n/cvd-physics",
+      "downloadUrl": "https://www.mks.com/n/cvd-physics",
+      "downloadedOn": "2026-10-20",
+      "sourceSha256": "9af1e446c51f24263ec7e766fb87636bfeeb2517b0266d28c4bb34c29e4155f9",
+      "originalRelativePath": "originals/04_MKS_CVD_Physics.html",
+      "sourceKind": "REAL_PUBLISHED_DOCUMENT",
+      "synthetic": false,
+      "approvedForProductionAction": false,
+      "redistributionNote": "Publicly retrievable original, not a blanket reuse license. Preserve author/publisher notices; check each document terms before wider publication/fulltext service use.",
+      "selectedRelativePath": "selected/04_MKS_CVD_Physics.html",
+      "originalPageCount": null,
+      "selectedPageCount": null
+    },
+    {
+      "id": "DOC05",
+      "file": "05_UCSB_ICP_Operating_Manual.pdf",
+      "title": "ICP Etch 2 Operating Manual",
+      "publisher": "UCSB NanoFab",
+      "pages": [
+        1
+      ],
+      "sections": [
+        "General Information: tool configuration and Basic Rules of Thumb"
+      ],
+      "process": [
+        "ETCH"
+      ],
+      "why": "ICP/바이어스 구분·ESC·He 냉각 등 실제 장비 구성과 공정 영향 예",
+      "limit": "특정 UCSB 장비의 운전 문서다. 장비 조작 키·가스·설정·시료 고정 방법을 우리 장비의 SOP로 실행하지 않는다.",
+      "tier": "EQUIPMENT_REFERENCE_NOT_ACTION_SOP",
+      "sourceUrl": "https://wiki.nanofab.ucsb.edu/w/images/7/73/ICP-Etch-2-Operating-Manual.pdf",
+      "downloadUrl": "https://wiki.nanofab.ucsb.edu/w/images/7/73/ICP-Etch-2-Operating-Manual.pdf",
+      "downloadedOn": "2026-10-20",
+      "sourceSha256": "394a77a169804c695602e713f9542b9cee613af8a486fb86b09c12c97fa3e083",
+      "originalRelativePath": "originals/05_UCSB_ICP_Operating_Manual.pdf",
+      "sourceKind": "REAL_PUBLISHED_DOCUMENT",
+      "synthetic": false,
+      "approvedForProductionAction": false,
+      "redistributionNote": "Publicly retrievable original, not a blanket reuse license. Preserve author/publisher notices; check each document terms before wider publication/fulltext service use.",
+      "originalPageCount": 3,
+      "selectedRelativePath": "selected/05_UCSB_ICP_Operating_Manual.pdf",
+      "selectedPageCount": 1
+    },
+    {
+      "id": "DOC06",
+      "file": "06_NIST_Thin_Film_Metrology.pdf",
+      "title": "Semiconductor Measurement Technology: Thin Film Reference Materials Development; NIST SP 400-100",
+      "publisher": "NIST (1998)",
+      "pages": [
+        7,
+        8,
+        11,
+        12,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        35,
+        36
+      ],
+      "sections": [
+        "Abstract and Introduction (printed pp.1-2)",
+        "Sample Uniformity and Stability (printed pp.5-6)",
+        "Calculation algorithms and Two-Layer Model (printed pp.20-22)",
+        "Conclusions (printed pp.23-25)",
+        "Appendix 2: Between- and Within-Exchange Variation (printed pp.29-30)"
+      ],
+      "process": [
+        "METROLOGY",
+        "CVD",
+        "ETCH",
+        "CMP"
+      ],
+      "why": "두께 모델·알고리즘·샘플 균일성·재현성·측정 변동을 확인하는 근거",
+      "limit": "주요 대상은 얇은 열산화막이며 두꺼운 산화막도 포함한다. 보고된 오차·불확실성을 본 시연의 PECVD 막 두께에 대입하지 않는다. 스캔 OCR의 기호·수식은 원문 확인이 필요하다.",
+      "tier": "METROLOGY_INTERPRETATION",
+      "sourceUrl": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication400-100.pdf",
+      "downloadUrl": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication400-100.pdf",
+      "downloadedOn": "2026-10-20",
+      "sourceSha256": "7819bcc0d01e25a19acb9c045165b30c6a8c7be0013ee47a1c2e05d3a16a00e9",
+      "originalRelativePath": "originals/06_NIST_Thin_Film_Metrology.pdf",
+      "sourceKind": "REAL_PUBLISHED_DOCUMENT",
+      "synthetic": false,
+      "approvedForProductionAction": false,
+      "redistributionNote": "Publicly retrievable original, not a blanket reuse license. Preserve author/publisher notices; check each document terms before wider publication/fulltext service use.",
+      "originalPageCount": 48,
+      "selectedRelativePath": "selected/06_NIST_Thin_Film_Metrology.pdf",
+      "selectedPageCount": 12
+    },
+    {
+      "id": "DOC07",
+      "file": "07_NIST_Process_Monitoring.pdf",
+      "title": "NIST/SEMATECH Engineering Statistics Handbook, Chapter 6: Process or Product Monitoring and Control",
+      "publisher": "NIST / SEMATECH, PDF snapshot 2012",
+      "pages": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        46,
+        47,
+        48,
+        58,
+        59,
+        60,
+        137,
+        138,
+        139,
+        247,
+        248,
+        249,
+        250,
+        251,
+        252
+      ],
+      "sections": [
+        "6.1.3 Process Control",
+        "6.1.4 Out of Control",
+        "6.1.5 In Control but Unacceptable",
+        "6.1.6 Process Capability (opening only)",
+        "6.3.1 Control Charts",
+        "6.3.2.2 Individuals Control Charts",
+        "6.4.4.2 Stationarity",
+        "6.6.1.3 Subgroup Analysis",
+        "6.6.1.4 Shewhart Control Chart"
+      ],
+      "process": [
+        "SPC",
+        "CVD",
+        "ETCH",
+        "CMP"
+      ],
+      "why": "OOC/OOS·개별 관측 관리도·비정상 시계열·웨이퍼 내/웨이퍼 간 변동 구분",
+      "limit": "일반 통계 방법과 다른 반도체 사례다. 제품 규격·PM 매칭·자기상관을 대신 검증하지 않는다. 일부 수식은 PDF 그림이므로 텍스트 검색으로 재구성하지 않는다.",
+      "tier": "STATISTICAL_INTERPRETATION",
+      "sourceUrl": "https://www.itl.nist.gov/div898/handbook/toolaids/pff/pmc.pdf",
+      "downloadUrl": "https://www.itl.nist.gov/div898/handbook/toolaids/pff/pmc.pdf",
+      "downloadedOn": "2026-10-20",
+      "sourceSha256": "4f2e7629cc2e7abd58cc064eef65d6176f07d13e7cb7102d5e25e7c940ab1258",
+      "originalRelativePath": "originals/07_NIST_Process_Monitoring.pdf",
+      "sourceKind": "REAL_PUBLISHED_DOCUMENT",
+      "synthetic": false,
+      "approvedForProductionAction": false,
+      "redistributionNote": "Publicly retrievable original, not a blanket reuse license. Preserve author/publisher notices; check each document terms before wider publication/fulltext service use.",
+      "originalPageCount": 281,
+      "selectedRelativePath": "selected/07_NIST_Process_Monitoring.pdf",
+      "selectedPageCount": 20
+    }
+  ],
+  "pageMap": [
+    {
+      "documentId": "DOC01",
+      "selectedPdfPage": 1,
+      "originalPdfPage": 3
+    },
+    {
+      "documentId": "DOC01",
+      "selectedPdfPage": 2,
+      "originalPdfPage": 4
+    },
+    {
+      "documentId": "DOC01",
+      "selectedPdfPage": 3,
+      "originalPdfPage": 5
+    },
+    {
+      "documentId": "DOC01",
+      "selectedPdfPage": 4,
+      "originalPdfPage": 6
+    },
+    {
+      "documentId": "DOC01",
+      "selectedPdfPage": 5,
+      "originalPdfPage": 7
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 1,
+      "originalPdfPage": 5
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 2,
+      "originalPdfPage": 6
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 3,
+      "originalPdfPage": 7
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 4,
+      "originalPdfPage": 8
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 5,
+      "originalPdfPage": 9
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 6,
+      "originalPdfPage": 10
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 7,
+      "originalPdfPage": 11
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 8,
+      "originalPdfPage": 15
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 9,
+      "originalPdfPage": 16
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 10,
+      "originalPdfPage": 17
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 11,
+      "originalPdfPage": 18
+    },
+    {
+      "documentId": "DOC02",
+      "selectedPdfPage": 12,
+      "originalPdfPage": 19
+    },
+    {
+      "documentId": "DOC03",
+      "selectedPdfPage": 1,
+      "originalPdfPage": 2
+    },
+    {
+      "documentId": "DOC03",
+      "selectedPdfPage": 2,
+      "originalPdfPage": 3
+    },
+    {
+      "documentId": "DOC03",
+      "selectedPdfPage": 3,
+      "originalPdfPage": 4
+    },
+    {
+      "documentId": "DOC03",
+      "selectedPdfPage": 4,
+      "originalPdfPage": 5
+    },
+    {
+      "documentId": "DOC03",
+      "selectedPdfPage": 5,
+      "originalPdfPage": 6
+    },
+    {
+      "documentId": "DOC03",
+      "selectedPdfPage": 6,
+      "originalPdfPage": 7
+    },
+    {
+      "documentId": "DOC05",
+      "selectedPdfPage": 1,
+      "originalPdfPage": 1
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 1,
+      "originalPdfPage": 7
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 2,
+      "originalPdfPage": 8
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 3,
+      "originalPdfPage": 11
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 4,
+      "originalPdfPage": 12
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 5,
+      "originalPdfPage": 26
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 6,
+      "originalPdfPage": 27
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 7,
+      "originalPdfPage": 28
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 8,
+      "originalPdfPage": 29
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 9,
+      "originalPdfPage": 30
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 10,
+      "originalPdfPage": 31
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 11,
+      "originalPdfPage": 35
+    },
+    {
+      "documentId": "DOC06",
+      "selectedPdfPage": 12,
+      "originalPdfPage": 36
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 1,
+      "originalPdfPage": 10
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 2,
+      "originalPdfPage": 11
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 3,
+      "originalPdfPage": 12
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 4,
+      "originalPdfPage": 13
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 5,
+      "originalPdfPage": 14
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 6,
+      "originalPdfPage": 46
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 7,
+      "originalPdfPage": 47
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 8,
+      "originalPdfPage": 48
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 9,
+      "originalPdfPage": 58
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 10,
+      "originalPdfPage": 59
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 11,
+      "originalPdfPage": 60
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 12,
+      "originalPdfPage": 137
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 13,
+      "originalPdfPage": 138
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 14,
+      "originalPdfPage": 139
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 15,
+      "originalPdfPage": 247
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 16,
+      "originalPdfPage": 248
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 17,
+      "originalPdfPage": 249
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 18,
+      "originalPdfPage": 250
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 19,
+      "originalPdfPage": 251
+    },
+    {
+      "documentId": "DOC07",
+      "selectedPdfPage": 20,
+      "originalPdfPage": 252
+    }
+  ],
+  "pageNumberConvention": "PDF physical page, 1-based. Printed page numbers may differ.",
+  "originalPdfPages": 369,
+  "selectedPdfPages": 56,
+  "chunkCount": 100
+}

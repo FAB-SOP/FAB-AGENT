@@ -1,0 +1,5152 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FAB CONTEXT combined integration contract (existing + proposed)",
+    "description": "기존 첨부 서버 38 operation + 제안 모니터링 3 operation. x-implementation-status=PROPOSED 경로는 아직 실제 서버에 없음.",
+    "version": "causal-pack-v2-scenarios"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8090",
+      "description": "Generated server url"
+    }
+  ],
+  "paths": {
+    "/api/reports/{reportId}/confirmations": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "사용자 검토 후 보고서 확정",
+        "operationId": "confirmReport",
+        "parameters": [
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportConfirm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/transitions": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "사건 종료/보류/보류 재개 (MANAGER)",
+        "operationId": "transitionIncident",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentTransition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseIncidentDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/report-jobs": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "기록 기반 보고 초안 생성 작업",
+        "operationId": "generateReport",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportGeneration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/questions": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "추가 조사 작업 접수",
+        "operationId": "askQuestion",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Query"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/proposals": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "수동 확인 요청 등의 승인 초안 생성",
+        "operationId": "createProposal",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Proposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseApprovalView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/basic-analysis-jobs": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "기본 분석 다시 실행",
+        "operationId": "rerunBasicAnalysis",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BasicAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/actions": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "사건 실제 조치 조회",
+        "operationId": "listActions",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseActionPage"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "사람의 실제 조치 등록",
+        "operationId": "recordAction",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/anomalies": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "시뮬레이터 이상 이벤트 수신",
+        "operationId": "ingestAnomaly",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnomalyEvent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseAccepted"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ]
+      }
+    },
+    "/api/check-requests/{requestId}/replies": {
+      "post": {
+        "tags": [
+          "check-requests"
+        ],
+        "summary": "담당자가 확인한 회신 등록",
+        "operationId": "submitReply",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplyInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "로그아웃",
+        "operationId": "logout",
+        "parameters": [
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "로그인",
+        "operationId": "login",
+        "parameters": [
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseSession"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals/{approvalId}/decisions": {
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "정확한 변경 제안 승인/거절",
+        "operationId": "decideApproval",
+        "parameters": [
+          {
+            "name": "approvalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/actions/{actionId}/verifications": {
+      "post": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "조치 효과 확인 등록",
+        "operationId": "verifyAction",
+        "parameters": [
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{reportId}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "특정 보고서 버전 조회",
+        "operationId": "getReport",
+        "parameters": [
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseReportView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "초안 편집",
+        "operationId": "editReport",
+        "parameters": [
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseReportView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wafers/{waferId}/route": {
+      "get": {
+        "tags": [
+          "wafers"
+        ],
+        "summary": "웨이퍼 공정 경로",
+        "operationId": "getRoute",
+        "parameters": [
+          {
+            "name": "waferId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "layerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseRoute"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{reportId}/export": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "보고서 Markdown 다운로드",
+        "operationId": "exportReport",
+        "parameters": [
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/documents": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "기술자료 검색",
+        "operationId": "searchDocuments",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "processCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "docType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseDocumentSearch"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/documents/{docId}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "문서 메타데이터·원문 참조",
+        "operationId": "getDocument",
+        "parameters": [
+          {
+            "name": "docId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/documents/{docId}/content": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "권한 확인 후 문서 내용 (text/plain)",
+        "operationId": "readDocument",
+        "parameters": [
+          {
+            "name": "docId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{jobId}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "분석/재개 작업 상태",
+        "operationId": "getJob",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseJobView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "사건 목록",
+        "operationId": "listIncidents",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobStatus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "processCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponsePageResponseIncidentSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "사건 상세",
+        "operationId": "getIncident",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseIncidentDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/stream": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "SSE 진행 구독",
+        "operationId": "incidentStream",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SseEmitter"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/sensor-data": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "raw 센서 조회",
+        "operationId": "getSensorData",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sensorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recipeStep",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "includeBaseline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "baselineRef",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseRawData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/reports": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "보고서 버전 목록",
+        "operationId": "listReports",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseReportPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/metrology": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "현상 후·식각 후 계측 조회",
+        "operationId": "getMetrology",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "featureId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "siteId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseMetrologyPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/comparisons": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "저장된 공정 비교 근거",
+        "operationId": "getComparisons",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseComparison"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/changes": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "정비·설정·재료 변경 이력",
+        "operationId": "getChanges",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseChangePage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{incidentId}/analysis-results": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "분석 결과 이력",
+        "operationId": "getResults",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "latest",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseAnalysisResultView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dashboard": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "권한 범위 대시보드",
+        "operationId": "dashboard",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "processCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseDashboard"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/check-requests": {
+      "get": {
+        "tags": [
+          "check-requests"
+        ],
+        "summary": "받은/보낸 요청",
+        "operationId": "listRequests",
+        "parameters": [
+          {
+            "name": "box",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "incidentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponsePageResponseCheckRequestSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/check-requests/{requestId}": {
+      "get": {
+        "tags": [
+          "check-requests"
+        ],
+        "summary": "확인 요청 상세",
+        "operationId": "getRequest",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseCheckRequestView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "현재 사용자 조회",
+        "operationId": "session",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseSession"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/csrf": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "CSRF 토큰 조회",
+        "operationId": "getCsrf",
+        "parameters": [
+          {
+            "name": "csrfToken",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CsrfToken"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseCsrf"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "내 승인 목록",
+        "operationId": "listApprovals",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "incidentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponsePageResponseApprovalSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals/{approvalId}": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "변경 제안 상세",
+        "operationId": "getApproval",
+        "parameters": [
+          {
+            "name": "approvalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseApprovalView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/monitoring/lots": {
+      "get": {
+        "operationId": "listMonitoringLots",
+        "description": "사건이 없는 정상 LOT도 포함. processCode는 필수이며 scope를 검사.",
+        "tags": [
+          "Proposed monitoring extension"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "processCode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "CVD",
+                "ETCH",
+                "CMP"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringLotListEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "세션 없음/만료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "공정·객체 접근 금지",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "LOT/run/sensor 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "파라미터·범위 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-status": "PROPOSED_NOT_IN_ATTACHED_BACKEND"
+      }
+    },
+    "/api/monitoring/lots/{lotId}/summary": {
+      "get": {
+        "operationId": "getMonitoringSummary",
+        "description": "선택 LOT·공정의 PM1/2/3. 각 PM은 웨이퍼 한 장. 이전 공정 raw 센서는 포함하지 않음.",
+        "tags": [
+          "Proposed monitoring extension"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "processCode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "CVD",
+                "ETCH",
+                "CMP"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringLotSummaryEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "세션 없음/만료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "공정·객체 접근 금지",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "LOT/run/sensor 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "파라미터·범위 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-status": "PROPOSED_NOT_IN_ATTACHED_BACKEND"
+      }
+    },
+    "/api/monitoring/runs/{runId}/sensor-data": {
+      "get": {
+        "operationId": "getRunSensorData",
+        "description": "한 센서의 원본 시간순 샘플. 요청 limit를 넘으면 truncated=true. run이 속한 공정으로 권한 검사.",
+        "tags": [
+          "Proposed monitoring extension"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sensorId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 5000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringRawDataEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "세션 없음/만료",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "공정·객체 접근 금지",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "LOT/run/sensor 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "파라미터·범위 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringError"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-status": "PROPOSED_NOT_IN_ATTACHED_BACKEND"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ReportConfirm": {
+        "type": "object",
+        "properties": {
+          "expectedContentRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reviewConfirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expectedContentRevision",
+          "reviewConfirmed"
+        ]
+      },
+      "IncidentTransition": {
+        "type": "object",
+        "properties": {
+          "targetStatus": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "INVESTIGATING",
+              "WAITING_REPLY",
+              "ON_HOLD",
+              "CLOSED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 0
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "expectedVersion",
+          "reason",
+          "targetStatus"
+        ]
+      },
+      "ActiveJob": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waitingRef": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        }
+      },
+      "ApiResponseIncidentDetail": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/IncidentDetail"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "IncidentDetail": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "displayId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "anomalyType": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "chamberId": {
+            "type": "string"
+          },
+          "lotId": {
+            "type": "string"
+          },
+          "waferIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "runIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sensorIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "INVESTIGATING",
+              "WAITING_REPLY",
+              "ON_HOLD",
+              "CLOSED"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "activeJobId": {
+            "type": "string"
+          },
+          "activeJob": {
+            "$ref": "#/components/schemas/ActiveJob"
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineItem"
+            }
+          }
+        }
+      },
+      "Meta": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Ref": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "TimelineItem": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "type": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "ref": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        }
+      },
+      "ReportGeneration": {
+        "type": "object",
+        "properties": {
+          "baseReportVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "expectedIncidentVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "expectedIncidentVersion"
+        ]
+      },
+      "Query": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 0
+          },
+          "scope": {
+            "type": "string",
+            "pattern": "AUTO|CURRENT|UPSTREAM"
+          },
+          "expectedIncidentVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "expectedIncidentVersion",
+          "question"
+        ]
+      },
+      "Proposal": {
+        "type": "object",
+        "properties": {
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "CHECK_REQUEST",
+              "RECORD_ACTION",
+              "CONFIRM_REPORT"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 0
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "expectedIncidentVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "actionType",
+          "expectedIncidentVersion",
+          "payload",
+          "rationale"
+        ]
+      },
+      "ApiResponseApprovalView": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ApprovalView"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "ApprovalView": {
+        "type": "object",
+        "properties": {
+          "approvalId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "CHECK_REQUEST",
+              "RECORD_ACTION",
+              "CONFIRM_REPORT"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "actionHash": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "EXPIRED"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decidedBy": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decisionComment": {
+            "type": "string"
+          },
+          "executionRef": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "resumeJobId": {
+            "type": "string"
+          }
+        }
+      },
+      "BasicAnalysisRequest": {
+        "type": "object",
+        "properties": {
+          "expectedIncidentVersion": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 0
+          }
+        },
+        "required": [
+          "expectedIncidentVersion"
+        ]
+      },
+      "ActionInput": {
+        "type": "object",
+        "properties": {
+          "actionType": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 0
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 0
+          },
+          "performedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmedByUser": {
+            "type": "boolean"
+          },
+          "expectedIncidentVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "actionType",
+          "confirmedByUser",
+          "description",
+          "expectedIncidentVersion",
+          "performedAt"
+        ]
+      },
+      "AnomalyEvent": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 0
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 0
+          },
+          "anomalyType": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 0
+          },
+          "severity": {
+            "type": "string",
+            "pattern": "LOW|MEDIUM|HIGH|CRITICAL"
+          },
+          "processCode": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 0
+          },
+          "equipmentId": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 0
+          },
+          "chamberId": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 0
+          },
+          "lotId": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 0
+          },
+          "waferIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "runIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sensorIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 0
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 0
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "anomalyType",
+          "detectedAt",
+          "equipmentId",
+          "eventId",
+          "processCode"
+        ]
+      },
+      "Accepted": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "displayId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "BASIC",
+              "DEEP",
+              "RESUME",
+              "REPORT"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "WAITING_APPROVAL",
+              "WAITING_REPLY",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          },
+          "statusUrl": {
+            "type": "string"
+          },
+          "streamUrl": {
+            "type": "string"
+          },
+          "duplicate": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponseAccepted": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Accepted"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "ReplyInput": {
+        "type": "object",
+        "properties": {
+          "findings": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 0
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmedByUser": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "confirmedByUser",
+          "expectedVersion",
+          "findings"
+        ]
+      },
+      "Login": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "password",
+          "username"
+        ]
+      },
+      "ApiResponseSession": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Session"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/SessionUser"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ENGINEER",
+              "MANAGER"
+            ]
+          },
+          "processScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "authenticated": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SessionUser": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ENGINEER",
+              "MANAGER"
+            ]
+          },
+          "processScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "team": {
+            "type": "string"
+          }
+        }
+      },
+      "ApprovalDecision": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "pattern": "APPROVE|REJECT"
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 0
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "actionHash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "expectedVersion"
+        ]
+      },
+      "VerificationInput": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "IMPROVED",
+              "UNCHANGED",
+              "INCONCLUSIVE"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 0
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmedByUser": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "confirmedByUser",
+          "expectedVersion",
+          "outcome",
+          "rationale"
+        ]
+      },
+      "ReportEdit": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 0
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectionInput"
+            },
+            "minItems": 1
+          },
+          "expectedContentRevision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "expectedContentRevision",
+          "sections"
+        ]
+      },
+      "SectionInput": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 0
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 0
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 0
+          }
+        },
+        "required": [
+          "key",
+          "title"
+        ]
+      },
+      "ApiResponseReportView": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReportView"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "ReportView": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "CONFIRMED"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "contentRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "baseReportVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "generatedByJobId": {
+            "type": "string"
+          },
+          "snapshotRef": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmedBy": {
+            "type": "string"
+          },
+          "confirmedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponseRoute": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Route"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "Route": {
+        "type": "object",
+        "properties": {
+          "waferId": {
+            "type": "string"
+          },
+          "lotId": {
+            "type": "string"
+          },
+          "layerId": {
+            "type": "string"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunView"
+            }
+          },
+          "dataVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "RunView": {
+        "type": "object",
+        "properties": {
+          "sequenceNo": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "stepName": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "chamberId": {
+            "type": "string"
+          },
+          "recipeId": {
+            "type": "string"
+          },
+          "recipeVersion": {
+            "type": "string"
+          },
+          "layerId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponseDocumentSearch": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DocumentSearch"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "DocumentSearch": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "SearchHit": {
+        "type": "object",
+        "properties": {
+          "docId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "sectionId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          },
+          "version": {
+            "type": "string"
+          },
+          "resourceUri": {
+            "type": "string"
+          },
+          "isApprovedProcedure": {
+            "type": "boolean"
+          },
+          "docType": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "synthetic": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponseDocument": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Document"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "docId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "docType": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "latest": {
+            "type": "boolean"
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "synthetic": {
+            "type": "boolean"
+          },
+          "resourceUri": {
+            "type": "string"
+          },
+          "isApprovedProcedure": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectionRef"
+            }
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SectionRef": {
+        "type": "object",
+        "properties": {
+          "sectionId": {
+            "type": "string"
+          },
+          "heading": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseJobView": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/JobView"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "JobError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "JobView": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "BASIC",
+              "DEEP",
+              "RESUME",
+              "REPORT"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "WAITING_APPROVAL",
+              "WAITING_REPLY",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "parentJobId": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "waitingRef": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "resultRef": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "error": {
+            "$ref": "#/components/schemas/JobError"
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponsePageResponseIncidentSummary": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PageResponseIncidentSummary"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "IncidentSummary": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "displayId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "anomalyType": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "chamberId": {
+            "type": "string"
+          },
+          "lotId": {
+            "type": "string"
+          },
+          "waferIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "INVESTIGATING",
+              "WAITING_REPLY",
+              "ON_HOLD",
+              "CLOSED"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "activeJobId": {
+            "type": "string"
+          },
+          "jobStatus": {
+            "type": "string"
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PageResponseIncidentSummary": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentSummary"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        }
+      },
+      "SseEmitter": {
+        "type": "object",
+        "properties": {
+          "timeout": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResponseRawData": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RawData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "Baseline": {
+        "type": "object",
+        "properties": {
+          "baselineRef": {
+            "type": "string"
+          },
+          "matchedConditions": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sample"
+            }
+          }
+        }
+      },
+      "RawData": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/RawQuery"
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sample"
+            }
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "qualitySummary": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/Baseline"
+          },
+          "baselineUnavailableReason": {
+            "type": "string"
+          },
+          "rawRef": {
+            "type": "string"
+          },
+          "dataVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "RawQuery": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sensorId": {
+            "type": "string"
+          },
+          "recipeStep": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "includeBaseline": {
+            "type": "boolean"
+          },
+          "baselineRef": {
+            "type": "string"
+          }
+        }
+      },
+      "Sample": {
+        "type": "object",
+        "properties": {
+          "sensorId": {
+            "type": "string"
+          },
+          "sensorName": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "waferId": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "chamberId": {
+            "type": "string"
+          },
+          "recipeStep": {
+            "type": "string"
+          },
+          "measuredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "quality": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseReportPage": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReportPage"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "ReportPage": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportSummary"
+            }
+          }
+        }
+      },
+      "ReportSummary": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "CONFIRMED"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "contentRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponseMetrologyPage": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MetrologyPage"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "MetrologyItem": {
+        "type": "object",
+        "properties": {
+          "measurementId": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "lotId": {
+            "type": "string"
+          },
+          "waferId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "layerId": {
+            "type": "string"
+          },
+          "featureId": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "specId": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "toolId": {
+            "type": "string"
+          },
+          "measuredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MetrologyPage": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetrologyItem"
+            }
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "dataVersion": {
+            "type": "string"
+          },
+          "specNote": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseComparison": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Comparison"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "Comparison": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "groupBy": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "matchedConditions": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "insufficientEvidence": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataVersion": {
+            "type": "string"
+          },
+          "computedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponseChangePage": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ChangePage"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "ChangeItem": {
+        "type": "object",
+        "properties": {
+          "changeId": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "chamberId": {
+            "type": "string"
+          },
+          "changeType": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recordedBy": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ChangePage": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeItem"
+            }
+          },
+          "dataVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "AnalysisResultView": {
+        "type": "object",
+        "properties": {
+          "resultId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "observedFacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "candidateCauses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "nextActions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "dataVersion": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryItem"
+            }
+          }
+        }
+      },
+      "ApiResponseAnalysisResultView": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AnalysisResultView"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "HistoryItem": {
+        "type": "object",
+        "properties": {
+          "resultId": {
+            "type": "string"
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ActionPage": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionView"
+            }
+          }
+        }
+      },
+      "ActionView": {
+        "type": "object",
+        "properties": {
+          "actionId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "actionType": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "performedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "performedBy": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmedByUser": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          },
+          "approvalId": {
+            "type": "string"
+          },
+          "verificationStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "IMPROVED",
+              "UNCHANGED",
+              "INCONCLUSIVE"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VerificationView"
+            }
+          }
+        }
+      },
+      "ApiResponseActionPage": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ActionPage"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "VerificationView": {
+        "type": "object",
+        "properties": {
+          "verificationId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "IMPROVED",
+              "UNCHANGED",
+              "INCONCLUSIVE"
+            ]
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verifiedBy": {
+            "type": "string"
+          },
+          "verifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiResponseDashboard": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Dashboard"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "Counts": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "active": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pendingApprovals": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "openRequests": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sentOpenRequests": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "analyzing": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "analysisFailed": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Dashboard": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "byStatus": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "byProcess": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProcessCount"
+            }
+          },
+          "byEquipment": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EquipmentCount"
+            }
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrendBucket"
+            }
+          },
+          "refreshNote": {
+            "type": "string"
+          }
+        }
+      },
+      "EquipmentCount": {
+        "type": "object",
+        "properties": {
+          "processCode": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "chamberId": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "active": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ProcessCount": {
+        "type": "object",
+        "properties": {
+          "processCode": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "active": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "TrendBucket": {
+        "type": "object",
+        "properties": {
+          "bucketStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "activeCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiResponsePageResponseCheckRequestSummary": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PageResponseCheckRequestSummary"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "CheckRequestSummary": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "incidentDisplayId": {
+            "type": "string"
+          },
+          "targetProcessCode": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "REPLIED",
+              "CANCELLED"
+            ]
+          },
+          "requesterUserId": {
+            "type": "string"
+          },
+          "ownerUserId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dueAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "repliedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PageResponseCheckRequestSummary": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckRequestSummary"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseCheckRequestView": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CheckRequestView"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "CheckRequestView": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "incident": {
+            "$ref": "#/components/schemas/IncidentContext"
+          },
+          "targetProcessCode": {
+            "type": "string"
+          },
+          "approvalId": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requesterUserId": {
+            "type": "string"
+          },
+          "ownerUserId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "REPLIED",
+              "CANCELLED"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "waitingJobId": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "repliedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "replies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReplyView"
+            }
+          }
+        }
+      },
+      "IncidentContext": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string"
+          },
+          "displayId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "chamberId": {
+            "type": "string"
+          },
+          "lotId": {
+            "type": "string"
+          },
+          "waferIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ReplyView": {
+        "type": "object",
+        "properties": {
+          "replyId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "findings": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "authorUserId": {
+            "type": "string"
+          },
+          "confirmedByUser": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resumeJobId": {
+            "type": "string"
+          }
+        }
+      },
+      "CsrfToken": {
+        "type": "object",
+        "properties": {
+          "parameterName": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "headerName": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseCsrf": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Csrf"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "Csrf": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "headerName": {
+            "type": "string"
+          },
+          "parameterName": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponsePageResponseApprovalSummary": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PageResponseApprovalSummary"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "ApprovalSummary": {
+        "type": "object",
+        "properties": {
+          "approvalId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "CHECK_REQUEST",
+              "RECORD_ACTION",
+              "CONFIRM_REPORT"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "EXPIRED"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PageResponseApprovalSummary": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalSummary"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        }
+      },
+      "MonitoringMeta": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringSiteMeasurement": {
+        "type": "object",
+        "properties": {
+          "metrologyId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "waferId": {
+            "type": "string"
+          },
+          "process": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string",
+            "enum": [
+              "CENTER",
+              "NORTH",
+              "EAST",
+              "SOUTH",
+              "WEST"
+            ]
+          },
+          "filmThicknessA": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "metrologyId",
+          "runId",
+          "waferId",
+          "process",
+          "siteId",
+          "filmThicknessA"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringSensorFeature": {
+        "type": "object",
+        "properties": {
+          "sensorId": {
+            "type": "string"
+          },
+          "mean": {
+            "type": "number"
+          },
+          "std": {
+            "type": "number"
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "slopePerSecond": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "recipeStep": {
+            "type": "string"
+          },
+          "setpoint": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sensorId",
+          "mean",
+          "std",
+          "min",
+          "max",
+          "slopePerSecond",
+          "unit",
+          "recipeStep",
+          "setpoint"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringSensorDefinition": {
+        "type": "object",
+        "properties": {
+          "sensorId": {
+            "type": "string"
+          },
+          "process": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensorId",
+          "process",
+          "unit"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringQualityLimits": {
+        "type": "object",
+        "properties": {
+          "limitId": {
+            "type": "string"
+          },
+          "process": {
+            "type": "string"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "unit": {
+            "const": "Å"
+          },
+          "center": {
+            "type": "number"
+          },
+          "lcl": {
+            "type": "number"
+          },
+          "ucl": {
+            "type": "number"
+          },
+          "lsl": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "usl": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "chartType": {
+            "const": "I"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "baselineRuns": {
+            "type": "integer"
+          },
+          "baselineRunsPerPM": {
+            "type": "integer"
+          },
+          "sharedOnlyUnder": {
+            "type": "string"
+          },
+          "frozen": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "limitId",
+          "process",
+          "metric",
+          "unit",
+          "center",
+          "lcl",
+          "ucl",
+          "lsl",
+          "usl",
+          "chartType",
+          "rule",
+          "baselineRuns",
+          "baselineRunsPerPM",
+          "sharedOnlyUnder",
+          "frozen"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringRunMeanReference": {
+        "type": "object",
+        "properties": {
+          "process": {
+            "type": "string"
+          },
+          "sensorId": {
+            "type": "string"
+          },
+          "center": {
+            "type": "number"
+          },
+          "lcl": {
+            "type": "number"
+          },
+          "ucl": {
+            "type": "number"
+          },
+          "lsl": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "usl": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensorId",
+          "center",
+          "lcl",
+          "ucl",
+          "lsl",
+          "usl"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringSensorEnvelope": {
+        "type": "object",
+        "properties": {
+          "sensorId": {
+            "type": "string"
+          },
+          "process": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "lower": {
+            "type": "number"
+          },
+          "upper": {
+            "type": "number"
+          },
+          "center": {
+            "type": "number"
+          },
+          "sigma": {
+            "type": "number"
+          },
+          "source": {
+            "type": "string"
+          },
+          "baselineRuns": {
+            "type": "integer"
+          },
+          "baselineRunsPerPM": {
+            "type": "integer"
+          },
+          "smoothingSeconds": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "minDurationSeconds": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "ruleVersion": {
+            "type": "string"
+          },
+          "calibratedForRealTool": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sensorId",
+          "process",
+          "unit",
+          "lower",
+          "upper",
+          "center",
+          "sigma",
+          "source",
+          "baselineRuns",
+          "baselineRunsPerPM",
+          "smoothingSeconds",
+          "minDurationSeconds",
+          "ruleVersion",
+          "calibratedForRealTool"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringRunSummary": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "waferId": {
+            "type": "string"
+          },
+          "lotId": {
+            "type": "string"
+          },
+          "process": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "recipeId": {
+            "type": "string"
+          },
+          "runStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "runEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metrologyAvailableAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "processSeconds": {
+            "type": "number"
+          },
+          "inputMeanA": {
+            "type": "number"
+          },
+          "outputMeanA": {
+            "type": "number"
+          },
+          "addedOrRemovedA": {
+            "type": "number"
+          },
+          "changeSign": {
+            "enum": [
+              -1,
+              1
+            ]
+          },
+          "upstreamRunId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "oocR1": {
+            "type": "boolean"
+          },
+          "oos": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "incidentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringSiteMeasurement"
+            }
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringSensorFeature"
+            }
+          }
+        },
+        "required": [
+          "runId",
+          "waferId",
+          "lotId",
+          "process",
+          "equipmentId",
+          "recipeId",
+          "runStart",
+          "runEnd",
+          "metrologyAvailableAt",
+          "processSeconds",
+          "inputMeanA",
+          "outputMeanA",
+          "addedOrRemovedA",
+          "changeSign",
+          "upstreamRunId",
+          "oocR1",
+          "oos",
+          "incidentId",
+          "sites",
+          "features"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringLotSummary": {
+        "type": "object",
+        "properties": {
+          "lotId": {
+            "type": "string"
+          },
+          "processCode": {
+            "enum": [
+              "CVD",
+              "ETCH",
+              "CMP"
+            ]
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringRunSummary"
+            }
+          },
+          "limits": {
+            "$ref": "#/components/schemas/MonitoringQualityLimits"
+          },
+          "sensorDefinitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringSensorDefinition"
+            }
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringRunMeanReference"
+            }
+          },
+          "sensorEnvelopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringSensorEnvelope"
+            }
+          },
+          "dataVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lotId",
+          "processCode",
+          "runs",
+          "limits",
+          "sensorDefinitions",
+          "references",
+          "sensorEnvelopes",
+          "dataVersion"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringLotList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringSensorSample": {
+        "type": "object",
+        "properties": {
+          "sensorId": {
+            "type": "string"
+          },
+          "sensorName": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "waferId": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "recipeStep": {
+            "enum": [
+              "READY",
+              "PROCESS",
+              "END"
+            ]
+          },
+          "measuredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "quality": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensorId",
+          "sensorName",
+          "runId",
+          "waferId",
+          "equipmentId",
+          "recipeStep",
+          "measuredAt",
+          "value",
+          "unit",
+          "quality"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringRawData": {
+        "type": "object",
+        "properties": {
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringSensorSample"
+            }
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "baseline": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "dataVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "samples",
+          "totalCount",
+          "truncated",
+          "baseline",
+          "dataVersion"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": [
+                  "object",
+                  "array",
+                  "string",
+                  "null"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "details"
+            ],
+            "additionalProperties": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/MonitoringMeta"
+          }
+        },
+        "required": [
+          "error",
+          "meta"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringLotListEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MonitoringLotList"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/MonitoringMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringLotSummaryEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MonitoringLotSummary"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/MonitoringMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "additionalProperties": true
+      },
+      "MonitoringRawDataEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MonitoringRawData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/MonitoringMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "name": "FABSESSION",
+        "in": "cookie"
+      },
+      "serviceToken": {
+        "type": "apiKey",
+        "name": "X-Service-Token",
+        "in": "header"
+      }
+    }
+  }
+}

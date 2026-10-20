@@ -1,0 +1,147 @@
+{
+  "passed": true,
+  "checkCount": 34,
+  "checks": [
+    {
+      "name": "1017 unique process runs",
+      "passed": true
+    },
+    {
+      "name": "339 wafers each have exactly CVD ETCH CMP",
+      "passed": true
+    },
+    {
+      "name": "100 baseline runs per process PM",
+      "passed": true
+    },
+    {
+      "name": "current 10 lots, 3 wafers per lot and 3 runs per wafer",
+      "passed": true
+    },
+    {
+      "name": "one wafer per lot process PM",
+      "passed": true
+    },
+    {
+      "name": "all measurements explicitly synthetic",
+      "passed": true
+    },
+    {
+      "name": "five spatial sites reproduce wafer mean",
+      "passed": true
+    },
+    {
+      "name": "positive thickness and deposition/removal balances",
+      "passed": true
+    },
+    {
+      "name": "same wafer and exact upstream output as downstream input",
+      "passed": true
+    },
+    {
+      "name": "upstream measurement precedes downstream start",
+      "passed": true
+    },
+    {
+      "name": "20 sensor catalog entries",
+      "passed": true
+    },
+    {
+      "name": "sensor USL LSL not invented",
+      "passed": true
+    },
+    {
+      "name": "only CMP fictional product spec registered",
+      "passed": true
+    },
+    {
+      "name": "frozen limits from baseline only",
+      "passed": true
+    },
+    {
+      "name": "recomputed shared I limits match within-PM moving ranges",
+      "passed": true
+    },
+    {
+      "name": "L001-L005 all PMs all processes R1 normal",
+      "passed": true
+    },
+    {
+      "name": "only intended current R1 alerts at CMP PM3 L006 L007 L009",
+      "passed": true
+    },
+    {
+      "name": "all current CMP results in fictional product spec",
+      "passed": true
+    },
+    {
+      "name": "L009 actual path CVD PM1 ETCH PM2 CMP PM3",
+      "passed": true
+    },
+    {
+      "name": "L009 upstream R1 absent, final OOC not OOS",
+      "passed": true
+    },
+    {
+      "name": "L009 CMP removal within baseline mean +/-3 standard deviations",
+      "passed": true
+    },
+    {
+      "name": "L009 etch raw feature means stay within reference bands",
+      "passed": true
+    },
+    {
+      "name": "L010 mild CVD movement not manufactured OOC",
+      "passed": true
+    },
+    {
+      "name": "780 complete source-cadence traces with finite nonnegative values",
+      "passed": true
+    },
+    {
+      "name": "1120860 original sensor samples",
+      "passed": true
+    },
+    {
+      "name": "raw sensor samples reproduce per-run features",
+      "passed": true
+    },
+    {
+      "name": "all feature records have a catalog definition",
+      "passed": true
+    },
+    {
+      "name": "7 cases marked synthetic and no production approval",
+      "passed": true
+    },
+    {
+      "name": "past cases predate current events",
+      "passed": true
+    },
+    {
+      "name": "24 chunks with 9 public summaries/cases and 15 demo playbooks",
+      "passed": true
+    },
+    {
+      "name": "every cited source exists and no original fulltext copied",
+      "passed": true
+    },
+    {
+      "name": "truth excluded from retrieval and marked invisible",
+      "passed": true
+    },
+    {
+      "name": "future followup availability correctly distinguished",
+      "passed": true
+    },
+    {
+      "name": "agent tests are specified, not claimed executed",
+      "passed": true
+    }
+  ],
+  "runs": 1017,
+  "sensorSamples": 1120860,
+  "syntheticCases": 7,
+  "llmEvaluationExecuted": false,
+  "dashboardIntegrationTested": false
+}

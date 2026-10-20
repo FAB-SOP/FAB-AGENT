@@ -1,0 +1,110 @@
+[
+  {
+    "sourceId": "S01",
+    "title": "NIST CMP tool description",
+    "url": "https://www.nist.gov/laboratories/tools-instruments/nanofab-tool-ipec-472-chemical-mechanical-polisher-cmp",
+    "sourceType": "GOVERNMENT_TOOL_DESCRIPTION",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "CMP는 화학·기계 작용을 함께 사용한다. 제거량은 압력, 회전, 슬러리와 재료 등 여러 조건에 의존한다.",
+    "applicabilityLimits": "특정 연구 장비 설명이며 양산 장비의 허용값·조치 SOP가 아니다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  },
+  {
+    "sourceId": "S02",
+    "title": "Yang & Chen 2010, plasma process sensing",
+    "url": "https://www.mdpi.com/1424-8220/10/6/5703",
+    "sourceType": "PRIMARY_RESEARCH",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "TCP 식각 실험에서 가스 공급, RF, 챔버 압력, ESC 온도 등의 변화를 조사한다. 백사이드 헬륨은 웨이퍼 냉각 구성에 사용된다.",
+    "applicabilityLimits": "폴리실리콘 실험이다. 산화막 식각 레시피·반응 방향·허용값을 전용하지 않는다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  },
+  {
+    "sourceId": "S03",
+    "title": "MIT/TI dielectric CMP control",
+    "url": "https://boning.mit.edu/wp-content/uploads/2022/11/CMPMIC99_Control_final.pdf",
+    "sourceType": "PRIMARY_RESEARCH",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "CMP 투입 막 두께와 표면 상태를 함께 고려해야 하며, 간접 센서 신호와 위치별 두께 계측은 서로 다른 증거다.",
+    "applicabilityLimits": "역사적 연구이다. 본 데이터의 고정 시간·계수·5개 위치는 팀의 시연 가정이다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  },
+  {
+    "sourceId": "S04",
+    "title": "National Academies, production PECVD case, 2014",
+    "url": "https://www.nationalacademies.org/read/18558/chapter/9",
+    "sourceType": "RESEARCHER_CASE_REPORT",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "생산 PECVD 사례에서 가스·압력·RF 관련 신호를 10 Hz로 수집하고 공정 중 변화의 특징을 추출했다.",
+    "applicabilityLimits": "특정 과거 사례이며 현재 공장의 평균 수집률이나 의무 표준이 아니다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  },
+  {
+    "sourceId": "S05",
+    "title": "Minitab I-MR data considerations",
+    "url": "https://support.minitab.com/en-us/minitab/help-and-how-to/quality-and-process-improvement/control-charts/how-to/variables-charts-for-individuals/i-mr-chart/before-you-start/data-considerations/",
+    "sourceType": "OFFICIAL_STATISTICAL_GUIDANCE",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "I-MR 관리도 안내는 100개 이상의 관측을 권고하고 연속 관측의 상관관계를 주의하도록 설명한다.",
+    "applicabilityLimits": "100회/PM은 본 팀의 설계 목표다. 100개 센서 샘플을 100회 run으로 간주하지 않는다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  },
+  {
+    "sourceId": "S06",
+    "title": "UCSB SiO2 CHF3/CF4 ICP process tests",
+    "url": "https://wiki.nanofab.ucsb.edu/wiki/Test_Data_of_etching_SiO2_with_CHF3/CF4-ICP1",
+    "sourceType": "UNIVERSITY_PROCESS_DATA",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "대학 나노팹은 CHF3/CF4 ICP 산화막 식각의 시험 조건과 결과를 공개한다.",
+    "applicabilityLimits": "이 데이터팩은 해당 레시피를 복제·검증한 것이 아니다. 패턴·장비·막질이 다르면 결과가 다르다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  },
+  {
+    "sourceId": "S07",
+    "title": "Cornell CNF NanoCourses, 2004",
+    "url": "https://www.cnf.cornell.edu/sites/default/files/inline-files/CNFNanoCoursesSection3.pdf",
+    "sourceType": "UNIVERSITY_TEACHING",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "PECVD 산화막의 반응물 조합으로 SiH4와 N2O를 소개한다.",
+    "applicabilityLimits": "가스 종류의 근거이며 이 데이터팩의 유량·온도·속도·희석 농도를 검증하지 않는다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  },
+  {
+    "sourceId": "S08",
+    "title": "Lam chamber matching",
+    "url": "https://newsroom.lamresearch.com/virtual-sensor-innovation-for-higher-productivity?blog=true",
+    "sourceType": "MANUFACTURER_TECHNICAL_OVERVIEW",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "같은 장비군에도 챔버별 조건 차이가 있어 매칭이 필요할 수 있다.",
+    "applicabilityLimits": "PM 공통 관리한계를 동일 로트라는 이유만으로 적용할 수 없다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  },
+  {
+    "sourceId": "S09",
+    "title": "UCI SECOM",
+    "url": "https://archive.ics.uci.edu/dataset/179/secom",
+    "sourceType": "PUBLIC_DATASET",
+    "verifiedOn": "2026-10-20",
+    "authoredSummary": "반도체 제조 측정값과 생산 결과를 포함한 공개 다변량 데이터셋이다.",
+    "applicabilityLimits": "본 패키지의 명명된 CVD→Etch→CMP 센서·웨이퍼 경로로 해석할 근거가 없어 본 데이터에 혼합하지 않는다.",
+    "originalFullTextIncluded": false,
+    "ingestionMode": "AUTHORED_BRIEF_WITH_LINK",
+    "licenseStatus": "CHECK_ITEM_TERMS_BEFORE_FULLTEXT_INGESTION"
+  }
+]

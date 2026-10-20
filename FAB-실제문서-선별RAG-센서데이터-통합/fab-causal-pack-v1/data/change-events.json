@@ -1,0 +1,12 @@
+[
+  {
+    "changeId": "DEMO-CHANGE-E02",
+    "equipmentId": "ETCH-PM2",
+    "occurredAt": "2026-10-18T21:00:00+09:00",
+    "availableAt": "2026-10-18T21:05:00+09:00",
+    "type": "CHAMBER_SERVICE",
+    "description": "가상 챔버 정비 기록. 시즈닝/모니터 결과 상세는 담당자 확인 필요.",
+    "synthetic": true,
+    "rootCauseConfirmed": false
+  }
+]

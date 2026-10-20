@@ -1,0 +1,163 @@
+{
+  "exampleNote": "설명용으로 11점만 발췌. 실제 응답은 간격대로 연속된 샘플이어야 함. 발췌된 점으로 구간 검출하지 않음.",
+  "data": {
+    "samples": [
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:16:12+09:00",
+        "value": 2.997979,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:17:39+09:00",
+        "value": 3.000171,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:17:40+09:00",
+        "value": 2.998888,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:17:42+09:00",
+        "value": 2.823845,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:17:45+09:00",
+        "value": 2.547062,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:18:30+09:00",
+        "value": 2.550095,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:19:25+09:00",
+        "value": 2.548672,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:19:29+09:00",
+        "value": 2.913301,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:19:30+09:00",
+        "value": 2.998144,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:19:32+09:00",
+        "value": 2.998671,
+        "unit": "psi",
+        "quality": "GOOD"
+      },
+      {
+        "sensorId": "head_pressure",
+        "sensorName": "헤드 압력",
+        "runId": "RUN-W-CURRENT-006-3-CMP",
+        "waferId": "W-CURRENT-006-3",
+        "equipmentId": "CMP-PM3",
+        "chamberId": "PM3",
+        "recipeStep": "PROCESS",
+        "measuredAt": "2026-10-18T19:21:09.900000+09:00",
+        "value": 2.994667,
+        "unit": "psi",
+        "quality": "GOOD"
+      }
+    ],
+    "totalCount": 3201,
+    "truncated": false,
+    "baseline": null,
+    "baselineUnavailableReason": "별도 정상 기준 trace 미제공",
+    "dataVersion": "causal-pack-v2-scenarios",
+    "rawRef": "RUN-W-CURRENT-006-3-CMP",
+    "qualitySummary": {
+      "GOOD": 3201
+    }
+  },
+  "meta": {
+    "requestId": "example-request-id",
+    "at": "2026-10-20T06:00:00Z"
+  }
+}

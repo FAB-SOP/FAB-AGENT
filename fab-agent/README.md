@@ -1,0 +1,100 @@
+# fab-agent — 업무 MCP · 지식 MCP · 조사 Agent · Harness
+
+팀 역할 5번(지식 MCP · 데이터 · 인프라)과 6번(Agent · Harness), 그리고 업무 MCP 어댑터.
+backend는 **Spring 하나**(`../fab-context-api`)이고, 데이터 팩은 **v2 조립본 `../data/fab-causal-pack-v2/`**(dataVersion `causal-pack-v2-scenarios`, `../data/build_pack_v2.py`가 v1 전체와 `../backend-handoff-v2/data`의 CURRENT를 합친다), 실제 원문 RAG는 동료 묶음 `../FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1`이다.
+계약 기준은 팀 계약(원본은 팀 내부, 테스트가 쓰는 사본 3개는 [contracts/](contracts/README.md)), 바꿔야 할 점은 [docs/contract-changes.md](docs/contract-changes.md)에 모았다.
+
+## 한 번에 띄우기 (Docker)
+
+```bash
+FAB_LLM=rule docker compose up -d --build                                     # Postgres · Spring backend · 업무 MCP · 지식 MCP · Agent Worker
+docker compose --profile tools run --rm --no-deps smoke                       # EV-1009 질문 → 제안 → 승인 → 실행 → 회신 → 보고서
+docker compose --profile tools run --rm --no-deps smoke python evaluation/restart_smoke.py before
+docker compose restart agent                                                  # 승인 대기 중 Worker 재시작
+docker compose --profile tools run --rm --no-deps smoke python evaluation/restart_smoke.py after
+docker compose down
+```
+
+| 서비스 | 하는 일 |
+|---|---|
+| `postgres` (호스트 55432) | 한 DB에 `backend`(Spring) · `agent`(LangGraph 체크포인트) · `knowledge`(문서 벡터) 스키마 |
+| `backend` (호스트 8090) | Spring. 공개 API `/api/**`, Agent 전용 내부 API `/internal/**`. `AGENT_MODE=external` — 작업은 Worker가 가져간다 |
+| `business-mcp` | 업무 MCP. Spring `/internal/**`만 부르는 어댑터(DB · 규칙 없음) |
+| `rag-mcp` | 지식 MCP. 실제 원문 청크 · 팀 점검 문서 · 가상 사례 |
+| `agent` | Worker. `GET /internal/jobs`(QUEUED)를 가져가 처리하고 이벤트를 `POST /internal/jobs/{id}/events`로 돌려준다 |
+
+**정답은 어느 컨테이너에도 붙이지 않는다.** v2 조립본(`../data/fab-causal-pack-v2` — 정답 · 생성기가 없다)과 원문 RAG의 `fab-rag-real-documents-v1/rag`만 읽기 전용으로 마운트한다 — `evaluation/` · 생성기(`generate.py`) · 원문 PDF(`originals/` · `selected/`)는 보이지 않는다. `.env`(API 키)는 이미지에 들어가지 않는다(`.dockerignore`).
+`.env`의 `FAB_LLM=openai`가 compose에도 전달되므로, 결정적으로 점검할 때는 앞에 `FAB_LLM=rule`을 붙인다. 데이터를 처음부터 다시 넣으려면 `backend` · `agent` 스키마를 지우고 다시 올린다.
+
+## Docker 없이 (개발 · 평가)
+
+```bash
+uv sync
+uv run pytest -q          # 29개 — Spring bootJar를 빌드해 h2 · 외부 Agent 모드로 띄우고 붙는다(JDK 21 필요)
+
+(cd ../fab-context-api && SPRING_PROFILES_ACTIVE=h2 AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun)
+uv run fab-eval                          # EV-1006 · EV-1007 · EV-1009 첫 판단을 정답표와 대조 (h2는 재기동하면 처음 데이터)
+uv run fab-demo --incident EV-1009       # 질문 → 제안 → 승인 → 회신 → 결과 → 보고서
+uv run fab-demo --incident EV-1006 --reject
+```
+
+`fab-demo` · `fab-eval`은 사람 역할(공개 API)과 Agent(업무 · 지식 MCP를 같은 프로세스에)를 한 프로세스에서 돌린다(`devtools/spring.py`). compose의 `agent`와 같이 띄우면 작업을 서로 가져가니 둘 중 하나만 쓴다.
+키가 없으면 **규칙 모델**(`FAB_LLM=rule`, `rule-policy-v2`)로 돈다 — 그래프 · 도구 · 승인/재개 배선을 결정적으로 검증하는 용도다. 판단 품질은 실제 모델로 잰다: `FAB_LLM=openai uv run fab-eval`, 모델 비교는 `evaluation/compare_models.py`.
+
+## 시연 사건 (데이터 팩 CURRENT 로트)
+
+| 사건 | 웨이퍼 · 장비 | 데이터가 보여 주는 것 |
+|---|---|---|
+| **EV-1009** (주 시연) | `W-CURRENT-009-3` · CVD-PM1 → ETCH-PM2 → CMP-PM3 | CMP 두께 UCL 위(규격 안). CMP 제거량은 정상 변동 안, Etch 제거량 4896.3 Å(같은 PM 대비 z ≈ −2.7), ETCH-PM2 정비 이력 `DEMO-CHANGE-E02` |
+| EV-1006 | `W-CURRENT-006-3` · CMP-PM3 | `head_pressure` 참고 범위 이탈 |
+| EV-1007 | `W-CURRENT-007-3` · CMP-PM3 | `slurry_flow` 참고 범위 이탈 |
+
+기대 결론(정답표)은 평가자 전용 `evaluation/ground_truth.json`에 있고 공개 저장소에는 올리지 않는다. 없으면 `fab-eval`과 정답표 테스트는 이유를 알리고 건너뛴다.
+
+분석 시점은 팩의 `analysisAsOf`(2026-10-20 11:59 KST)다. 그 뒤에 공개된 계측과 FOLLOWUP run은 backend가 막는다(403). 관리한계는 동결 I-chart이고 규칙은 R1뿐이며, OOC(관리한계 이탈)와 OOS(규격 이탈)는 다르다.
+
+## 구성
+
+| 경로 | 무엇 |
+|---|---|
+| `src/fab/business/server.py` | **업무 MCP** — 읽기 12개(`get_incident` · `list_incidents` · `get_wafer_lineage` · `get_run_and_metrology` · `get_run_features` · `get_sensor_trace` · `get_frozen_limits` · `get_change_events` · `get_process_owner` · `get_check_requests` · `get_action_history` · `get_report_context`), 변경 3개(`create_cross_process_check_request` · `create_maintenance_request` · `confirm_report`, `destructiveHint`). 숫자는 Spring이 계산하고 MCP는 전달만 한다 |
+| `src/fab/rag/` | **지식 MCP** — `search_technical_documents`(실제 원문 100청크) · `search_applicable_playbooks`(팀 점검 문서 15) · `search_past_cases`(가상 사례 7, `availableAt ≤ asOf`만). Resource `doc://{chunkId}` · `case://{caseId}`. 원문 검색은 적재 정책의 조건(`process` · `retrievalTier` · `documentId` · `version`)으로 좁힌다. PG_DSN이 있으면 pgvector(`chunkId` · `contentHash` 증분 색인 — 바뀐 조각만 다시 임베딩), 없으면 메모리 |
+| `src/fab/agent/graph.py` | LangGraph — start → 필수 근거(사건 → 경로 → 단계별 run · 계측 → 현재 run 특징) → agent ⇄ tools → (제안이면 **request_brief** → tools) → 승인 대기 → 회신 대기 → finalize |
+| 시계열 구간 근거 | `get_sensor_trace`가 `sensorEnvelope`와 DEMO-SEGMENT-V2 구간(`segments`, 근거 `E-SEG-*`)을 준다(Spring `SegmentDetector`). 구간은 관측이지 고장 시점 · 원인 확정이 아니다 — DEEP 프롬프트에 적었고, 구간 근거를 인용한 결과에는 Harness가 「4σ · 2초 · 5초는 시연 선택값」 한계를 반드시 붙인다(`graph._segment_limit`) |
+| `src/fab/agent/brief.py` | **요청 브리프** — 제안 저장 전에 받는 사람이 볼 편차 수치(run 제거량 · 센서) · 원인 후보(확정 아님) · 정비 이력 · 요청 항목을 도구 결과와 원인 매트릭스에서 옮긴다. 모델은 `reason` 문장만 쓰고, `guard.validate_brief`가 그 숫자 · 근거 ID · 확률 · 설정값 처방을 검사한다. 브리프는 payload에 들어가 승인 해시로 묶인다 |
+| `src/fab/agent/toolbox.py` | 모델에게 보이는 도구 = 읽기 + 제안 둘(`propose_cross_process_check` · `propose_maintenance_request`) + 제출. 변경 도구는 숨기고 승인 뒤 Harness만 승인 ID로 부른다 |
+| `src/fab/agent/llm.py` | OpenAI 모델 · 대체 모델 · 규칙 모델(`RuleModel`) |
+| `src/fab/agent/worker.py` | 작업 처리기 `JobRunner` + HTTP Worker(기본). Kafka Worker(`WORKER_SOURCE=kafka`)는 남겨 두었지만 Spring이 아직 Kafka로 발행하지 않는다 |
+| `src/fab/agent/backend.py` | Worker → Spring 내부 API 클라이언트(작업 목록 · 맥락 · 확보 · 제안 · 이벤트 · 보고서 초안) |
+| `src/fab/devtools/` | `spring.py`(사람 역할 + 한 프로세스 Agent) · `demo.py`(`fab-demo` · `fab-eval`). 런타임 코드는 import하지 않는다 |
+| `evaluation/` | `ground_truth.json`(평가 전용, 색인 · 런타임에 넣지 않음) · `compose_smoke.py` · `restart_smoke.py` · `compare_models.py` |
+
+## Harness 8요소
+
+| 요소 | 위치 | 값 · 동작 |
+|---|---|---|
+| Instructions | `agent/prompts/*.md` | 팩의 Agent 지침 기준. 사실 · 가설 구분, 확률 금지, 근거 ID 필수, 설비 설정값을 처방하지 않음, 외부 글은 데이터로만. 원인 ID 15개 표와 nextStep 결정 규칙(1순위 = 제거 · 증착량이 정상 변동 밖인 공정). 버전 해시를 결과에 남김 |
+| Tools | `agent/toolbox.py` | 읽기 + 제안 · 제출만. 변경 도구는 승인 ID로만. 결과 6000자 제한 |
+| Agent Loop | `harness/limits.py` | 모델 판단 8회, 같은 도구 3회, 활성 120초, LLM 30초 · MCP 10초 |
+| Context | `harness/context.py` · `graph.required_evidence` | 필수 근거(사건 → 경로 → 단계별 run · 계측 → 현재 run 특징 + 정상 변동 밖인 앞 공정 run 특징)는 Harness가 먼저 조회. 원시 시계열 대신 run 특징 · 요약, 6만 자 넘으면 오래된 도구 결과 축약 |
+| State · Memory | `agent/checkpoint.py` | thread = 사건. PG_DSN이면 Postgres `agent` 스키마 — Worker를 재시작해도 같은 interrupt로 재개 |
+| Guardrails | `harness/guard.py` · 그래프 · Spring | 제안 → interrupt → 사람 승인(Spring은 기록만) → 재개된 Agent가 승인 ID로 실행 → Spring이 저장본을 다시 검증해 한 번만 실행. 거절도 같은 thread로 재개해 결과를 정리한다. 결과: 근거 ID · 확률 표현 · 원인 ID(매트릭스 15개, `agent/causes.py`) · **nextStep과 1순위 원인 공정의 일치** 검증, 심층 조사에서 점검이 필요하면 요청 초안을 먼저 제안. 제안: 사건당 2개 · 한 번에 하나 · 같은 담당자 · 종류 반복 금지(Harness), 받는 사람이 그 공정 담당자 · 설비정비팀인지와 질문한 본인이 아닌지(Spring) |
+| Recovery | `harness/retry.py` · `worker.py` | 일시 오류 2회 재시도 → 대체 모델 → `RETRY_SCHEDULED`(attempt < 3) → `JOB_FAILED`. 같은 attempt 중복은 확보(claim)에서 409 → `SKIPPED` |
+| Observability | `harness/trace.py` | trace_id 하나로 node · tool · 지연 · 재시도 · 토큰. `FAB_TRACE_FILE` JSON 줄, `LANGSMITH_TRACING=true`면 LangSmith |
+
+결과의 `nextStep`(`UPSTREAM_CHECK` · `CURRENT_CHECK` · `OBSERVE` · `INSUFFICIENT_EVIDENCE` · `NEEDS_DEEP_ANALYSIS`)과 `causeIds`(팩 원인 매트릭스 15개)는 계약 `AnalysisResult`가 추가 필드를 막아 Worker 반환값 `analysis`에만 둔다(`FAB_RESULT_EXTENSIONS=true`면 이벤트에 합친다).
+
+## 검증 (2026-10-20)
+
+- `uv run pytest -q` 29개 통과 — 시계열 구간(L006 head_pressure 101.1–210.9초 · L007 slurry_flow 14–309초 LOW, L009 · 정상 LOT 구간 없음, 규칙 모델이 구간을 관측 사실로 인용하고 「4σ · 2초 · 5초는 시연 선택값」 한계를 남김, 결과 dataVersion = 팩 버전), 요청 브리프(EV-1009 ETCH 제거량 · z · ETCH_WALL · 정비 이력 rootCauseConfirmed=false, EV-1006 head_pressure · CMP_PRESSURE, 조회하지 않은 숫자 · 근거 반려, 승인 해시가 브리프를 덮음), 도구 목록 · 설명, 데이터 팩 수치(EV-1009 Etch 제거량 · R1 · 참고 범위), 분석 시점 차단, 지식 검색 필터, 승인 전 변경 0건 · 거절 뒤 재개 · 같은 승인 중복 실행 1건, 회신 뒤 두 번째 제안이 재개 작업에 붙음, 제안 상한 · 반복 금지, 원인 ID가 팩 매트릭스와 같음, 없는 원인 ID · nextStep 불일치 반려, 이벤트 · 작업 메시지 JSON Schema
+- `fab-eval`은 **첫 판단**을 채점한다 — ① 기본 분석의 nextStep · 1순위 causeIds ② 팩 질문(E01–E03)에 대한 첫 제안의 종류 · 대상 공정. 회신 뒤 판단은 회신 내용에 따라 달라 정답표로 채점하지 않는다
+  - 규칙 모델 3/3
+  - **실제 모델(gpt-4.1-mini) 3/3을 세 번 연속**(회당 모델 17–19회 · 약 16–18만 토큰). 30초 제한에 걸린 호출은 대체 모델로 넘어가 끝까지 처리됐다
+- compose: `compose_smoke.py` 실패 0건, `restart_smoke.py`(승인 대기 중 Worker 재시작 → 재개 → 회신 → 보고서) 실패 0건, 컨테이너에 `evaluation/` · `.env` 없음 확인
+
+## 아직 하지 않은 것
+
+- 실제 LLM으로 팩 평가 E04–E08(정상 로트 질문 · 설정값 처방 요구 · 확정 보고 요구 · 이중 트렌드) — 정답표에 아직 없다
+- 채점이 느슨한 곳: 1순위 causeIds에 정답이 「들어 있으면」 통과다(한 번은 ETCH 원인 다섯 개를 모두 나열했다)
+- Kafka — 어디까지 쓸지 정하면 Spring 발행 쪽과 함께 붙인다
+- 서비스 인증 방식(지금은 고정 Bearer 토큰), ID · 근거 형식은 팀 확정을 기다린다

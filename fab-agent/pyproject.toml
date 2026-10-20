@@ -1,0 +1,45 @@
+[project]
+name = "fab"
+version = "0.1.0"
+description = "FAB CONTEXT — 지식 MCP · 가짜 업무 MCP · 조사 Agent · Harness"
+readme = "README.md"
+authors = [
+    { name = "euijin" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiokafka>=0.14.0",
+    "fastmcp>=4.1",
+    "httpx>=0.28.1",
+    "langchain>=1.0",
+    "langchain-openai>=1.0",
+    "langgraph>=1.0",
+    "langgraph-checkpoint-postgres>=3.2.0",
+    "numpy>=2.5.4",
+    "psycopg[binary]>=3.3.6",
+    "pydantic>=2",
+    "python-dotenv>=1.2.4",
+]
+
+[project.scripts]
+fab-business-mcp = "fab.business.server:main"
+fab-rag-mcp = "fab.rag.server:main"
+fab-worker = "fab.agent.worker:main"
+fab-demo = "fab.devtools.demo:demo"
+fab-eval = "fab.devtools.demo:eval_main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[build-system]
+requires = ["uv_build>=0.11.31,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.26.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

@@ -1,0 +1,73 @@
+{
+  "passed": true,
+  "checkCount": 16,
+  "checks": [
+    {
+      "name": "7 originals downloaded and valid hashes",
+      "passed": true
+    },
+    {
+      "name": "369 original PDF pages and 56 selected pages",
+      "passed": true
+    },
+    {
+      "name": "DOC01 exact page order and preserved content",
+      "passed": true
+    },
+    {
+      "name": "DOC02 exact page order and preserved content",
+      "passed": true
+    },
+    {
+      "name": "DOC03 exact page order and preserved content",
+      "passed": true
+    },
+    {
+      "name": "DOC05 exact page order and preserved content",
+      "passed": true
+    },
+    {
+      "name": "DOC06 exact page order and preserved content",
+      "passed": true
+    },
+    {
+      "name": "DOC07 exact page order and preserved content",
+      "passed": true
+    },
+    {
+      "name": "HTML article contains selected real headings",
+      "passed": true
+    },
+    {
+      "name": "100 unique nonempty source excerpts",
+      "passed": true
+    },
+    {
+      "name": "all chunks have real source and locator",
+      "passed": true
+    },
+    {
+      "name": "all content hashes validate",
+      "passed": true
+    },
+    {
+      "name": "11 OCR pages indexed and image-only page omitted",
+      "passed": true
+    },
+    {
+      "name": "public references are not production action SOPs",
+      "passed": true
+    },
+    {
+      "name": "ingestion not claimed executed",
+      "passed": true
+    },
+    {
+      "name": "prior data pack 34 checks passed",
+      "passed": true
+    }
+  ],
+  "visualReview": "First selected page of each of 6 PDFs rendered and reviewed; selected page text/boxes match originals for all 56 pages. OCR prose spot-checked.",
+  "llmEvaluated": false,
+  "embedded": false
+}

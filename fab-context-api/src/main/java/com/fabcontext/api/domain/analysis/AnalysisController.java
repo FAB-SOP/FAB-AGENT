@@ -1,0 +1,48 @@
+package com.fabcontext.api.domain.analysis;
+
+import java.util.List;
+import java.util.Map;
+
+import com.fabcontext.api.auth.AuthUser;
+import com.fabcontext.api.common.ApiException;
+import com.fabcontext.api.common.ApiResponse;
+import com.fabcontext.api.domain.analysis.AnalysisDtos.AnalysisResultView;
+import com.fabcontext.api.domain.analysis.AnalysisDtos.HistoryItem;
+import com.fabcontext.api.domain.incident.Incident;
+import com.fabcontext.api.domain.incident.IncidentService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Tag(name = "incidents")
+@RestController
+@RequiredArgsConstructor
+public class AnalysisController {
+
+	private final IncidentService incidentService;
+	private final AnalysisResultRepository repository;
+
+	@Operation(operationId = "getResults", summary = "분석 결과 이력")
+	@GetMapping("/api/incidents/{incidentId}/analysis-results")
+	@Transactional(readOnly = true)
+	public ApiResponse<AnalysisResultView> getResults(@AuthenticationPrincipal AuthUser user,
+			@PathVariable String incidentId, @RequestParam(defaultValue = "true") boolean latest) {
+		Incident incident = incidentService.loadForUser(incidentId, user);
+		List<AnalysisResult> results = repository.findByIncidentIdOrderByCreatedAtDesc(incidentId);
+		if (results.isEmpty()) {
+			throw new ApiException(HttpStatus.NOT_FOUND, "ANALYSIS_NOT_READY",
+				"아직 분석 결과가 없습니다. 원본 데이터는 계속 조회할 수 있습니다.",
+				Map.of("activeJobId", String.valueOf(incident.getActiveJobId()),
+					"jobStatus", String.valueOf(incident.getLatestJobStatus())));
+		}
+		List<HistoryItem> history = latest ? null : results.stream().map(HistoryItem::from).toList();
+		return ApiResponse.of(AnalysisResultView.from(results.getFirst(), history));
+	}
+}

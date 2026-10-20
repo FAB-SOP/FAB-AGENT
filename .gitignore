@@ -1,0 +1,50 @@
+# ── 비밀 — API 키 등. 예시 파일(.env.example)만 넣는다
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+# ── 생성물
+**/.venv/
+**/__pycache__/
+*.py[oc]
+**/.pytest_cache/
+**/*.egg-info/
+**/dist/
+**/wheels/
+fab-context-api/build/
+fab-context-api/.gradle/
+fab-context-api/out/
+**/.DS_Store
+
+# ── 편집기
+.idea/
+*.iml
+.vscode/
+
+# ── 저작물 · 재배포 불가
+# 강의자료(PDF)
+강의자료/
+# 실제 원문 PDF — 출판자 저작물. 공개 다운로드가 재배포 허가를 뜻하지 않는다(그 폴더 README 6절).
+# RAG에 쓰는 것은 rag/source-chunks.jsonl(조각 · 출처 · 쪽)뿐이다
+FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1/originals/
+FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1/selected/
+# 실제 원문 발췌(100조각) — 원문 그대로라 공개 저장소에 두지 않는다. 팀 내부로 받아 같은 경로에 둔다
+FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1/rag/source-chunks.jsonl
+
+# ── 정답(평가자 전용) — 공개 저장소에 두지 않는다. 로컬 · 평가자만 가진다
+FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/evaluation/
+FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/generate.py
+FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/validate.py
+FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/README.md
+backend-handoff-v2/시나리오-문제-원인-조치.md
+fab-agent/evaluation/ground_truth.json
+
+# ── 설계 · 전달 문서 — 공개 저장소에는 실행 · 테스트 · 도구가 쓰는 것만 둔다(문서는 로컬 · 팀 내부)
+fab-flow-atlas/
+# 팀 계획 · 계약 원본(팀 내부). 테스트가 쓰는 계약 3개는 fab-agent/contracts/에 사본으로 둔다
+fab-team-plan_draft/
+backend-handoff-v2/*
+!backend-handoff-v2/data/
+!backend-handoff-v2/examples/
+!backend-handoff-v2/combined.openapi.json

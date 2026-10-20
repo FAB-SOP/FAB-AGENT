@@ -1,0 +1,11 @@
+{
+  "format": "GZIP_JSONL_COLUMNAR_PER_RUN_SENSOR",
+  "traceCount": 780,
+  "sampleCount": 1120860,
+  "baselineRawTracesIncluded": false,
+  "baselineFeaturesIncluded": true,
+  "baselineRawTracePolicy": "RETAIN_IN_REAL_SYSTEM; OMITTED_FROM_DEMO_DOWNLOAD_FOR_SIZE",
+  "seed": 20261020,
+  "synthetic": true,
+  "dataVersion": "causal-pack-v2-scenarios"
+}
