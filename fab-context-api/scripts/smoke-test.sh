@@ -100,8 +100,11 @@ APV=$(j '.data.items[0].approvalId')
 req etch GET "/api/approvals/$APV" ""; expect 200 "getApproval ($(j .data.actionType), source $(j .data.source))"
 check "공개 API actionType = 프론트 계약 이름" "$(j .data.actionType)" "CHECK_REQUEST"
 AV=$(j .data.version); HASH=$(j .data.actionHash)
-check "AI 제안에 요청 브리프 (ETCH 제거량 정상 변동 밖 · 원인 후보 확정 아님)" \
-  "$(j '[.data.payload.brief.deviations[] | select(.processCode=="ETCH") | .withinNormal][0]')/$(j '.data.payload.brief.suspectedCauses[0].causeId')/$(j '.data.payload.brief.suspectedCauses[0].confirmed')" "false/ETCH_WALL/false"
+# 시뮬레이터 대역은 원인을 판정하지 않는다 — 정해진 모양의 제안(고정 예시 브리프) 하나. 판정 확인(EV-1009 → Etch 담당 · ETCH_WALL)은
+# fab-agent의 pytest · fab-eval · compose_smoke.py가 한다
+BRIEF=$(j .data.payload.brief.reason)
+check "AI 제안에 요청 브리프 (시뮬레이터 예시 — 원인 후보 없음)" \
+  "$(j '.data.payload.brief.reason | startswith("시뮬레이터 예시")')/$(j '.data.payload.brief.suspectedCauses | length')" "true/0"
 req etch POST "/api/approvals/$APV/decisions" "{\"decision\":\"APPROVE\",\"expectedVersion\":$AV,\"actionHash\":\"sha256:tampered\"}" -H "Idempotency-Key: $(key)"
 expect 409 "decide with wrong actionHash"
 req etch POST "/api/approvals/$APV/decisions" "{\"decision\":\"APPROVE\",\"comment\":\"확인 요청 발송\",\"expectedVersion\":$AV,\"actionHash\":\"$HASH\"}" -H "Idempotency-Key: $(key)"
@@ -121,7 +124,7 @@ req photo GET "/api/incidents/$INC" ""; expect 403 "ETCH engineer cannot read CM
 req photo GET "/api/check-requests?box=received&status=OPEN" ""; expect 200 "listRequests received"
 check "received request is $CHK" "$(j '.data.items[0].requestId')" "$CHK"
 req photo GET "/api/check-requests/$CHK" ""; expect 200 "getRequest (with incident context)"; RV=$(j .data.version)
-check "받는 사람이 보는 브리프 = 승인한 브리프" "$(j '.data.brief.reason | length > 0')/$(j '.data.causeIds[0]')/$(j '.data.equipmentId')" "true/ETCH_WALL/ETCH-PM2"
+check "받는 사람이 보는 브리프 = 승인한 브리프" "$(j .data.brief.reason)/$(j '.data.brief.suspectedCauses | length')" "$BRIEF/0"
 req etch POST "/api/check-requests/$CHK/replies" "{\"findings\":\"x\",\"confirmedByUser\":true,\"expectedVersion\":$RV}" -H "Idempotency-Key: $(key)"
 expect 403 "non-owner cannot reply"
 req photo POST "/api/check-requests/$CHK/replies" "{\"findings\":\"ETCH-PM2 정비 후 시즈닝 매수가 절차보다 적었습니다. 모니터 결과를 첨부합니다\",\"evidenceIds\":[\"ev:change:DEMO-CHANGE-E02\"],\"confirmedByUser\":true,\"expectedVersion\":$RV}" -H "Idempotency-Key: $(key)"

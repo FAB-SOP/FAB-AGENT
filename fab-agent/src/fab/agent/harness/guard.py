@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 from fab.agent.causes import CAUSES, PROCESS_ORDER
+from fab.agent.evidence import features_of, runs_by_process
 
 NEXT_STEPS = {"CURRENT_CHECK", "UPSTREAM_CHECK", "OBSERVE", "INSUFFICIENT_EVIDENCE", "NEEDS_DEEP_ANALYSIS"}
 _PROB = re.compile(r"(\d+(\.\d+)?\s*%\s*(의\s*)?(확률|가능성))|(확률\s*(은|이|:)?\s*\d)")
@@ -82,6 +83,44 @@ def _cause_rules(result: dict, incident_process: str | None) -> list[str]:
     if step == "UPSTREAM_CHECK" and not upstream:
         errs.append(f"nextStep이 UPSTREAM_CHECK인데 1순위 가설의 원인 ID가 앞 공정이 아닙니다({ids}). "
                     "앞 공정 원인 ID를 1순위로 두거나 CURRENT_CHECK로 고치세요.")
+    return errs
+
+
+def validate_proposal(action_type: str, args: dict, seen: dict, incident_process: str | None) -> list[str]:
+    """제안 정합성 — 제안의 종류 · 대상이 이번 조사에서 받은 도구 결과(seen = evidence.tool_results)와 맞는지 본다.
+
+    - 정비 요청: 대상 공정 run에 근거(제거 · 증착량 정상 변동 밖 또는 센서 참고 범위 밖)가 있어야 한다
+    - 앞 공정 확인 요청: 대상이 사건 공정보다 앞 공정이고, 그 run의 제거 · 증착량이 정상 변동 밖이어야 한다
+    - causeIds의 공정은 요청 대상 공정과 같아야 한다(METROLOGY처럼 공정이 ALL인 원인은 어디에나 붙는다)
+    """
+    errs: list[str] = []
+    maintenance = action_type == "CREATE_MAINTENANCE_REQUEST"
+    target = args.get("processCode") or (incident_process if maintenance else None)
+    runs = runs_by_process(seen)
+    run = runs.get(target)
+    word = lambda r: "증착량" if r.get("amountKind") == "DEPOSITED" else "제거량"  # noqa: E731
+    if maintenance:
+        if run is None:
+            errs.append(f"{target} run을 조회하지 않아 정비 요청의 근거를 볼 수 없습니다. get_run_and_metrology · get_run_features로 먼저 확인하세요.")
+        else:
+            items = ((features_of(seen, run["runId"]) or {}).get("data") or {}).get("items") or []
+            outside = [f.get("sensorId") for f in items if f.get("outsideReferenceBand")]
+            if run.get("amountWithinNormalVariation") is not False and not outside:
+                errs.append(f"{target} {run.get('equipmentId')} run의 {word(run)}이 정상 변동 안이고 센서도 정상 참고 범위 안입니다 — "
+                            "정비 요청의 근거가 없습니다. 근거가 있는 공정을 보거나 요청 없이 submit_result로 정리하세요.")
+    elif action_type == "CREATE_CHECK_REQUEST":
+        if incident_process in PROCESS_ORDER and (target not in PROCESS_ORDER
+                                                  or PROCESS_ORDER.index(target) >= PROCESS_ORDER.index(incident_process)):
+            errs.append(f"앞 공정 확인 요청의 대상({target})은 사건 공정({incident_process})보다 앞 공정이어야 합니다. "
+                        "현재 공정 설비 점검은 propose_maintenance_request를 쓰세요.")
+        elif run is None:
+            errs.append(f"{target} run을 조회하지 않아 확인 요청의 근거를 볼 수 없습니다. get_run_and_metrology로 먼저 확인하세요.")
+        elif run.get("amountWithinNormalVariation") is not False:
+            errs.append(f"{target} {run.get('equipmentId')} run의 {word(run)}이 정상 변동 안입니다 — 앞 공정 확인 요청의 근거가 없습니다. "
+                        "정상 변동 밖인 앞 공정 run이 있을 때만 요청하세요.")
+    procs = {CAUSES[c][0] for c in args.get("causeIds") or [] if c in CAUSES} - {"ALL"}
+    if target and procs and procs != {target}:
+        errs.append(f"causeIds의 공정 {sorted(procs)}이 요청 대상 공정({target})과 다릅니다. 대상 공정의 원인 ID만 붙이세요.")
     return errs
 
 

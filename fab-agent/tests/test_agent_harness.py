@@ -1,7 +1,7 @@
 """Agent · Harness (Spring 하나에 붙어서) — 정답 · 승인 전 변경 0 · 거절 · 잘못된 재개 · 예외 · 중복 · 재시도 · DLQ · 한도 · 계약."""
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from fab.agent.harness.guard import validate_result
 from fab.agent.worker import poll_once
@@ -31,6 +31,7 @@ async def test_no_change_before_approval_and_reject_path(spring_url, kb):
     u, job = await _ask(spring_url, "EV-1009")
     out = (await poll_once(runner, backend))[-1]
     assert out["status"] == "WAITING_APPROVAL"
+    assert out["trace"]["apiModels"] == ["rule-policy-v2"]  # 규칙 모델은 API를 부르지 않는다 — 고른 이름 그대로
     inc = await u.incident("EV-1009")
     _, reqs = await u.get(f"/api/check-requests?box=sent&incidentId={inc['incidentId']}")
     before = len(reqs["data"]["items"])
@@ -158,7 +159,7 @@ class SecondProposalModel:
     name = "second-proposal"
 
     def __init__(self):
-        from fab.agent.llm import RuleModel
+        from fab.agent.models import RuleModel
 
         self.rule = RuleModel()
 
@@ -168,11 +169,12 @@ class SecondProposalModel:
         call = (r.tool_calls or [{}])[0]
         if call.get("name") == "submit_result" and proposed == 1:
             ev = [e for f in call["args"].get("observedFacts", []) for e in f.get("evidenceIds", [])][:2]
+            # 근거가 있는 대상 — EV-1009에서 제거량이 정상 변동 밖인 ETCH-PM2(CMP-PM3는 정상 변동 안이라 정합성 검사가 막는다)
             return AIMessage(content="", tool_calls=[{"id": "c-second", "name": "propose_maintenance_request", "args": {
-                "processCode": "CMP", "equipmentId": "CMP-PM3", "ownerUserId": "USR-MNT-01",
-                "question": "CMP-PM3 헤드 · 리테이너 상태 점검 부탁드립니다(설정 변경 아님).", "causeIds": ["CMP_PRESSURE"],
-                "evidenceIds": ev, "rationale": "회신 뒤 현재 설비도 함께 점검",
-                "reason": "앞 공정 회신과 별개로 현재 설비 CMP-PM3 헤드 계통도 점검이 필요합니다."}}])
+                "processCode": "ETCH", "equipmentId": "ETCH-PM2", "ownerUserId": "USR-MNT-01",
+                "question": "ETCH-PM2 챔버 세정 · 시즈닝 이력 점검 부탁드립니다(설정 변경 아님).", "causeIds": ["ETCH_WALL"],
+                "evidenceIds": ev, "rationale": "회신 뒤 해당 설비 점검도 함께",
+                "reason": "앞 공정 회신과 별개로 ETCH-PM2 챔버 상태 점검이 필요합니다."}}])
         return r
 
 
@@ -231,9 +233,9 @@ class ProposeEveryTurnModel(SecondProposalModel):
             n = sum("[PROPOSED]" in str(getattr(m, "content", "")) for m in messages)
             ev = [e for f in call["args"].get("observedFacts", []) for e in f.get("evidenceIds", [])][:1]
             return AIMessage(content="", tool_calls=[{"id": f"c-again-{n}-{len(messages)}", "name": "propose_maintenance_request",
-                                                      "args": {"processCode": "CMP", "equipmentId": "CMP-PM3",
+                                                      "args": {"processCode": "ETCH", "equipmentId": "ETCH-PM2",
                                                                "ownerUserId": "USR-MNT-01", "question": "다시 점검 부탁",
-                                                               "causeIds": ["CMP_PRESSURE"], "evidenceIds": ev,
+                                                               "causeIds": ["ETCH_WALL"], "evidenceIds": ev,
                                                                "rationale": "반복", "reason": "다시 점검이 필요합니다."}}])
         return r
 
@@ -328,3 +330,71 @@ async def test_basic_analysis_cites_segment_as_observation(spring_url, kb):
     assert any("시연 선택값" in x for x in out["result"]["limitations"])
     assert out["result"]["dataVersion"] == "causal-pack-v2-scenarios"  # 지식 검색 버전이 덮어쓰지 않는다
     await u.close()
+
+
+async def test_trace_records_api_snapshot_model_name():
+    """llm 기록: modelName은 우리가 고른 모델, apiModel은 API가 실제로 답한 모델(response_metadata.model_name)"""
+    from fab.agent.graph.nodes.agent import agent
+    from fab.agent.graph.state import Runtime
+    from fab.agent.harness import limits
+    from fab.agent.harness.trace import Tracer
+    from fab.agent.models import RuleModel
+
+    class Snapshot:
+        name = "gpt-4.1-mini"
+
+        async def ainvoke(self, messages, tools):
+            return AIMessage(content="", tool_calls=[{"id": "c1", "name": "get_frozen_limits", "args": {}}],
+                             response_metadata={"model_name": "gpt-4.1-mini-2025-04-14"})
+
+    class Tools:
+        def model_tools(self, mode):
+            return []
+
+    for model, want in ((Snapshot(), ("gpt-4.1-mini", "gpt-4.1-mini-2025-04-14")), (RuleModel(), ("rule-policy-v2",) * 2)):
+        tracer = Tracer("T", "J", "I")
+        state = {"counters": limits.new_window(), "mode": "BASIC", "messages": [HumanMessage(content="[사건 EV-1006] 확인")]}
+        await agent(state, {"configurable": {"runtime": Runtime(Tools(), None, model, None, tracer)}})
+        rec = next(r for r in tracer.records if r["kind"] == "llm")
+        assert (rec["modelName"], rec["apiModel"]) == want
+
+
+def _seen(cmp_within=True, cmp_sensor_out=False, etch_within=False):
+    """도구 결과 모양(evidence.tool_results) — EV-1009와 같은 경로: CVD 정상 · ETCH 제거량 정상 변동 밖 · CMP 정상"""
+    run = lambda p, eq, within: {"data": {"available": True, "processCode": p, "equipmentId": eq, "runId": f"RUN-{p}",  # noqa: E731
+                                          "amountKind": "DEPOSITED" if p == "CVD" else "REMOVED",
+                                          "amountWithinNormalVariation": within},
+                                 "evidenceRefs": [{"evidenceId": f"E-RUN-RUN-{p}"}]}
+    return {"get_run_and_metrology": [run("CVD", "CVD-PM1", True), run("ETCH", "ETCH-PM2", etch_within), run("CMP", "CMP-PM3", cmp_within)],
+            "get_run_features": [{"data": {"runId": "RUN-CMP", "items": [{"sensorId": "head_pressure",
+                                                                          "outsideReferenceBand": cmp_sensor_out}]},
+                                  "evidenceRefs": [{"evidenceId": "E-FEAT-RUN-CMP"}]}]}
+
+
+def test_proposal_must_match_evidence():
+    from fab.agent.harness.guard import validate_proposal as v
+
+    mnt, chk = "CREATE_MAINTENANCE_REQUEST", "CREATE_CHECK_REQUEST"
+    # 정비 요청 — 대상 run에 근거(제거량 정상 변동 밖 또는 센서 참고 범위 밖)가 있어야 한다
+    assert any("정비 요청의 근거가 없습니다" in e for e in v(mnt, {"processCode": "CMP", "causeIds": ["CMP_PRESSURE"]}, _seen(), "CMP"))
+    assert v(mnt, {"processCode": "CMP", "causeIds": ["CMP_PRESSURE"]}, _seen(cmp_sensor_out=True), "CMP") == []
+    assert v(mnt, {"processCode": "CMP", "causeIds": ["CMP_SLURRY"]}, _seen(cmp_within=False), "CMP") == []
+    assert v(mnt, {"causeIds": ["CMP_PRESSURE"]}, _seen(cmp_sensor_out=True), "CMP") == []  # 대상이 없으면 사건 공정
+    assert v(mnt, {"processCode": "ETCH", "causeIds": ["ETCH_WALL"]}, _seen(), "CMP") == []  # 근거 있는 다른 공정 설비
+    # 앞 공정 확인 요청 — 사건 공정보다 앞이고 그 run이 정상 변동 밖이어야 한다
+    assert v(chk, {"processCode": "ETCH", "causeIds": ["ETCH_WALL"]}, _seen(), "CMP") == []
+    assert any("정상 변동 안" in e for e in v(chk, {"processCode": "CVD", "causeIds": ["CVD_FILM"]}, _seen(), "CMP"))
+    assert any("앞 공정이어야" in e for e in v(chk, {"processCode": "CMP", "causeIds": ["CMP_PRESSURE"]}, _seen(), "CMP"))
+    assert any("정상 변동 안" in e for e in v(chk, {"processCode": "ETCH", "causeIds": ["ETCH_WALL"]}, _seen(etch_within=True), "CMP"))
+    # causeIds의 공정 = 요청 대상 공정 (METROLOGY는 어디에나)
+    assert any("대상 공정의 원인 ID만" in e for e in v(chk, {"processCode": "ETCH", "causeIds": ["CMP_SLURRY"]}, _seen(), "CMP"))
+    assert v(chk, {"processCode": "ETCH", "causeIds": ["ETCH_WALL", "METROLOGY"]}, _seen(), "CMP") == []
+    assert any("조회하지 않아" in e for e in v(mnt, {"processCode": "CMP"}, {}, "CMP"))
+
+
+def test_finalize_wraps_string_lists():
+    """모델이 missingData · limitations를 문자열로 내도 글자 단위로 쪼개지 않는다(2026-10-20 실모델 평가에서 본 일)"""
+    from fab.agent.graph.nodes.finalize import as_list
+
+    assert as_list("ETCH 정비 이력 확인 필요") == ["ETCH 정비 이력 확인 필요"]
+    assert as_list(["a", 1]) == ["a", "1"] and as_list(None) == [] and as_list("") == []

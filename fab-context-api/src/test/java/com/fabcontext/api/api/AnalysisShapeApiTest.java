@@ -10,7 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.util.List;
 import java.util.Map;
 
-import com.fabcontext.api.domain.analysis.ResultShape;
+import com.fabcontext.api.contract.ResultShape;
+import com.fabcontext.api.simulator.AnalysisFactory;
 import com.fabcontext.api.support.ApiTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,14 +58,16 @@ class AnalysisShapeApiTest extends ApiTestSupport {
 		getAs(cmp, "/api/incidents/{id}/analysis-results", ev1009).andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.dataVersion").value("causal-pack-v2-scenarios"))
 			.andExpect(jsonPath("$.data.threadId").isNotEmpty())
-			.andExpect(jsonPath("$.data.candidateCauses[0].relation").value("UPSTREAM"))
-			.andExpect(jsonPath("$.data.candidateCauses[0].processCode").value("ETCH"))
+			// 시뮬레이터 대역은 원인을 판정하지 않는다 — 「판정하지 않음」 자리 하나가 화면 키를 모두 갖는다(판정 확인은 fab-agent 테스트)
+			.andExpect(jsonPath("$.data.limitations[0]").value(AnalysisFactory.NOT_ANALYSIS))
+			.andExpect(jsonPath("$.data.candidateCauses", hasSize(1)))
+			.andExpect(jsonPath("$.data.candidateCauses[0].relation").value("UNKNOWN"))
+			.andExpect(jsonPath("$.data.candidateCauses[0].status").value("INSUFFICIENT_EVIDENCE"))
 			.andExpect(jsonPath("$.data.candidateCauses[0].rank").value(1))
 			.andExpect(jsonPath("$.data.candidateCauses[0].cause").isNotEmpty())
 			.andExpect(jsonPath("$.data.candidateCauses[0].supportingEvidence").isArray())
 			.andExpect(jsonPath("$.data.candidateCauses[0].counterEvidence").isArray())
-			.andExpect(jsonPath("$.data.candidateCauses[0].sourceIds", contains("S08")))
-			.andExpect(jsonPath("$.data.candidateCauses[0].action").isNotEmpty())
+			.andExpect(jsonPath("$.data.candidateCauses[0].sourceIds").isArray())
 			.andExpect(jsonPath("$.data.observedFacts[0].label").isNotEmpty())
 			.andExpect(jsonPath("$.data.observedFacts[0].unit").value("Å"))
 			.andExpect(jsonPath("$.data.observedFacts[0].value").isNumber())
@@ -72,11 +75,6 @@ class AnalysisShapeApiTest extends ApiTestSupport {
 			// 옛 키도 남긴다(프론트가 어느 쪽을 읽는지 확정 전)
 			.andExpect(jsonPath("$.data.candidateCauses[0].hypothesis").isNotEmpty())
 			.andExpect(jsonPath("$.data.observedFacts[0].statement").isNotEmpty());
-		String ev1006 = json(getAs(cmp, "/api/incidents?q=EV-1006"), "$.data.items[0].incidentId");
-		getAs(cmp, "/api/incidents/{id}/analysis-results", ev1006)
-			.andExpect(jsonPath("$.data.candidateCauses[0].relation").value("CURRENT"))
-			.andExpect(jsonPath("$.data.candidateCauses[0].processCode").value("CMP"))
-			.andExpect(jsonPath("$.data.candidateCauses[0].matrixCauseIds", hasItem("CMP_PRESSURE")));
 	}
 
 	@Test

@@ -33,6 +33,8 @@ import org.testcontainers.utility.DockerImageName;
  * 테이블은 컨텍스트를 띄울 때마다 새로 만들고 시드한다(ddl-auto=create).
  */
 @SpringBootTest(properties = {"fab.agent.step-delay-ms=30", "spring.jpa.hibernate.ddl-auto=create",
+		// 묶음 경로는 코드 기본값이 없다 — 테스트 설정이 넣는다(fab-context-api 폴더 기준)
+		"fab.pack-dir=../data/fab-causal-pack-v2", "fab.rag-dir=../FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1",
 		"spring.jpa.properties.hibernate.default_schema=" + ApiTestSupport.SCHEMA,
 		"spring.datasource.hikari.schema=" + ApiTestSupport.SCHEMA})
 @AutoConfigureMockMvc

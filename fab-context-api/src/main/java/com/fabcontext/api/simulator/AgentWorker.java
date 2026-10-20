@@ -21,7 +21,7 @@ import com.fabcontext.api.domain.checkrequest.Reply;
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
 import com.fabcontext.api.domain.incident.IncidentStatus;
-import com.fabcontext.api.domain.job.IncidentStreamHub;
+import com.fabcontext.api.common.stream.IncidentStreamHub;
 import com.fabcontext.api.domain.job.Job;
 import com.fabcontext.api.domain.job.JobKind;
 import com.fabcontext.api.domain.job.JobRepository;
@@ -35,7 +35,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 시뮬레이션 Agent 작업 처리기 (실서비스의 Kafka jobs → Agent → events → DB 자리).
+ * 시뮬레이션 Agent 작업 처리기 — 화면 개발 · Spring 흐름 테스트용 대역(AGENT_MODE=simulator). 결과 내용은 {@link AnalysisFactory}가
+ * 판정 없이 만들고, 여기서는 상태 변화(대기 · 승인 · 회신 · 재개 · 보고서)만 실제 Agent처럼 흉내 낸다.
  * 각 단계는 별도 트랜잭션으로 실행되며, 승인 · 회신 대기 시 체크포인트(waitingRef)를 남기고 반환한다.
  */
 @Slf4j
@@ -105,14 +106,14 @@ public class AgentWorker {
 		boolean hasOpenRequest = checkRequestRepository.existsByIncidentIdAndStatus(incident.getIncidentId(),
 			CheckRequestStatus.OPEN);
 		Optional<Map<String, Object>> payload = hasOpenRequest ? Optional.empty()
-			: analysisFactory.upstreamCheckPayload(incident, job);
+			: analysisFactory.checkRequestPayload(incident, job);
 		if (payload.isPresent()) {
-			// AI 제안은 내부 경로로 저장 → 사람 승인(P08) 전까지 실행하지 않는다.
+			// 정해진 모양의 제안 하나(시뮬레이터) — 내부 경로로 저장 → 사람 승인(P08) 전까지 실행하지 않는다.
 			@SuppressWarnings("unchecked")
 			var evidenceIds = (java.util.List<String>) payload.get().remove("evidenceIds");
 			Approval approval = approvalService.createAgentProposal(incident, job, ApprovalActionType.CHECK_REQUEST,
-				payload.get(), "이전 공정 영향 가설을 확인하려면 해당 공정 담당자의 확인이 필요합니다. 결과: " + result.getResultId(),
-				evidenceIds);
+				payload.get(), "시뮬레이터 예시 제안 — 실제 분석 아님. 결과: " + result.getResultId(),
+				evidenceIds, null, null);
 			jobService.waitFor(job, incident, JobStatus.WAITING_APPROVAL, new Ref("APPROVAL", approval.getApprovalId()));
 			streamHub.publish(incident.getIncidentId(), "analysis.result",
 				Map.of("resultId", result.getResultId(), "jobId", job.getJobId(), "kind", result.getKind()));

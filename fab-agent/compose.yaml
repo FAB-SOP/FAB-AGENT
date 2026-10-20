@@ -22,7 +22,8 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/fab?currentSchema=backend
       AGENT_MODE: external          # 작업은 아래 agent Worker가 /internal/jobs로 가져간다
       DEMO_ROUTES: "true"           # /internal/demo/faults — 장애 주입 시연
-      FAB_PACK_DIR: /bundle/fab-causal-pack-v2
+      FAB_PACK_DIR: /bundle/fab-causal-pack-v2      # 묶음 경로의 원본은 여기(compose)다 — 코드에는 기본값이 없다
+      FAB_RAG_DIR: /bundle/fab-rag-real-documents-v1
       SERVICE_TOKEN: dev-service-token
     ports: ["8090:8080"]
     volumes:

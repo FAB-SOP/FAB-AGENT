@@ -2,7 +2,6 @@ package com.fabcontext.api.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -11,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.UUID;
 
+import com.fabcontext.api.simulator.AnalysisFactory;
 import com.fabcontext.api.support.ApiTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,20 +19,24 @@ import org.junit.jupiter.api.Test;
 class InvestigationApiTest extends ApiTestSupport {
 
 	@Test
-	void basicAnalysisSeparatesFactsHypothesesAndLimits() throws Exception {
+	void seededBasicAnalysisIsQueuedAndStandInDoesNotJudge() throws Exception {
 		Session etch = cmp();
-		// L006(팩 README 4절): CMP 헤드 압력 저하 → 제거량 감소 — 현재 공정 후보가 1순위, 원인 확정 아님
-		getAs(etch, "/api/incidents/{id}/analysis-results", seededIncident(etch, "EV-1006"))
+		// 시드는 현재 로트 사건(EV-1006 · 1007 · 1009)의 기본 분석을 대기열에 둔다 — 판정은 Agent 한 곳(fab-agent)에서만 한다.
+		// 시뮬레이터 대역은 공정 데이터 값만 옮기고 원인을 판정하지 않는다(EV-1006 → CMP_PRESSURE 판정은 fab-agent 테스트 · fab-eval)
+		String id = seededIncident(etch, "EV-1006");
+		for (int i = 0; i < 200 && getAs(etch, "/api/incidents/{id}/analysis-results", id).andReturn().getResponse().getStatus() != 200; i++) {
+			Thread.sleep(25); // 시드가 대기열에 둔 기본 분석을 시뮬레이터가 끝낼 때까지
+		}
+		getAs(etch, "/api/incidents/{id}/analysis-results", id)
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.kind").value("BASIC"))
-			.andExpect(jsonPath("$.data.summary", containsString("원인은 확정하지 않았습니다")))
-			.andExpect(jsonPath("$.data.observedFacts[*].statement", hasItem(containsString("head_pressure 본 처리 평균"))))
-			.andExpect(jsonPath("$.data.candidateCauses[0].relation").value("CURRENT"))
-			.andExpect(jsonPath("$.data.candidateCauses[0].matrixCauseIds", contains("CMP_PRESSURE")))
-			.andExpect(jsonPath("$.data.candidateCauses[0].supportingEvidenceIds",
-				hasItem("ev:feature:RUN-W-CURRENT-006-3-CMP:head_pressure")))
-			.andExpect(jsonPath("$.data.limitations", hasItem(containsString("확률이 아닙니다"))))
-			.andExpect(jsonPath("$.data.evidenceRefs[*].type", hasItems("METROLOGY", "SENSOR")))
+			.andExpect(jsonPath("$.data.limitations[0]").value(AnalysisFactory.NOT_ANALYSIS))
+			.andExpect(jsonPath("$.data.observedFacts[*].statement", hasItem(startsWith("CMP CMP-PM3: 출고 평균 "))))
+			.andExpect(jsonPath("$.data.observedFacts[*].value", hasItem(4749.0))) // ProcessEvidenceService 제거량 그대로(소수 첫째 자리)
+			.andExpect(jsonPath("$.data.candidateCauses", hasSize(1)))
+			.andExpect(jsonPath("$.data.candidateCauses[0].status").value("INSUFFICIENT_EVIDENCE"))
+			.andExpect(jsonPath("$.data.candidateCauses[0].supportingEvidenceIds", hasSize(0)))
+			.andExpect(jsonPath("$.data.evidenceRefs[*].type", everyItem(is("METROLOGY"))))
 			.andExpect(jsonPath("$.data.history").doesNotExist());
 	}
 
@@ -63,8 +67,11 @@ class InvestigationApiTest extends ApiTestSupport {
 		var approval = getAs(etch, "/api/approvals/{id}", approvalId)
 			.andExpect(jsonPath("$.data.source").value("AGENT"))
 			.andExpect(jsonPath("$.data.jobId").value(jobId))
-			.andExpect(jsonPath("$.data.payload.ownerUserId").value("USR-ETCH-01"))
-			.andExpect(jsonPath("$.data.payload.targetProcessCode").value("ETCH"))
+			// 시뮬레이터는 정해진 모양의 제안 하나를 만든다(받는 사람은 공정 순서 — 판정이 아니다). 판정 확인은 fab-agent · compose_smoke
+			.andExpect(jsonPath("$.data.actionType").value("CHECK_REQUEST"))
+			.andExpect(jsonPath("$.data.payload.ownerUserId").isNotEmpty())
+			.andExpect(jsonPath("$.data.payload.brief.reason", startsWith("시뮬레이터 예시 브리프")))
+			.andExpect(jsonPath("$.data.payload.brief.suspectedCauses", hasSize(0)))
 			.andExpect(jsonPath("$.data.actionHash").value(startsWith("sha256:")));
 		// 승인 전에는 실제 업무(확인 요청)가 만들어지지 않는다
 		getAs(login("etch.lee"), "/api/check-requests?box=received&incidentId=" + id).andExpect(jsonPath("$.data.items", hasSize(0)));
@@ -104,7 +111,7 @@ class InvestigationApiTest extends ApiTestSupport {
 		getAs(etch, "/api/incidents/{id}/analysis-results?latest=false", id)
 			.andExpect(jsonPath("$.data.kind").value("RESUME"))
 			.andExpect(jsonPath("$.data.observedFacts[*].statement", hasItem(containsString("담당자 회신"))))
-			.andExpect(jsonPath("$.data.candidateCauses[?(@.relation=='UPSTREAM')].status", contains("OWNER_REPLIED")))
+			.andExpect(jsonPath("$.data.evidenceRefs[*].type", hasItem("REPLY")))
 			.andExpect(jsonPath("$.data.history[*].kind", contains("RESUME", "DEEP", "BASIC")));
 		getAs(etch, "/api/incidents/{id}", id)
 			.andExpect(jsonPath("$.data.status").value("INVESTIGATING"))
@@ -123,7 +130,7 @@ class InvestigationApiTest extends ApiTestSupport {
 		getAs(etch, "/api/incidents/{id}/analysis-results", id)
 			.andExpect(jsonPath("$.data.kind").value("DEEP"))
 			.andExpect(jsonPath("$.data.question").value(containsString("헤드 압력")))
-			.andExpect(jsonPath("$.data.evidenceRefs[*].type", hasItem("DOCUMENT")));
+			.andExpect(jsonPath("$.data.limitations[0]").value(AnalysisFactory.NOT_ANALYSIS));
 		getAs(etch, "/api/approvals?incidentId=" + id).andExpect(jsonPath("$.data.items", hasSize(0)));
 	}
 

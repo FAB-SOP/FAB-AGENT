@@ -13,6 +13,7 @@ import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentService;
 import com.fabcontext.api.domain.job.JobDtos.JobEvent;
 import com.fabcontext.api.domain.job.JobDtos.JobQueuedEvent;
+import com.fabcontext.api.common.stream.IncidentStreamHub;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;

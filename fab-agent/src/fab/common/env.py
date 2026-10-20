@@ -8,26 +8,25 @@ from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-# 동료 납품 묶음 — 데이터 팩 · 실제 원문 RAG의 유일한 원본 (Spring backend와 같은 폴더를 본다)
-BUNDLE = PROJECT_ROOT.parent / "FAB-실제문서-선별RAG-센서데이터-통합"
+def _required_dir(var: str, what: str, example: str) -> Path:
+    """묶음 경로 — 기본값은 없다(원본은 compose 환경 변수). 상대 경로는 fab-agent 폴더 기준으로 푼다(.env에 상대 경로를 적을 수 있다)"""
+    import os
 
-
-# 데이터 팩 v2(causal-pack-v2-scenarios) — v1 + L006 수정 + sensorEnvelopes. ../data/build_pack_v2.py가 조립한다
-PACK_V2 = PROJECT_ROOT.parent / "data" / "fab-causal-pack-v2"
+    value = os.getenv(var)
+    if not value:
+        raise RuntimeError(f"{var}({what})가 없습니다 — compose는 넣어 준다. 직접 실행할 때는 fab-agent/.env에 {var}={example}")
+    p = Path(value)
+    return p if p.is_absolute() else (PROJECT_ROOT / p).resolve()
 
 
 def pack_dir() -> Path:
-    """데이터 팩 — 기본은 v2 조립본. FAB_PACK_DIR로 바꾼다"""
-    import os
-
-    return Path(os.getenv("FAB_PACK_DIR", PACK_V2))
+    """데이터 팩 v2 조립본(causal-pack-v2-scenarios, ../data/build_pack_v2.py가 조립) — FAB_PACK_DIR"""
+    return _required_dir("FAB_PACK_DIR", "데이터 팩 경로", "../data/fab-causal-pack-v2")
 
 
 def rag_dir() -> Path:
-    """실제 원문 선별 RAG(fab-rag-real-documents-v1) — FAB_RAG_DIR로 바꾼다"""
-    import os
-
-    return Path(os.getenv("FAB_RAG_DIR", BUNDLE / "fab-rag-real-documents-v1"))
+    """실제 원문 선별 RAG(fab-rag-real-documents-v1) — FAB_RAG_DIR"""
+    return _required_dir("FAB_RAG_DIR", "실제 원문 RAG 경로", "../FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1")
 
 
 def load_env() -> None:

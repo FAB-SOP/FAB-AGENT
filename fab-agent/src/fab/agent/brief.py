@@ -12,37 +12,15 @@ get_change_events · search_applicable_playbooks)와 원인 매트릭스(causes.
 
 from __future__ import annotations
 
-import json
-
-from langchain_core.messages import ToolMessage
-
 from fab.agent.causes import CAUSE_DETAILS, CAUSES, PROCESS_ORDER
+from fab.agent.evidence import data as _data
+from fab.agent.evidence import runs_by_id, tool_results
 
 # 요청 종류마다 받는 사람에게 부탁할 기본 항목 — 원인 후보의 evidenceToCheck가 뒤에 붙는다. 설정값 처방은 넣지 않는다
 ASK_FOR = {
     "CREATE_CHECK_REQUEST": ["해당 run 전후 정비 · 세정 · 시즈닝 기록과 절차(매수 포함)", "시즈닝 후 모니터 웨이퍼 결과"],
     "CREATE_MAINTENANCE_REQUEST": ["해당 계통의 실제값과 설정값 기록 · 공급 상태", "센서 교정 이력과 최근 정비 기록"],
 }
-
-
-def tool_results(messages) -> dict[str, list[dict]]:
-    """ToolMessage(JSON 도구 결과)를 도구 이름별로 모은다. 잘린 결과처럼 JSON이 아니면 건너뛴다"""
-    out: dict[str, list[dict]] = {}
-    for m in messages:
-        if isinstance(m, ToolMessage) and m.name:
-            try:
-                out.setdefault(m.name, []).append(json.loads(m.content))
-            except (ValueError, TypeError):
-                continue
-    return out
-
-
-def tool_text(messages) -> str:
-    return "\n".join(str(m.content) for m in messages if isinstance(m, ToolMessage))
-
-
-def _data(env: dict) -> dict:
-    return (env or {}).get("data") or {}
 
 
 def amount_deviation(run: dict) -> dict:
@@ -68,11 +46,7 @@ def sensor_deviation(run: dict, item: dict) -> dict:
 def build(messages, args: dict, action_type: str) -> dict:
     """제안 도구 인자(모델) + 이번 조사의 도구 결과(코드)로 브리프를 만든다"""
     res = tool_results(messages)
-    runs: dict[str, dict] = {}
-    for env in res.get("get_run_and_metrology", []):
-        d = _data(env)
-        if d.get("runId") and d.get("available", True):
-            runs[d["runId"]] = d
+    runs = runs_by_id(res)
     order = sorted(runs.values(), key=lambda r: PROCESS_ORDER.index(r["processCode"])
                    if r.get("processCode") in PROCESS_ORDER else 9)
     deviations = [amount_deviation(r) for r in order]

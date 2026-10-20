@@ -48,7 +48,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 시연 시나리오 시드. 과거 이력은 MutableClock을 잠시 과거로 옮겨 실제 서비스 로직으로 만든다.
- * 데이터 팩의 현재 로트 가운데 R1을 벗어난 run(EV-1006 · EV-1007 · EV-1009)이 사건이 되고, EV-1009의 기본 분석은 대기열에 둔다.
+ * 데이터 팩의 현재 로트 가운데 R1을 벗어난 run(EV-1006 · EV-1007 · EV-1009)이 사건이 되고, 세 사건 모두 기본 분석을 대기열에 둔다(Agent가 처리).
+ * 과거 사건(EV-1018~1023)의 기본 분석은 시뮬레이터 대역 결과(「실제 분석 아님」)다.
  */
 @Slf4j
 @Component
@@ -141,14 +142,10 @@ public class SeedRunner implements ApplicationRunner {
 		for (RouteRun r : catalog.currentOutOfControl()) {
 			int seq = 1000 + Integer.parseInt(r.getLotId().substring(r.getLotId().length() - 3));
 			Incident inc = fromRun(seq, r);
-			if (seq == 1009) {
-				// 기본 분석을 하지 않은 채 대기열에 둔다 — 서버를 띄우면 Agent(시뮬레이터 또는 외부 Worker)가 바로 처리한다
-				at(r.getMetrologyAvailableAt().plusSeconds(60));
-				jobService.enqueue(inc, JobKind.BASIC, "svc_detector", null, null, Map.of(), null, null);
-			}
-			else {
-				basic(inc, r.getMetrologyAvailableAt().plus(Duration.ofMinutes(4)));
-			}
+			// 기본 분석을 하지 않은 채 대기열에 둔다 — 서버를 띄우면 Agent(외부 Worker 또는 시뮬레이터 대역)가 바로 처리한다.
+			// 판정은 Agent 한 곳에서만 한다(시드가 결과를 미리 만들지 않는다)
+			at(r.getMetrologyAvailableAt().plusSeconds(60));
+			jobService.enqueue(inc, JobKind.BASIC, "svc_detector", null, null, Map.of(), null, null);
 		}
 	}
 

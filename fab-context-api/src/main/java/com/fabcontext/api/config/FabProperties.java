@@ -22,11 +22,14 @@ public record FabProperties(String serviceToken, String internalToken, Duration 
 		if (seed == null) {
 			seed = new Seed(true);
 		}
+		// 묶음 경로는 기본값을 두지 않는다 — 원본은 compose 환경 변수(FAB_PACK_DIR · FAB_RAG_DIR). 직접 띄울 때도 넘긴다
 		if (packDir == null || packDir.isBlank()) {
-			packDir = "../FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1";
+			throw new IllegalStateException("FAB_PACK_DIR(데이터 팩 경로)가 없습니다 — compose는 넣어 준다. 직접 띄울 때: "
+					+ "FAB_PACK_DIR=../data/fab-causal-pack-v2 (fab-context-api 폴더 기준)");
 		}
 		if (ragDir == null || ragDir.isBlank()) {
-			ragDir = "../FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1";
+			throw new IllegalStateException("FAB_RAG_DIR(실제 원문 RAG 경로)가 없습니다 — compose는 넣어 준다. 직접 띄울 때: "
+					+ "FAB_RAG_DIR=../FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1");
 		}
 		if (internalToken == null) {
 			internalToken = "dev-service-token";

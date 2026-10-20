@@ -24,7 +24,7 @@ dependencies = [
 [project.scripts]
 fab-business-mcp = "fab.business.server:main"
 fab-rag-mcp = "fab.rag.server:main"
-fab-worker = "fab.agent.worker:main"
+fab-worker = "fab.agent.worker.main:main"
 fab-demo = "fab.devtools.demo:demo"
 fab-eval = "fab.devtools.demo:eval_main"
 fab-rag-index = "fab.rag.index:admin_main"

@@ -31,7 +31,7 @@ public class DemoFaults {
 		remaining.clear();
 	}
 
-	void maybeFail(String tool) {
+	public void maybeFail(String tool) {
 		Integer left = remaining.computeIfPresent(tool, (k, v) -> v - 1);
 		if (left != null) {
 			if (left <= 0) {

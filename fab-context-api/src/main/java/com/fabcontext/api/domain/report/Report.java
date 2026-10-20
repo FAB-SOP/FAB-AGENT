@@ -8,7 +8,6 @@ import java.util.Map;
 
 import com.fabcontext.api.common.ApiException;
 import com.fabcontext.api.domain.incident.Incident;
-import jakarta.persistence.Column;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
@@ -26,6 +25,8 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import com.fabcontext.api.contract.ReportSections;
+import com.fabcontext.api.contract.ReportSection;
 
 /**
  * 사건 보고서 버전. 확정(CONFIRMED) 후에는 수정할 수 없고, 변경이 필요하면 새 version 초안을 만든다.

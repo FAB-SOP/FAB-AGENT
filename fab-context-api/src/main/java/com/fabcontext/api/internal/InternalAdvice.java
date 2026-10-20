@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /** 내부 API 전용 오류 변환 — 공통 Service의 ApiException도 같은 모양으로 바꾼다. */
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@RestControllerAdvice(assignableTypes = InternalController.class)
+@RestControllerAdvice(assignableTypes = InternalApi.class)
 class InternalAdvice {
 
 	@ExceptionHandler(InternalError.class)

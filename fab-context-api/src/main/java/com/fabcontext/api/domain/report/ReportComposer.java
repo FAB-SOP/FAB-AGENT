@@ -3,7 +3,6 @@ package com.fabcontext.api.domain.report;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +21,7 @@ import com.fabcontext.api.domain.checkrequest.Reply;
 import com.fabcontext.api.domain.incident.Incident;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import com.fabcontext.api.contract.ReportSections;
 
 /** 사건 · 분석 · 요청/회신 · 조치/효과 기록을 모아 보고서 섹션을 만든다. 기록에 없는 내용은 만들지 않는다. */
 @Component

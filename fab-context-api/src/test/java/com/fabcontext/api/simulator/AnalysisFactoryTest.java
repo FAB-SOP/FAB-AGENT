@@ -2,20 +2,20 @@ package com.fabcontext.api.simulator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+import java.util.List;
+import java.util.Map;
 
+import com.fabcontext.api.domain.checkrequest.RequestBrief;
+import org.junit.jupiter.api.Test;
+
+/** 시뮬레이터 대역 — 고정 예시 브리프는 브리프 검사를 통과하고 원인 후보 · 숫자를 담지 않는다 */
 class AnalysisFactoryTest {
 
-	@ParameterizedTest
-	@CsvSource(delimiter = '|', value = {
-		"이전 공정 영향 확인해줘|true",
-		"CVD 쪽 문제야?|true",
-		"증착 조건 변화|true",
-		"Upstream influence?|true",
-		"패드 교체 이력|false",
-		"''|false"})
-	void detectsUpstreamQuestions(String question, boolean expected) {
-		assertThat(AnalysisFactory.mentionsUpstream(question)).isEqualTo(expected);
+	@Test
+	void exampleBriefIsValidAndCarriesNoJudgment() {
+		Map<String, Object> brief = RequestBrief.validate(AnalysisFactory.exampleBrief());
+		assertThat((String) brief.get("reason")).startsWith("시뮬레이터 예시 브리프");
+		assertThat(brief.get("suspectedCauses")).isEqualTo(List.of());
+		assertThat(brief.get("deviations")).isEqualTo(List.of());
 	}
 }

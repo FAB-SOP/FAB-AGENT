@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 
 import com.fabcontext.api.common.Ref;
-import com.fabcontext.api.domain.job.Job;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -36,13 +35,8 @@ public final class IncidentDtos {
 		}
 	}
 
+	/** 진행 중 작업 요약 — {@link ActiveJobLookup}(job 패키지 구현)이 만든다 */
 	public record ActiveJob(String jobId, String kind, String status, int attempt, Ref waitingRef) {
-
-		public static ActiveJob from(Job job) {
-			return job == null ? null
-				: new ActiveJob(job.getJobId(), job.getKind().name(), job.getStatus().name(), job.getAttempt(),
-					job.waitingRef());
-		}
 	}
 
 	public record IncidentDetail(String incidentId, String displayId, String title, String anomalyType,
@@ -52,12 +46,12 @@ public final class IncidentDtos {
 			ActiveJob activeJob, Instant detectedAt, Instant createdAt, Instant updatedAt,
 			List<TimelineItem> timeline) {
 
-		public static IncidentDetail from(Incident i, Job activeJob) {
+		public static IncidentDetail from(Incident i, ActiveJob activeJob) {
 			return new IncidentDetail(i.getIncidentId(), i.getDisplayId(), i.getTitle(), i.getAnomalyType(),
 				i.getSeverity(), i.getSummary(), i.getProcessCode(), i.getEquipmentId(), i.getChamberId(),
 				i.getLotId(), List.copyOf(i.getWaferIds()), List.copyOf(i.getRunIds()),
 				List.copyOf(i.getSensorIds()), Map.copyOf(i.getMetrics()), i.getStatus(), i.getVersion(),
-				i.getActiveJobId(), ActiveJob.from(activeJob), i.getDetectedAt(), i.getCreatedAt(),
+				i.getActiveJobId(), activeJob, i.getDetectedAt(), i.getCreatedAt(),
 				i.getUpdatedAt(), i.getTimeline().stream().map(TimelineItem::from).toList());
 		}
 	}

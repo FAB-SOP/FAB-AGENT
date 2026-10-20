@@ -12,7 +12,7 @@ import com.fabcontext.api.common.Ids;
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
 import com.fabcontext.api.domain.incident.IncidentService;
-import com.fabcontext.api.domain.job.IncidentStreamHub;
+import com.fabcontext.api.common.stream.IncidentStreamHub;
 import com.fabcontext.api.domain.job.Job;
 import com.fabcontext.api.domain.job.JobDtos.Accepted;
 import com.fabcontext.api.domain.job.JobKind;
@@ -26,6 +26,7 @@ import com.fabcontext.api.domain.report.ReportDtos.ReportView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.fabcontext.api.contract.ReportSections;
 
 @Service
 @RequiredArgsConstructor

@@ -8,7 +8,6 @@ import java.util.Map;
 
 import com.fabcontext.api.common.ApiException;
 import com.fabcontext.api.domain.incident.Incident;
-import com.fabcontext.api.domain.approval.Approval;
 import jakarta.persistence.Column;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
@@ -56,14 +55,11 @@ public class CheckRequest {
 	/** CROSS_PROCESS(다른 공정 담당 확인) · MAINTENANCE(같은 공정 정비 담당 점검) */
 	private String requestType;
 
+	/**
+	 * 이 요청을 만든 승인 — ID 문자열만 둔다(엔티티 관계로 Approval을 품으면 checkrequest → approval 패키지 순환이 생긴다).
+	 * 외래 키 fk_check_request_approval은 schema.sql이 건다
+	 */
 	private String approvalId;
-
-	/** 외래 키 제약 전용 읽기 연관 — 값은 approvalId로만 쓰고 읽는다(API 응답 모양을 바꾸지 않으려고 String을 남겼다) */
-	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "approvalId", insertable = false, updatable = false,
-		foreignKey = @ForeignKey(name = "fk_check_request_approval"))
-	@Getter(AccessLevel.NONE)
-	private Approval approvalRef;
 
 	@Column(length = 2000)
 	private String question;

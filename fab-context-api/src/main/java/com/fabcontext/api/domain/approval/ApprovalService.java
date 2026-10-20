@@ -2,14 +2,11 @@ package com.fabcontext.api.domain.approval;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import com.fabcontext.api.auth.AuthUser;
-import com.fabcontext.api.auth.UserAccount;
-import com.fabcontext.api.auth.UserAccountRepository;
 import com.fabcontext.api.common.ApiException;
 import com.fabcontext.api.common.Cursors;
 import com.fabcontext.api.common.Hashing;
@@ -17,27 +14,26 @@ import com.fabcontext.api.common.Ids;
 import com.fabcontext.api.common.PageResponse;
 import com.fabcontext.api.common.Ref;
 import com.fabcontext.api.config.FabProperties;
-import com.fabcontext.api.domain.action.ActionService;
 import com.fabcontext.api.domain.approval.ApprovalDtos.ApprovalDecision;
 import com.fabcontext.api.domain.approval.ApprovalDtos.ApprovalDecisionResult;
 import com.fabcontext.api.domain.approval.ApprovalDtos.ApprovalSummary;
 import com.fabcontext.api.domain.approval.ApprovalDtos.ApprovalView;
 import com.fabcontext.api.domain.approval.ApprovalDtos.Proposal;
-import com.fabcontext.api.domain.checkrequest.CheckRequest;
-import com.fabcontext.api.domain.checkrequest.CheckRequestService;
-import com.fabcontext.api.domain.checkrequest.RequestBrief;
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
 import com.fabcontext.api.domain.incident.IncidentService;
-import com.fabcontext.api.domain.job.IncidentStreamHub;
+import com.fabcontext.api.common.stream.IncidentStreamHub;
 import com.fabcontext.api.domain.job.Job;
 import com.fabcontext.api.domain.job.JobService;
 import com.fabcontext.api.domain.job.JobStatus;
-import com.fabcontext.api.domain.report.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 제안 · 승인 · 거절 · 승인된 변경 실행의 상태와 규칙(권한 · 만료 · 버전 · 해시 · 재개). 무엇을 실행하는지는 모른다 —
+ * 종류별 {@link ApprovedActionHandler}(checkrequest · action · report 패키지)에 넘긴다.
+ */
 @Service
 @RequiredArgsConstructor
 public class ApprovalService {
@@ -45,11 +41,9 @@ public class ApprovalService {
 	private final ApprovalRepository repository;
 	private final IncidentService incidentService;
 	private final IncidentRepository incidentRepository;
-	private final UserAccountRepository userRepository;
 	private final JobService jobService;
-	private final CheckRequestService checkRequestService;
-	private final ActionService actionService;
-	private final ReportService reportService;
+	/** 승인 종류별 입력 검사 · 실행 — 실행 대상(확인 요청 · 정비 요청 · 조치 · 보고서)은 각 도메인의 실행기가 안다 */
+	private final ApprovedActionHandlers handlers;
 	private final IncidentStreamHub streamHub;
 	private final FabProperties properties;
 	private final Clock clock;
@@ -89,12 +83,6 @@ public class ApprovalService {
 		Approval approval = create(incident, body.actionType(), body.payload(), body.rationale(), body.evidenceIds(),
 			body.jobId(), "USER", user.userId());
 		return ApprovalView.from(approval);
-	}
-
-	/** Agent 내부 경로: 분석 중 제안을 저장하고 작업은 WAITING_APPROVAL로 대기한다. */
-	public Approval createAgentProposal(Incident incident, Job job, ApprovalActionType type,
-			Map<String, Object> payload, String rationale, List<String> evidenceIds) {
-		return create(incident, type, payload, rationale, evidenceIds, job.getJobId(), "AGENT", "agent");
 	}
 
 	@Transactional
@@ -209,7 +197,10 @@ public class ApprovalService {
 		return execution;
 	}
 
-	/** Agent 내부 경로의 멱등 제안 — 같은 키로 다시 오면 처음 만든 승인을 돌려준다 */
+	/**
+	 * Agent의 제안(내부 경로 · 시뮬레이터) — 저장만 하고 작업은 WAITING_APPROVAL로 기다린다.
+	 * 멱등 키가 있으면 같은 키로 다시 와도 처음 만든 승인을 돌려준다. requestedBy가 없으면 "agent".
+	 */
 	@Transactional
 	public Approval createAgentProposal(Incident incident, Job job, ApprovalActionType type, Map<String, Object> payload,
 			String rationale, List<String> evidenceIds, String requestedBy, String idempotencyKey) {
@@ -231,24 +222,12 @@ public class ApprovalService {
 	}
 
 	private Ref execute(Approval approval, Incident incident, String actorId, String threadId) {
-		Map<String, Object> payload = approval.getPayload();
-		return switch (approval.getActionType()) {
-			case CHECK_REQUEST, MAINTENANCE_REQUEST -> {
-				CheckRequest request = checkRequestService.createFromApproval(incident, approval.getApprovalId(),
-					payload, approval.getEvidenceIds(), actorId, threadId,
-					approval.getActionType() == ApprovalActionType.MAINTENANCE_REQUEST ? "MAINTENANCE" : "CROSS_PROCESS");
-				yield new Ref("CHECK_REQUEST", request.getRequestId());
-			}
-			case RECORD_ACTION -> new Ref("ACTION", actionService.recordFromApproval(incident, approval.getApprovalId(),
-				payload, approval.getEvidenceIds(), actorId).getActionId());
-			case CONFIRM_REPORT -> new Ref("REPORT",
-				reportService.confirmFromApproval(incident, payload, actorId).getReportId());
-		};
+		return handlers.of(approval.getActionType()).execute(approval, incident, actorId, threadId);
 	}
 
 	private Approval create(Incident incident, ApprovalActionType type, Map<String, Object> rawPayload,
 			String rationale, List<String> evidenceIds, String jobId, String source, String createdBy) {
-		Map<String, Object> payload = normalize(type, rawPayload, incident);
+		Map<String, Object> payload = handlers.of(type).normalize(rawPayload, incident);
 		Map<String, Object> hashed = new LinkedHashMap<>();
 		hashed.put("actionType", type.name());
 		hashed.put("incidentId", incident.getIncidentId());
@@ -276,79 +255,6 @@ public class ApprovalService {
 		streamHub.publish(incident.getIncidentId(), "approval.created",
 			Map.of("approvalId", approval.getApprovalId(), "actionType", type.name(), "source", source));
 		return approval;
-	}
-
-	/** actionType별 payload 검증 · 정규화. 승인 시 이 값만 실행된다. */
-	private Map<String, Object> normalize(ApprovalActionType type, Map<String, Object> raw, Incident incident) {
-		Map<String, Object> p = new LinkedHashMap<>();
-		switch (type) {
-			case CHECK_REQUEST, MAINTENANCE_REQUEST -> {
-				String ownerUserId = requireString(raw, "ownerUserId");
-				UserAccount owner = userRepository.findById(ownerUserId)
-					.orElseThrow(() -> ApiException.unprocessable("OWNER_NOT_FOUND", "담당자를 찾을 수 없습니다: " + ownerUserId));
-				p.put("ownerUserId", ownerUserId);
-				p.put("question", requireString(raw, "question"));
-				Object target = raw.get("targetProcessCode");
-				p.put("targetProcessCode", target != null ? target.toString()
-						: owner.getProcessScopes().isEmpty() ? null : owner.getProcessScopes().getFirst());
-				if (raw.get("dueAt") != null) {
-					p.put("dueAt", parseInstant(raw.get("dueAt"), "dueAt").toString());
-				}
-				// 요청 대상 설비 · 원인 후보 · 요청 브리프도 실행 내용이다 — 승인 해시에 들어가고 확인 요청에 그대로 복사된다
-				if (raw.get("equipmentId") instanceof String eq && !eq.isBlank()) {
-					p.put("equipmentId", eq);
-				}
-				if (raw.get("causeIds") instanceof List<?> causeIds && !causeIds.isEmpty()) {
-					p.put("causeIds", causeIds.stream().map(String::valueOf).toList());
-				}
-				if (raw.get("brief") != null) {
-					p.put("brief", RequestBrief.validate(raw.get("brief")));
-				}
-			}
-			case RECORD_ACTION -> {
-				p.put("actionType", requireString(raw, "actionType"));
-				p.put("description", requireString(raw, "description"));
-				Instant performedAt = parseInstant(raw.get("performedAt"), "performedAt");
-				if (performedAt.isAfter(Instant.now(clock).plusSeconds(300))) {
-					throw ApiException.unprocessable("PERFORMED_AT_IN_FUTURE", "실제로 수행한 조치만 기록할 수 있습니다.");
-				}
-				p.put("performedAt", performedAt.toString());
-				if (raw.get("performedBy") != null) {
-					p.put("performedBy", raw.get("performedBy").toString());
-				}
-			}
-			case CONFIRM_REPORT -> {
-				String reportId = requireString(raw, "reportId");
-				reportService.loadDraftOfIncident(reportId, incident.getIncidentId());
-				Object revision = raw.get("expectedContentRevision");
-				if (!(revision instanceof Number n)) {
-					throw ApiException.unprocessable("INVALID_PAYLOAD", "payload.expectedContentRevision(숫자)이 필요합니다.");
-				}
-				p.put("reportId", reportId);
-				p.put("expectedContentRevision", n.longValue());
-			}
-		}
-		return p;
-	}
-
-	private static String requireString(Map<String, Object> raw, String key) {
-		Object value = raw.get(key);
-		if (value == null || value.toString().isBlank()) {
-			throw ApiException.unprocessable("INVALID_PAYLOAD", "payload." + key + "이(가) 필요합니다.");
-		}
-		return value.toString();
-	}
-
-	private static Instant parseInstant(Object value, String key) {
-		if (value == null) {
-			throw ApiException.unprocessable("INVALID_PAYLOAD", "payload." + key + "이(가) 필요합니다.");
-		}
-		try {
-			return Instant.parse(value.toString());
-		}
-		catch (DateTimeParseException e) {
-			throw ApiException.unprocessable("INVALID_PAYLOAD", "payload." + key + "는 ISO-8601 시각이어야 합니다.");
-		}
 	}
 
 	private Approval loadForUser(String approvalId, AuthUser user) {

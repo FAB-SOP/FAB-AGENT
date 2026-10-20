@@ -15,7 +15,7 @@ import com.fabcontext.api.domain.action.ActionDtos.ActionView;
 import com.fabcontext.api.domain.action.ActionDtos.VerificationInput;
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentService;
-import com.fabcontext.api.domain.job.IncidentStreamHub;
+import com.fabcontext.api.common.stream.IncidentStreamHub;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

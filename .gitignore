@@ -34,11 +34,15 @@ FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1/rag/
 
 # ── 정답(평가자 전용) — 공개 저장소에 두지 않는다. 로컬 · 평가자만 가진다
 FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/evaluation/
+# 생성 스크립트 — 평가 문항(E01–E08) · 기대 행동을 코드 안에 담고 있다(평가자 전용). 실행 코드는 쓰지 않는다
+FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/prepare_knowledge.py
 FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/generate.py
 FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/validate.py
 FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/README.md
 backend-handoff-v2/시나리오-문제-원인-조치.md
 fab-agent/evaluation/ground_truth.json
+# 실제 모델 평가 산출물(trace · 결과 원문 · Spring 로그) — 시험 문항 · 모델 답변이 들어 있다
+fab-agent/evaluation/runs/
 
 # ── 설계 · 전달 문서 — 공개 저장소에는 실행 · 테스트 · 도구가 쓰는 것만 둔다(문서는 로컬 · 팀 내부)
 fab-flow-atlas/

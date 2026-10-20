@@ -1,8 +1,6 @@
 package com.fabcontext.api.api;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -40,9 +38,9 @@ class EventApiTest extends ApiTestSupport {
 			.andExpect(jsonPath("$.data.severity").value("LOW"))
 			.andExpect(jsonPath("$.data.timeline[0].type").value("DETECTED"));
 		awaitJob(photo, json(accepted, "$.data.jobId"), "SUCCEEDED");
-		// 웨이퍼 · run이 없는 사건: 변경 이력만 근거로 쓰고 데이터 한계를 밝힌다
+		// 웨이퍼 · run이 없는 사건: 붙일 계측 근거가 없다는 한계를 밝힌다(시뮬레이터 대역 결과)
 		getAs(photo, "/api/incidents/{id}/analysis-results", id)
-			.andExpect(jsonPath("$.data.observedFacts[*].evidenceIds[*]", hasItem("ev:change:DEMO-CHANGE-E02")))
+			.andExpect(jsonPath("$.data.observedFacts", hasSize(0)))
 			.andExpect(jsonPath("$.data.candidateCauses[0].status").value("INSUFFICIENT_EVIDENCE"))
 			.andExpect(jsonPath("$.data.limitations", hasItem(containsString("웨이퍼가 없어"))));
 	}

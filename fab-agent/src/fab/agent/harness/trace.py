@@ -47,6 +47,7 @@ class Tracer:
             "toolCalls": len(tools),
             "modelCalls": len(llm),
             "tokens": sum(r.get("tokens", 0) or 0 for r in llm),
+            "apiModels": sorted({r["apiModel"] for r in llm if r.get("apiModel")}),
             "retries": sum(1 for r in self.records if r["kind"] in ("llm_error", "tool_retry")),
             "ms": round(sum(r.get("ms", 0) for r in self.records if r["kind"] in ("tool", "llm")), 1),
         }

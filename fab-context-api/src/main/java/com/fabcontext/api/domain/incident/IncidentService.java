@@ -17,8 +17,7 @@ import com.fabcontext.api.common.PageResponse;
 import com.fabcontext.api.domain.incident.IncidentDtos.IncidentDetail;
 import com.fabcontext.api.domain.incident.IncidentDtos.IncidentSummary;
 import com.fabcontext.api.domain.incident.IncidentDtos.IncidentTransition;
-import com.fabcontext.api.domain.job.IncidentStreamHub;
-import com.fabcontext.api.domain.job.JobRepository;
+import com.fabcontext.api.common.stream.IncidentStreamHub;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class IncidentService {
 
 	private final IncidentRepository incidentRepository;
-	private final JobRepository jobRepository;
+	private final ActiveJobLookup activeJobs;
 	private final AccessPolicy accessPolicy;
 	private final IncidentStreamHub streamHub;
 	private final Clock clock;
@@ -64,9 +63,7 @@ public class IncidentService {
 	@Transactional(readOnly = true)
 	public IncidentDetail detail(String incidentId, AuthUser user) {
 		Incident incident = loadForUser(incidentId, user);
-		var activeJob = incident.getActiveJobId() == null ? null
-			: jobRepository.findById(incident.getActiveJobId()).orElse(null);
-		return IncidentDetail.from(incident, activeJob);
+		return IncidentDetail.from(incident, activeJobs.find(incident.getActiveJobId()));
 	}
 
 	@Transactional
@@ -94,9 +91,7 @@ public class IncidentService {
 			from + " → " + to + ": " + body.reason() + evidence, "INCIDENT", incident.getIncidentId());
 		streamHub.publish(incident.getIncidentId(), "incident.updated",
 			Map.of("status", to.name(), "version", incident.getVersion()));
-		var activeJob = incident.getActiveJobId() == null ? null
-			: jobRepository.findById(incident.getActiveJobId()).orElse(null);
-		return IncidentDetail.from(incident, activeJob);
+		return IncidentDetail.from(incident, activeJobs.find(incident.getActiveJobId()));
 	}
 
 	private static boolean matches(Incident i, String q) {

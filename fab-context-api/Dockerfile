@@ -11,6 +11,7 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /src/build/libs/*.jar app.jar
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends curl > /dev/null && rm -rf /var/lib/apt/lists/*
-ENV FAB_PACK_DIR=/bundle/fab-causal-pack-v2 FAB_RAG_DIR=/bundle/fab-rag-real-documents-v1 PORT=8080
+# 묶음 경로(FAB_PACK_DIR · FAB_RAG_DIR)는 compose가 넣는다 — 이미지에는 기본값을 두지 않는다
+ENV PORT=8080
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

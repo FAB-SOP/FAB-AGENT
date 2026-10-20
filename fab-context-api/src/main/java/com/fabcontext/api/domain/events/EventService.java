@@ -8,7 +8,7 @@ import java.util.Optional;
 import com.fabcontext.api.common.Ids;
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
-import com.fabcontext.api.domain.job.IncidentStreamHub;
+import com.fabcontext.api.common.stream.IncidentStreamHub;
 import com.fabcontext.api.domain.job.Job;
 import com.fabcontext.api.domain.job.JobDtos.Accepted;
 import com.fabcontext.api.domain.job.JobKind;

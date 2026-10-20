@@ -21,7 +21,7 @@ import com.fabcontext.api.domain.checkrequest.CheckRequestRepositories.ReplyRepo
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
 import com.fabcontext.api.domain.incident.IncidentStatus;
-import com.fabcontext.api.domain.job.IncidentStreamHub;
+import com.fabcontext.api.common.stream.IncidentStreamHub;
 import com.fabcontext.api.domain.job.Job;
 import com.fabcontext.api.domain.job.JobRepository;
 import com.fabcontext.api.domain.job.JobService;

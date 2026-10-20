@@ -7,13 +7,13 @@ operationId · HTTP 메서드 · 경로는 프론트 계약과 1:1로 일치한�
 - Java 21 · Spring Boot 4.1 · Gradle · Spring Security(세션 + CSRF) · JPA + **PostgreSQL**(실행 · 테스트 모두 — 테스트는 Testcontainers)
 - 데이터 팩은 **v2 조립본 `../data/fab-causal-pack-v2/`**(dataVersion `causal-pack-v2-scenarios`)를 읽는다 — `../data/build_pack_v2.py`가 v1 전체(`../FAB-실제문서-…/fab-causal-pack-v1`)와 v2 CURRENT(`../backend-handoff-v2/data`, L006 CMP-PM3 한 run 수정 + sensorEnvelopes)를 합친다. 실제 원문 RAG는 동료 묶음의 `fab-rag-real-documents-v1/rag/source-chunks.jsonl`을 그대로 읽는다. `evaluation/`(정답) · 생성기는 어디에도 없다
 - 공정 **CVD → ETCH → CMP**, 공정마다 PM 셋. run · 5위치 계측 · run 특징 · 동결 관리한계(I-chart, R1) · 센서 참고 범위 · 정비 이력 · 원인 매트릭스 · 원시 시계열(gz, DB에 넣지 않고 파일에서 읽음)
-- Agent 자리는 `AGENT_MODE`로 고른다 — `simulator`(기본, 서버 안 규칙 분석) / `external`(fab-agent Worker가 `/internal/jobs`로 가져간다). Kafka는 아직 없다
+- Agent 자리는 `AGENT_MODE`로 고른다 — `simulator`(기본, 서버 안 **대역** — 화면 개발 · 흐름 테스트용, 원인을 판정하지 않는다) / `external`(fab-agent Worker가 `/internal/jobs`로 가져간다). Kafka는 아직 없다
 
 ## 디렉터리 구조
 
 ```
 src/main/java/com/fabcontext/api/
-├─ common/        공통 응답({data, meta}) · 오류 · JSON · ID · 멱등 키 · 커서
+├─ common/        공통 응답({data, meta}) · 오류 · JSON · ID · 멱등 키 · 커서 · stream/IncidentStreamHub(사건별 SSE)
 ├─ config/        FabProperties — 토큰 · 승인 만료 · 시드 · Agent 모드 · 데모 경로 · 묶음 경로(pack-dir · rag-dir)
 ├─ auth/          로그인 · 세션 · CSRF · 서비스 토큰(/api/events → ROLE_SERVICE, /internal → ROLE_AGENT) · 공정 범위 권한
 ├─ domain/        화면(공개 API /api/**) 기능 — 기능마다 Controller · Service · Entity · Repository · Dtos
@@ -22,19 +22,28 @@ src/main/java/com/fabcontext/api/
 │  ├─ processdata/   P04~P06 run · 계측 · 특징 · 센서 시계열 · 경로 · 변경 · 공정 비교
 │  │                 PackStore(묶음 파일 읽기) · ProcessEvidenceService(서버 쪽 계산 — R1 · OOS · 정상 분포 대비 z · 참고 범위)
 │  ├─ analysis/      P07 분석 결과 저장 · 조회
-│  ├─ job/           분석 작업(BASIC · DEEP · RESUME · REPORT) 상태 · 질문 · 재실행 · SSE 허브
-│  ├─ approval/      P08 승인함 · 제안 · 승인 결정 · 승인된 변경 실행(executeApproved)
-│  ├─ checkrequest/  P09 확인 요청(앞 공정 확인 CROSS_PROCESS · 정비 MAINTENANCE) · 회신
-│  ├─ action/        P10 조치 기록 · 효과 확인
-│  ├─ report/        P11 보고서 초안 · 편집 · 확정 · 내보내기 (ReportSections 다섯 키)
+│  ├─ job/           분석 작업(BASIC · DEEP · RESUME · REPORT) 상태 · ActiveJobs(사건 화면의 진행 중 작업 — incident의 ActiveJobLookup 구현)
+│  ├─ investigation/ P07 질문 · 기본 분석 재실행 · 사건 SSE 구독
+│  ├─ approval/      P08 승인함 · 제안 · 승인 결정 · 승인된 변경 실행(executeApproved). 무엇을 실행하는지는 모른다 —
+│  │                 ApprovedActionHandler(종류별 입력 검사 · 실행)를 ApprovedActionHandlers에서 골라 넘긴다
+│  ├─ checkrequest/  P09 확인 요청(앞 공정 확인 CROSS_PROCESS · 정비 MAINTENANCE) · 회신 · 실행기 CrossProcessCheckHandler · MaintenanceRequestHandler
+│  ├─ action/        P10 조치 기록 · 효과 확인 · 실행기 RecordActionHandler
+│  ├─ report/        P11 보고서 초안 · 편집 · 확정 · 내보내기 (sections 다섯 키 — contract/ReportSections) · 실행기 ConfirmReportHandler
 │  ├─ knowledge/     P12 지식 문서 검색 · 본문 (실제 원문 7종 · 팀 점검 문서 15 · 가상 사례 7)
 │  └─ dashboard/     P02 대시보드 집계
-├─ internal/      내부 API — InternalController · InternalService(업무 MCP 도구가 부르는 조회 · 계산 · 승인된 실행),
-│                 AgentEventService(Worker 이벤트 → 작업 · 사건 상태), DemoFaults · DemoController(장애 주입, DEMO_ROUTES=true만)
-├─ simulator/     서버 안 가짜 Agent — AgentSimulator · AgentWorker · AnalysisFactory(ProcessEvidenceService 위 규칙 분석).
-│                 AGENT_MODE=external이면 작업을 잡지 않는다
+├─ internal/      내부 API(/internal/**) — 업무 MCP 도구 묶음과 1:1. 컨트롤러는 InternalApi 표시(InternalAdvice가 오류 모양을 맞춘다)
+│  ├─ query/        InternalIncidentQuery(사건) · InternalProcessQuery(경로 · run · 특징 · 시계열 · 관리한계 · 변경) ·
+│  │                InternalCollabQuery(담당자 · 확인 요청 · 조치 · 보고서 맥락) + 같은 단위의 Controller
+│  ├─ action/       ApprovedActionService(승인된 변경 실행 · 승인 조회) + Controller
+│  ├─ job/          AgentJobService(작업 맥락 · 대기열 · 확보 · 제안 저장과 받는 사람 검증 · 보고서 초안) + Controller(이벤트 수신 포함)
+│  ├─ view/         InternalViews — 도구 결과 공통 형식(env · ref)과 사건 · 요청 · 회신 · 조치 · 보고서 · 승인 View
+│  └─ AgentEventService(Worker 이벤트 → 작업 · 사건 상태) · DemoFaults · DemoController(장애 주입, DEMO_ROUTES=true만)
+├─ contract/      계약 변환을 한곳에 — AgentResultMapper · ResultShape(Agent 결과 → 화면 결과), ActionTypeNames(승인 종류 공개 ↔ 내부 이름),
+│                 ReportSections · ReportSection(보고서 sections 배열 ↔ 다섯 키 객체)
+├─ simulator/     서버 안 대역 Agent — AgentSimulator · AgentWorker(상태 변화) · AnalysisFactory(판정 없는 결과: 공정 데이터 값 그대로 ·
+│                 「시뮬레이터 결과 — 실제 분석 아님」 · 질문에는 고정 모양의 확인 요청 제안 하나). AGENT_MODE=external이면 작업을 잡지 않는다
 └─ seed/          SeedCatalog(묶음 → DB) · SeedRunner(시연 사건) — DB가 비어 있을 때 한 번
-src/main/resources/application.yml
+src/main/resources/application.yml · schema.sql(엔티티 관계로 걸지 않는 외래 키)
 src/test/java/…   api/(화면별 통합 테스트 + InternalApiTest) · domain/ · simulator/ · common/
 scripts/smoke-test.sh    실행 중인 서버에 전체 흐름을 curl로 (시뮬레이터 모드)
 Dockerfile               fab-agent/compose.yaml이 빌드한다(묶음은 /bundle로 마운트)
@@ -42,14 +51,22 @@ Dockerfile               fab-agent/compose.yaml이 빌드한다(묶음은 /bundl
 
 의존 방향: `domain` ← `internal` · `simulator` · `seed`. `domain`은 `internal` · `simulator`를 모른다.
 
+**패키지 순환 없음 (2026-10-20 리팩터링 1단계)** — `python3 ../tools/java_pkgdeps.py src/main/java`가 표와 순환을 보여 준다(「순환: 없음」이어야 한다).
+- `incident`는 `job`을 모른다 — 진행 중 작업은 `incident.ActiveJobLookup`(인터페이스)으로 받고 `job.ActiveJobs`가 구현한다. SSE 허브는 `common.stream`, 질문 · 재실행은 `investigation`
+- `approval`은 실행 대상을 모른다 — 실행기(`ApprovedActionHandler`)가 `checkrequest` · `action` · `report`에 있고 그쪽이 `approval`을 안다
+- 엔티티는 다른 도메인 패키지의 엔티티를 관계로 품지 않는다 — 필요하면 ID 문자열 + 외래 키(`schema.sql`)
+
 ## 실행
 
 ```bash
 # 전체(권장) — Postgres · 이 backend · 업무 MCP · 지식 MCP · Agent Worker
 (cd ../fab-agent && FAB_LLM=rule docker compose up -d --build)          # backend는 http://localhost:8090
 
+# 묶음 경로는 기본값이 없다(없으면 시작 실패 — 원본은 compose 환경 변수). 직접 띄울 때는 넘긴다(이 폴더 기준)
+export FAB_PACK_DIR=../data/fab-causal-pack-v2 FAB_RAG_DIR=../FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1
+
 # backend만 — compose의 postgres(호스트 55432)만 띄우고 붙는다. 테이블을 만들고 비어 있을 때만 시드
-(cd ../fab-agent && docker compose up -d postgres) && ./gradlew bootRun
+(cd ../fab-agent && docker compose up -d postgres) && ./gradlew bootRun   # 아래 두 경로를 먼저 넘긴다
 
 # 띄울 때마다 처음 데이터 — DDL_AUTO=create가 backend 테이블을 지우고 새로 만든 뒤 시드한다
 DDL_AUTO=create ./gradlew bootRun
@@ -58,7 +75,7 @@ DDL_AUTO=create AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun   # fab-a
 
 compose의 `backend` 컨테이너가 떠 있으면 먼저 끈다(`docker compose stop backend agent business-mcp`) — 같은 `backend` 스키마와 포트 8090을 쓴다.
 
-- 팩 경로는 `FAB_PACK_DIR`(기본 `../data/fab-causal-pack-v2`) · `FAB_RAG_DIR`(기본 `../FAB-실제문서-…/fab-rag-real-documents-v1`)로 바꾼다. v2 팩은 `python3 ../data/build_pack_v2.py`로 다시 만든다(같은 입력이면 같은 바이트, 검사 포함)
+- 팩 경로는 `FAB_PACK_DIR` · `FAB_RAG_DIR` — **기본값이 없다**(없으면 원인을 밝히고 시작에 실패한다). 원본은 compose 환경 변수(`/bundle/…`)이고, 직접 띄울 때는 위처럼 넘긴다. 테스트는 `ApiTestSupport`가 넣는다. v2 팩은 `python3 ../data/build_pack_v2.py`로 다시 만든다(같은 입력이면 같은 바이트, 검사 포함)
 - 다시 시드: `docker compose exec postgres psql -U fab -d fab -c "drop schema backend cascade"` 후 재시작. Agent 체크포인트도 같이 지우려면 `agent` 스키마도 지운다
 - **스키마를 바꾼 뒤에는 반드시 다시 시드한다.** `ddl-auto: update`는 새 테이블 · 컬럼 · 제약은 더하지만, 컬럼 타입 변경(varchar → jsonb)과 이름 변경(`cd_value` → `value_a`)은 기존 테이블에 반영하지 못한다(옛 컬럼이 그대로 남거나 새 컬럼이 비어 있게 된다). 2026-10-20 스키마 변경 뒤 절차:
 
@@ -87,7 +104,7 @@ compose의 `backend` 컨테이너가 떠 있으면 먼저 끈다(`docker compose
 ## 검증 (2026-10-20)
 
 ```bash
-./gradlew test                     # 108개 — Testcontainers Postgres(pgvector/pgvector:pg16, compose와 같은 이미지). Docker 필요
+./gradlew test                     # 105개 — Testcontainers Postgres(pgvector/pgvector:pg16, compose와 같은 이미지). Docker 필요
 ./scripts/smoke-test.sh http://localhost:8090   # 107개 — 시뮬레이터 모드 서버에 curl 전체 흐름 (jq 필요)
 python3 ../tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-docs ↔ 프론트 계약 차이 표
 ```
@@ -124,8 +141,8 @@ SSE `GET /api/incidents/{id}/stream` 이벤트: `snapshot`, `job.status`, `analy
 | 사건 | 상태 | 내용 |
 |---|---|---|
 | **EV-1009** | 기동 직후 기본 분석 | **주 시연 사건.** `W-CURRENT-009-3`, CVD-PM1 → ETCH-PM2 → CMP-PM3. CMP 후 두께 10,140.4 Å로 UCL 위(규격 9000–11000 안 — OOC, OOS 아님). CMP 제거량은 정상 변동 안, Etch 제거량 4896.3 Å(같은 PM 정상 run 대비 z ≈ −2.8), ETCH-PM2 정비 이력 `DEMO-CHANGE-E02`. 기본 분석을 대기열(QUEUED)에 두어 Agent가 바로 처리한다 |
-| EV-1006 | INVESTIGATING | `W-CURRENT-006-3` CMP-PM3, `head_pressure` 참고 범위 이탈 — 현재 공정(정비 요청) |
-| EV-1007 | INVESTIGATING | `W-CURRENT-007-3` CMP-PM3, `slurry_flow` 참고 범위 이탈 — 현재 공정(정비 요청) |
+| EV-1006 | 기동 직후 기본 분석 | `W-CURRENT-006-3` CMP-PM3, `head_pressure` 참고 범위 이탈 — 현재 공정(정비 요청) |
+| EV-1007 | 기동 직후 기본 분석 | `W-CURRENT-007-3` CMP-PM3, `slurry_flow` 참고 범위 이탈 — 현재 공정(정비 요청) |
 | EV-1023 | INVESTIGATING | CVD-PM1 증착 속도 드리프트. `cvd.kim`이 만든 PENDING 수동 제안 1건(CMP 담당에게 확인 요청) |
 | EV-1022 | ON_HOLD | CMP-PM2 패드 온도 드리프트, 관리자 보류 |
 | EV-1021 | CLOSED | CMP-PM2 슬러리 유량 저하 — 조치(IMPROVED) + 확정 보고서 v1 |
@@ -153,7 +170,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 1. Agent가 `POST /internal/jobs/{jobId}/proposals`로 제안 → **받는 사람을 먼저 검증**(앞 공정 확인은 그 공정의 공정 담당자에게만, 정비 요청은 설비정비팀에게만, 질문한 본인에게는 안 됨 — 아니면 400과 hint) → 실행할 내용 · 해시 · 만료 저장(같은 `idempotencyKey`면 같은 승인)
 2. 사람이 `POST /api/approvals/{id}/decisions` → **Agent가 기다리는 제안이면 승인만 기록**하고 RESUME 작업을 만든다(응답에 `executionRef` 없음). 거절도 외부 Agent 모드에서는 RESUME을 만들어 Agent가 거절 사유를 읽고 결과를 정리한다. 수동 제안은 그 자리에서 실행
 3. 재개된 Agent가 업무 MCP 변경 도구 → `POST /internal/approved-actions/*`
-4. `ApprovalService.executeApproved`가 상태 · 종류 · 만료를 다시 보고 **저장된 payload만** 한 번 실행한다. 이미 실행했으면 같은 결과를 돌려준다. 시뮬레이터도 같은 메서드를 부른다
+4. `ApprovalService.executeApproved`가 상태 · 종류 · 만료를 다시 보고 **저장된 payload만** 그 종류의 실행기(`ApprovedActionHandler`)로 한 번 실행한다. 이미 실행했으면 같은 결과를 돌려준다. 시뮬레이터도 같은 메서드를 부른다
 
 **외부 Agent 모드**(`AGENT_MODE=external`) — 시뮬레이터가 작업을 잡지 않는다. Worker가 QUEUED 작업을 가져가 `claims`로 확보하고(같은 attempt면 409), 이벤트(`contracts/schemas/agent-event.schema.json`)를 `POST /internal/jobs/{jobId}/events`로 돌려준다 — `APPROVAL_REQUIRED` · `WAITING_REPLY` · `RESULT_READY` · `REPORT_DRAFT_READY` · `RETRY_SCHEDULED`(attempt+1로 다시 QUEUED) · `JOB_FAILED`. Kafka를 붙이면 같은 이벤트를 소비자가 `AgentEventService.handle()`로 넘기면 된다.
 
@@ -192,7 +209,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 
 ### 분석 결과의 화면용 키
 
-프론트 명세가 제안한 키와 지금까지의 키를 **함께** 내린다(`domain/analysis/ResultShape`). 프론트는 아직 모의 응답으로 화면을 그려 어느 키를 실제로 읽는지 확인되지 않았기 때문이다 — 확정되면 옛 키를 뺀다.
+프론트 명세가 제안한 키와 지금까지의 키를 **함께** 내린다(`contract/ResultShape`). 프론트는 아직 모의 응답으로 화면을 그려 어느 키를 실제로 읽는지 확인되지 않았기 때문이다 — 확정되면 옛 키를 뺀다.
 
 | 칸 | 화면용(새) | 옛 키(유지) |
 |---|---|---|
@@ -223,7 +240,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 
 - **승인 해시에 들어간다** — 브리프는 payload 안이라 `actionHash`(actionType · incidentId · payload의 정규 JSON SHA-256)가 덮는다. 승인자는 받는 사람이 볼 내용을 그대로 보고 승인하고, 브리프 한 글자만 달라도 해시가 다르다(`ACTION_HASH_MISMATCH`). 흐름(승인은 기록만 → 재개된 Agent가 승인 ID로 실행 → 저장본으로 한 번 실행)은 그대로다
 - **원인 확정이 아니다** — `suspectedCauses[].confirmed`는 항상 false(true면 422 `INVALID_BRIEF`), 정비 이력은 `rootCauseConfirmed` 값을 그대로 둔다
-- **숫자는 계산 결과에서** — fab-agent는 그래프의 `request_brief` 노드가 도구 결과에서, 시뮬레이터는 `AnalysisFactory`가 `ProcessEvidenceService` 결과에서 옮긴다. 모델(규칙 모델 포함)이 쓰는 것은 `reason` 문장뿐이고, Harness가 그 숫자 · 근거 ID · 확률 · 설정값 처방을 검사한다
+- **숫자는 계산 결과에서** — fab-agent는 그래프의 `request_brief` 노드가 도구 결과에서, 시뮬레이터는 숫자 없는 고정 예시 브리프(`AnalysisFactory.exampleBrief`)를 쓴다. 모델(규칙 모델 포함)이 쓰는 것은 `reason` 문장뿐이고, Harness가 그 숫자 · 근거 ID · 확률 · 설정값 처방을 검사한다
 - 수동 제안(시드 EV-1023 등)은 brief가 없을 수 있다 — 저장 · 화면 모두 null로 둔다
 - 받는 사람은 brief에 든 것만 본다. 사건 분석 결과 · 센서 원본 조회 권한은 그대로 없다(`InternalApiTest.requestBriefIsHashedCopiedAndShownToRecipient`)
 
@@ -236,7 +253,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 | `job.incident_id` | `incident` | `fk_job_incident` | |
 | `analysis_result.incident_id` · `job_id` | `incident` · `job` | `fk_analysis_result_incident` · `fk_analysis_result_job` | |
 | `approval.incident_id` · `job_id` | `incident` · `job` | `fk_approval_incident` · `fk_approval_job` | `job_id`는 수동 제안이면 null |
-| `check_request.incident_id` · `approval_id` | `incident` · `approval` | `fk_check_request_incident` · `fk_check_request_approval` | `approval_id`는 null 허용 |
+| `check_request.incident_id` · `approval_id` | `incident` · `approval` | `fk_check_request_incident` · `fk_check_request_approval` | `approval_id`는 null 허용. **`fk_check_request_approval`은 `schema.sql`이 건다** — 엔티티 관계로 두면 checkrequest가 approval 엔티티를 품어 패키지 순환이 생긴다(2026-10-20 리팩터링). Hibernate가 표를 만든 뒤(`defer-datasource-initialization`) 없을 때만 추가한다 |
 | `check_reply.incident_id` · `request_id` | `incident` · `check_request` | `fk_check_reply_incident` · `fk_check_reply_request` | |
 | `incident_action.incident_id` | `incident` | `fk_incident_action_incident` | |
 | `report.incident_id` | `incident` | `fk_report_incident` | |

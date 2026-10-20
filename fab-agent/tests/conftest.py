@@ -17,6 +17,10 @@ import pytest
 
 os.environ["FAB_LLM"] = "rule"  # 테스트는 API 키 없이 결정적으로 돈다
 os.environ["EMBEDDER"] = "hash"  # 지식 MCP도 키 · 네트워크 없이 — 시험용 해시 임베딩(.env의 EMBEDDER보다 앞선다)
+_REPO = Path(__file__).resolve().parents[2]
+# 묶음 경로는 코드 기본값이 없다 — 테스트 설정이 넣는다(셸에 이미 있으면 그 값). Spring jar도 이 값을 물려받는다
+os.environ.setdefault("FAB_PACK_DIR", str(_REPO / "data" / "fab-causal-pack-v2"))
+os.environ.setdefault("FAB_RAG_DIR", str(_REPO / "FAB-실제문서-선별RAG-센서데이터-통합" / "fab-rag-real-documents-v1"))
 os.environ.pop("FAB_RESULT_EXTENSIONS", None)
 
 ROOT = Path(__file__).resolve().parents[1]

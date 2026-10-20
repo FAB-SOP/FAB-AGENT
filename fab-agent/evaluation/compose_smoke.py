@@ -7,12 +7,18 @@ EV-1009 (CMP-PM3 두께 R1, 원인은 앞 공정 ETCH-PM2)
   1) 기본 분석(시드에서 QUEUED) 완료 → 2) 심층 질문 → Agent가 Etch 담당자 확인 요청을 '제안'(승인 대기)
   3) 사람 승인 → 승인 응답에는 실행 결과 없음(기록만) → 재개된 Agent가 승인 ID로 MCP 변경 도구 실행 → 요청 1건
   4) Etch 담당자 회신 → 재개 → 결과: 1순위 원인 후보가 앞 공정 ETCH  5) 보고서 초안 다섯 섹션
+
+검사 모드 — 기본은 규칙 모델(FAB_LLM=rule)의 결정적인 답을 그대로 본다. 실제 모델로 띄웠으면 SMOKE_MODE=real(또는 --real):
+  - 브리프 원인 후보: 정확히 [ETCH_WALL] 대신 「ETCH_WALL 포함 · 모두 확정 아님」
+  - 회신 뒤 재개에서 Agent가 새 제안을 하면(제안 상한 2 안에서 허용된 흐름) 거절하고 끝날 때까지 따라간다
+  docker compose --profile tools run --rm --no-deps -e SMOKE_MODE=real smoke
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 
 from fab.devtools.spring import User
@@ -20,6 +26,7 @@ from fab.devtools.spring import User
 INCIDENT = "EV-1009"
 QUESTION = "이 사건의 원인 후보를 분석하고, 필요한 확인 · 점검 요청을 제안해줘"
 FAILS: list[str] = []
+REAL = os.getenv("SMOKE_MODE") == "real" or "--real" in sys.argv
 
 
 def check(label: str, ok: bool, detail: object = "") -> None:
@@ -75,16 +82,18 @@ async def approve_to_end(cmp: User, i: dict, a: dict) -> None:
     _, r = await etch.get(f"/api/check-requests/{chk}")
     brief = r["data"].get("brief") or {}
     dev = next((d for d in brief.get("deviations", []) if d.get("equipmentId") == "ETCH-PM2"), {})
+    causes = [c["causeId"] for c in brief.get("suspectedCauses", [])]
+    # 실제 모델은 ETCH 원인 후보를 여럿 붙이기도 한다 — ETCH_WALL이 들어 있고 모두 확정 아님이면 된다
+    causes_ok = "ETCH_WALL" in causes if REAL else causes == ["ETCH_WALL"]
     check("확인 요청에 브리프 — ETCH-PM2 제거량 · 원인 후보(확정 아님)",
-          dev.get("value") == 4896.3 and dev.get("withinNormal") is False
-          and [c["causeId"] for c in brief.get("suspectedCauses", [])] == ["ETCH_WALL"]
+          dev.get("value") == 4896.3 and dev.get("withinNormal") is False and causes_ok
           and all(c["confirmed"] is False for c in brief["suspectedCauses"]), brief)
     st, rep = await etch.post(f"/api/check-requests/{chk}/replies", {
         "findings": "ETCH-PM2 정비 후 시즈닝 매수가 절차보다 적었습니다. 모니터 결과를 첨부합니다(시연 회신).",
         "evidenceIds": [], "confirmedByUser": True, "expectedVersion": r["data"]["version"]})
     check("Etch 담당자 회신 (201)", st == 201, rep)
     await etch.close()
-    await wait_job(cmp, rep["data"]["resumeJobId"], "SUCCEEDED")
+    await finish_resume(cmp, i, rep["data"]["resumeJobId"])
     _, res = await cmp.get(f"/api/incidents/{i['incidentId']}/analysis-results")
     res = res["data"]
     # 공개 결과(P07)에는 nextStep이 없다(계약 확장 필드) — 1순위 원인 후보가 앞 공정 Etch인지로 본다
@@ -102,6 +111,26 @@ async def approve_to_end(cmp: User, i: dict, a: dict) -> None:
     _, reps = await cmp.get(f"/api/incidents/{i['incidentId']}/reports")
     items = reps["data"]["items"] if isinstance(reps["data"], dict) else reps["data"]
     check("보고서 초안 저장", bool(items), reps)
+
+
+async def finish_resume(cmp: User, i: dict, job_id: str) -> None:
+    """회신 뒤 재개 작업이 끝날 때까지. 실제 모델 모드에서는 재개 중 새 제안(승인 대기)을 거절하고 이어지는 재개를 따라간다"""
+    if not REAL:
+        await wait_job(cmp, job_id, "SUCCEEDED")
+        return
+    for _ in range(3):  # 제안 상한은 2 — 그 이상 이어지지 않는다
+        j = await wait_job(cmp, job_id, "SUCCEEDED", "WAITING_APPROVAL")
+        if j["status"] != "WAITING_APPROVAL":
+            return
+        _, page = await cmp.get(f"/api/approvals?status=PENDING&incidentId={i['incidentId']}")
+        a = page["data"]["items"][0]
+        _, a = await cmp.get(f"/api/approvals/{a['approvalId']}")
+        a = a["data"]
+        print(f"    회신 뒤 새 제안 {a['actionType']} → 거절하고 진행", flush=True)
+        st, dec = await cmp.post(f"/api/approvals/{a['approvalId']}/decisions",
+                                 {"decision": "REJECT", "comment": "점검 — 회신 뒤 추가 요청은 보내지 않는다", "expectedVersion": a["version"]})
+        check("회신 뒤 새 제안 거절 → 재개", st == 200 and bool(dec["data"].get("resumeJobId")), dec)
+        job_id = dec["data"]["resumeJobId"]
 
 
 async def main() -> int:

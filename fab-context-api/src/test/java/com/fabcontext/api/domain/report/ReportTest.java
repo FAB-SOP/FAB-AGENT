@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
+import com.fabcontext.api.contract.ReportSections;
+import com.fabcontext.api.contract.ReportSection;
 
 class ReportTest {
 

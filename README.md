@@ -18,7 +18,7 @@ React 프론트(fab-context-web) ──/api/**──▶ Spring backend (fab-cont
 | `data/` | 데이터 팩 v2 조립본 `fab-causal-pack-v2/`(dataVersion `causal-pack-v2-scenarios`)와 조립 스크립트 `build_pack_v2.py` | [README](data/fab-causal-pack-v2/README.md) |
 | `FAB-실제문서-선별RAG-센서데이터-통합/` | 동료 납품 원본 — 데이터 팩 v1(`fab-causal-pack-v1`), 실제 원문 RAG 정책 · 출처 목록(`fab-rag-real-documents-v1`) — 원문 조각 · 정답은 공개 저장소에 없다(아래) | 폴더 안 README |
 | `backend-handoff-v2/` | 프론트 전달 묶음 가운데 코드가 쓰는 것 — 프론트 계약 OpenAPI(`combined.openapi.json`, 계약 대조 기준), 응답 예시(`examples/`, 모니터링 테스트), 데이터 v2 CURRENT(`data/`, 팩 조립 입력) | — |
-| `tools/` | `openapi_diff.py` — 서버 `/v3/api-docs`와 프론트 계약 대조 | — |
+| `tools/` | `openapi_diff.py` — 서버 `/v3/api-docs`와 프론트 계약 대조, `java_pkgdeps.py` — Spring 패키지 의존 표 · 순환 확인 | — |
 
 **공개 저장소에 없는 것** — 팀 내부 채널로 받아 **같은 경로에** 둔다(`.gitignore`가 계속 빼 준다)
 
@@ -101,12 +101,14 @@ npm test && npm run build
 
 ### 3) Spring을 직접 띄워 개발 · 테스트 — compose의 postgres만
 
-DB는 언제나 Postgres다(H2는 쓰지 않는다). compose에서 `postgres`만 띄우고 Spring은 `bootRun`으로 띄운다. compose의 `backend` · `agent` · `business-mcp`가 떠 있으면 먼저 끈다(같은 `backend` 스키마 · 포트 8090을 쓴다):
+DB는 언제나 Postgres다(H2는 쓰지 않는다). 데이터 팩 · 원문 RAG 경로(`FAB_PACK_DIR` · `FAB_RAG_DIR`)도 코드에 기본값이 없다 — 원본은 compose 환경 변수이고, 직접 띄울 때는 아래처럼 넘긴다(fab-agent는 `.env`에 적어도 된다, `.env.example` 참고). compose에서 `postgres`만 띄우고 Spring은 `bootRun`으로 띄운다. compose의 `backend` · `agent` · `business-mcp`가 떠 있으면 먼저 끈다(같은 `backend` 스키마 · 포트 8090을 쓴다):
 
 ```bash
 cd fab-agent && docker compose stop backend agent business-mcp; docker compose up -d postgres && cd ..
+# 묶음 경로 — 코드 기본값이 없어 없으면 시작에 실패한다(compose는 자기 값을 쓴다). 저장소 루트에서 한 번
+export FAB_PACK_DIR="$PWD/data/fab-causal-pack-v2" FAB_RAG_DIR="$PWD/FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1"
 
-# Spring만 — 기본은 서버 안 시뮬레이터 Agent. DDL_AUTO=create는 띄울 때마다 backend 테이블을 새로 만들고 시드한다
+# Spring만 — 기본은 서버 안 시뮬레이터 Agent(화면 · 흐름용 대역 — 원인을 판정하지 않는다). DDL_AUTO=create는 띄울 때마다 backend 테이블을 새로 만들고 시드한다
 cd fab-context-api
 DDL_AUTO=create ./gradlew bootRun                                  # http://localhost:8090
 ./scripts/smoke-test.sh http://localhost:8090                      # 실행 중인 서버에 curl 전체 흐름(새로 띄운 서버에)
@@ -139,7 +141,7 @@ python3 tools/openapi_diff.py http://localhost:8090   # 서버 OpenAPI ↔ 프�
 
 | 점검 | 결과 |
 |---|---|
-| `fab-context-api` `./gradlew test` | 108개 통과 |
+| `fab-context-api` `./gradlew test` | 105개 통과 |
 | `fab-context-api` `smoke-test.sh` (compose postgres + bootRun) | 107개 통과 |
 | `fab-agent` `uv run pytest -q` | 38개 통과 |
 | `fab-agent` `uv run fab-eval` (규칙 모델, 정답표가 있는 로컬) | 3/3 |

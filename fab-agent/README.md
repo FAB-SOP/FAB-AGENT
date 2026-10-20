@@ -10,6 +10,8 @@ backend는 **Spring 하나**(`../fab-context-api`)이고, 데이터 팩은 **v2 
 FAB_LLM=rule docker compose up -d --build                                     # Postgres · Spring backend · 업무 MCP · 지식 MCP · Agent Worker (.env에 OPENAI_API_KEY 필요 — 임베딩)
 EMBEDDER=hash FAB_LLM=rule docker compose up -d --build                       # 키 없이 점검(시험용 해시 임베딩)
 docker compose --profile tools run --rm --no-deps smoke                       # EV-1009 질문 → 제안 → 승인 → 실행 → 회신 → 보고서
+docker compose --profile tools run --rm --no-deps -e SMOKE_MODE=real smoke    # 실제 모델(FAB_LLM=openai)로 띄웠을 때 — 원인 후보는 ETCH_WALL 포함, 회신 뒤 새 제안은 거절하고 진행
+docker compose --profile tools build smoke                                    # 점검 코드(evaluation/)를 바꿨으면 — up --build는 tools 프로필 이미지를 다시 만들지 않는다
 docker compose --profile tools run --rm --no-deps smoke python evaluation/restart_smoke.py before
 docker compose restart agent                                                  # 승인 대기 중 Worker 재시작
 docker compose --profile tools run --rm --no-deps smoke python evaluation/restart_smoke.py after
@@ -71,6 +73,7 @@ uv run python evaluation/retrieval_eval.py --details        # 질의마다 순�
 
 ```bash
 uv sync
+# 묶음 경로(FAB_PACK_DIR · FAB_RAG_DIR)는 기본값이 없다 — .env에 두 줄(.env.example 참고, 이 폴더 기준 상대 경로 가능). pytest는 테스트 설정이 넣는다
 uv run pytest -q          # 29개 — 테스트용 Postgres 컨테이너(testcontainers, backend · agent 스키마를 비움) 위에 Spring bootJar를 외부 Agent 모드로 띄우고 붙는다(JDK 21 · Docker)
 
 docker compose stop backend agent business-mcp; docker compose up -d postgres   # compose에서는 postgres만
@@ -82,6 +85,25 @@ uv run fab-demo --incident EV-1006 --reject
 
 `fab-demo` · `fab-eval`은 사람 역할(공개 API)과 Agent(업무 · 지식 MCP를 같은 프로세스에)를 한 프로세스에서 돌린다(`devtools/spring.py`). compose의 `agent`와 같이 띄우면 작업을 서로 가져가니 둘 중 하나만 쓴다.
 키가 없으면 **규칙 모델**(`FAB_LLM=rule`, `rule-policy-v2`)로 돈다 — 그래프 · 도구 · 승인/재개 배선을 결정적으로 검증하는 용도다. 판단 품질은 실제 모델로 잰다: `FAB_LLM=openai uv run fab-eval`, 모델 비교는 `evaluation/compare_models.py`.
+
+### 모델 — 기본 gpt-4.1-mini, 대체 gpt-4o-mini (가용성용)
+
+`FAB_MODEL=gpt-4.1-mini` · `FAB_FALLBACK_MODEL=gpt-4o-mini`(compose · `.env.example` 기본값). 2026-10-20 실제 모델 평가에서 gpt-4.1-mini는 정답표 E01–E03을 세 번 모두 3/3, 시험 E04–E08 자동 판정 4/5였고, gpt-4o-mini(대체 모델 끔)는 2/3 · 1/5로 판단이 확연히 약했다 — 근거와 맞지 않는 정비 요청 · 대상이 틀린 확인 요청. 그래서 gpt-4o-mini는 기본 모델이 타임아웃 · 장애로 응답하지 못할 때만 쓰는 대체 모델로 둔다.
+
+### 실제 모델 평가 (`evaluation/`, 수동 실행 — 키 · 비용이 든다)
+
+compose와 **따로** 평가용 Postgres(docker `fab-eval-pg`, 호스트 55433)와 Spring(포트 8097, 외부 Agent 모드, 띄울 때마다 처음 시드)을 띄우고 끝나면 지운다(`eval_env.py`). 평가 쪽은 `SPRING_URL`을 그 Spring으로, `PG_DSN`은 비워 메모리로 둔다. trace · 결과 원문은 `evaluation/runs/`(git 제외).
+
+```bash
+uv run python evaluation/real_eval.py --runs 3                 # 정답표 E01–E03 반복 (gpt-4.1-mini · 대체 gpt-4o-mini · EMBEDDER=openai)
+uv run python evaluation/real_eval.py --runs 1 --embedder hash # 같은 조건, 해시 임베딩
+uv run python evaluation/scenario_eval.py                      # 시험 E04–E08 — 질문 → 결과(제안은 거절), 자동 판정 + 사람이 볼 보고서
+uv run python evaluation/compare_models.py gpt-4.1-mini gpt-4o-mini   # 대체 모델 끔, E01–E08 · 토큰 · 시간 · 타임아웃
+uv run python evaluation/trace_stats.py evaluation/runs/…/eval_1.jsonl   # LLM 호출 · apiModel · 대체 · 타임아웃 · 토큰 · 비용 어림
+# 비용 없이 도구만 시험: --llm rule
+```
+
+시험 문항(E01–E08)은 평가자 전용 파일을 **평가 스크립트만** 실행 중에 읽는다 — 프롬프트 · 도구 설명 · 색인 · 컨테이너 · 팩에는 넣지 않는다. trace의 llm 기록은 `modelName`(고른 모델)과 `apiModel`(API가 실제로 답한 스냅샷, 규칙 모델은 같은 이름)을 함께 남긴다.
 
 ## 시연 사건 (데이터 팩 CURRENT 로트)
 
@@ -101,12 +123,13 @@ uv run fab-demo --incident EV-1006 --reject
 |---|---|
 | `src/fab/business/server.py` | **업무 MCP** — 읽기 12개(`get_incident` · `list_incidents` · `get_wafer_lineage` · `get_run_and_metrology` · `get_run_features` · `get_sensor_trace` · `get_frozen_limits` · `get_change_events` · `get_process_owner` · `get_check_requests` · `get_action_history` · `get_report_context`), 변경 3개(`create_cross_process_check_request` · `create_maintenance_request` · `confirm_report`, `destructiveHint`). 숫자는 Spring이 계산하고 MCP는 전달만 한다 |
 | `src/fab/rag/` | **지식 MCP** — `search_technical_documents`(실제 원문 100청크) · `search_applicable_playbooks`(팀 점검 문서 15) · `search_past_cases`(가상 사례 7, `availableAt ≤ asOf`만). Resource `doc://{chunkId}` · `case://{caseId}`. 원문 검색은 적재 정책의 조건(`process` · `retrievalTier` · `documentId` · `version`)으로 좁힌다. PG_DSN이 있으면 pgvector(`chunkId` · `contentHash` 증분 색인 — 바뀐 조각만 다시 임베딩), 없으면 메모리 |
-| `src/fab/agent/graph.py` | LangGraph — start → 필수 근거(사건 → 경로 → 단계별 run · 계측 → 현재 run 특징) → agent ⇄ tools → (제안이면 **request_brief** → tools) → 승인 대기 → 회신 대기 → finalize |
+| `src/fab/agent/graph/` | LangGraph — start → 필수 근거(사건 → 경로 → 단계별 run · 계측 → 현재 run 특징) → agent ⇄ tools → (제안이면 **request_brief** → tools) → 승인 대기 → 회신 대기 → finalize — `state.py`(상태 · 실행 자원) · `nodes/`(노드 하나에 파일 하나, 파일 이름 = 노드 이름: `start` · `required_evidence` · `agent` · `request_brief` · `tools` · `approval_wait` · `reply_wait` · `finalize`. `tools`는 제출 처리 / 제안 저장 / 도구 실행 세 함수) · `routes.py` · `build.py` |
 | 시계열 구간 근거 | `get_sensor_trace`가 `sensorEnvelope`와 DEMO-SEGMENT-V2 구간(`segments`, 근거 `E-SEG-*`)을 준다(Spring `SegmentDetector`). 구간은 관측이지 고장 시점 · 원인 확정이 아니다 — DEEP 프롬프트에 적었고, 구간 근거를 인용한 결과에는 Harness가 「4σ · 2초 · 5초는 시연 선택값」 한계를 반드시 붙인다(`graph._segment_limit`) |
 | `src/fab/agent/brief.py` | **요청 브리프** — 제안 저장 전에 받는 사람이 볼 편차 수치(run 제거량 · 센서) · 원인 후보(확정 아님) · 정비 이력 · 요청 항목을 도구 결과와 원인 매트릭스에서 옮긴다. 모델은 `reason` 문장만 쓰고, `guard.validate_brief`가 그 숫자 · 근거 ID · 확률 · 설정값 처방을 검사한다. 브리프는 payload에 들어가 승인 해시로 묶인다 |
-| `src/fab/agent/toolbox.py` | 모델에게 보이는 도구 = 읽기 + 제안 둘(`propose_cross_process_check` · `propose_maintenance_request`) + 제출. 변경 도구는 숨기고 승인 뒤 Harness만 승인 ID로 부른다 |
-| `src/fab/agent/llm.py` | OpenAI 모델 · 대체 모델 · 규칙 모델(`RuleModel`) |
-| `src/fab/agent/worker.py` | 작업 처리기 `JobRunner` + HTTP Worker(기본). Kafka Worker(`WORKER_SOURCE=kafka`)는 남겨 두었지만 Spring이 아직 Kafka로 발행하지 않는다 |
+| `src/fab/agent/evidence.py` | 도구 결과 해석 헬퍼 — 대화의 도구 결과를 도구 이름별로 모으고 run · 특징 · 시계열 · 검색 결과를 찾는다. 브리프와 규칙 모델이 같이 쓴다(숫자는 Spring 계산값을 옮기기만 한다) |
+| `src/fab/agent/tools/` | `definitions.py` — 모델에게 보이는 Harness 도구 스키마(제안 둘 `propose_cross_process_check` · `propose_maintenance_request` + 제출) · `client.py` — `Toolbox`(MCP 도구 호출). 변경 도구는 숨기고 승인 뒤 Harness만 승인 ID로 부른다 |
+| `src/fab/agent/models/` | `openai.py`(OpenAI 모델) · `rule.py`(규칙 모델 `RuleModel`) · `__init__.py`(`make_models` — 기본 · 대체 모델) |
+| `src/fab/agent/worker/` | `runner.py`(작업 처리기 `JobRunner`) · `sinks.py`(이벤트 발행 대상) · `sources/http.py`(기본 — Spring `/internal/jobs` 폴링) · `sources/kafka.py`(`WORKER_SOURCE=kafka` — Spring이 아직 Kafka로 발행하지 않아 팀 결정 전까지 남겨 둔다) · `main.py`(`fab-worker`) |
 | `src/fab/agent/backend.py` | Worker → Spring 내부 API 클라이언트(작업 목록 · 맥락 · 확보 · 제안 · 이벤트 · 보고서 초안) |
 | `src/fab/devtools/` | `spring.py`(사람 역할 + 한 프로세스 Agent) · `demo.py`(`fab-demo` · `fab-eval`). 런타임 코드는 import하지 않는다 |
 | `evaluation/` | `ground_truth.json`(평가 전용, 색인 · 런타임에 넣지 않음) · `compose_smoke.py` · `restart_smoke.py` · `compare_models.py` |
@@ -128,7 +151,7 @@ uv run fab-demo --incident EV-1006 --reject
 
 ## 검증 (2026-10-20)
 
-- `uv run pytest -q` 38개 통과 — 임베딩(가짜 임베더 · 가짜 OpenAI 클라이언트로 문서 · 질의 분리, 64개 묶음, 429 · 연결 오류 재시도, 오류 메시지에 키 없음, `openai`인데 키 없음 → 시작 실패, Postgres 증분 색인 · 차원별 표), 시계열 구간(L006 head_pressure 101.1–210.9초 · L007 slurry_flow 14–309초 LOW, L009 · 정상 LOT 구간 없음, 규칙 모델이 구간을 관측 사실로 인용하고 「4σ · 2초 · 5초는 시연 선택값」 한계를 남김, 결과 dataVersion = 팩 버전), 요청 브리프(EV-1009 ETCH 제거량 · z · ETCH_WALL · 정비 이력 rootCauseConfirmed=false, EV-1006 head_pressure · CMP_PRESSURE, 조회하지 않은 숫자 · 근거 반려, 승인 해시가 브리프를 덮음), 도구 목록 · 설명, 데이터 팩 수치(EV-1009 Etch 제거량 · R1 · 참고 범위), 분석 시점 차단, 지식 검색 필터, 승인 전 변경 0건 · 거절 뒤 재개 · 같은 승인 중복 실행 1건, 회신 뒤 두 번째 제안이 재개 작업에 붙음, 제안 상한 · 반복 금지, 원인 ID가 팩 매트릭스와 같음, 없는 원인 ID · nextStep 불일치 반려, 이벤트 · 작업 메시지 JSON Schema
+- `uv run pytest -q` 39개 통과 — trace의 apiModel(가짜 스냅샷 모델 · 규칙 모델), 임베딩(가짜 임베더 · 가짜 OpenAI 클라이언트로 문서 · 질의 분리, 64개 묶음, 429 · 연결 오류 재시도, 오류 메시지에 키 없음, `openai`인데 키 없음 → 시작 실패, Postgres 증분 색인 · 차원별 표), 시계열 구간(L006 head_pressure 101.1–210.9초 · L007 slurry_flow 14–309초 LOW, L009 · 정상 LOT 구간 없음, 규칙 모델이 구간을 관측 사실로 인용하고 「4σ · 2초 · 5초는 시연 선택값」 한계를 남김, 결과 dataVersion = 팩 버전), 요청 브리프(EV-1009 ETCH 제거량 · z · ETCH_WALL · 정비 이력 rootCauseConfirmed=false, EV-1006 head_pressure · CMP_PRESSURE, 조회하지 않은 숫자 · 근거 반려, 승인 해시가 브리프를 덮음), 도구 목록 · 설명, 데이터 팩 수치(EV-1009 Etch 제거량 · R1 · 참고 범위), 분석 시점 차단, 지식 검색 필터, 승인 전 변경 0건 · 거절 뒤 재개 · 같은 승인 중복 실행 1건, 회신 뒤 두 번째 제안이 재개 작업에 붙음, 제안 상한 · 반복 금지, 원인 ID가 팩 매트릭스와 같음, 없는 원인 ID · nextStep 불일치 반려, 이벤트 · 작업 메시지 JSON Schema
 - `fab-eval`은 **첫 판단**을 채점한다 — ① 기본 분석의 nextStep · 1순위 causeIds ② 팩 질문(E01–E03)에 대한 첫 제안의 종류 · 대상 공정. 회신 뒤 판단은 회신 내용에 따라 달라 정답표로 채점하지 않는다
   - 규칙 모델 3/3
   - **실제 모델(gpt-4.1-mini) 3/3을 세 번 연속**(회당 모델 17–19회 · 약 16–18만 토큰). 30초 제한에 걸린 호출은 대체 모델로 넘어가 끝까지 처리됐다
