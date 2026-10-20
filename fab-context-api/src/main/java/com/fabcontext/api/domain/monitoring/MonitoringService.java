@@ -11,7 +11,6 @@ import java.util.Set;
 import com.fabcontext.api.auth.AccessPolicy;
 import com.fabcontext.api.auth.AuthUser;
 import com.fabcontext.api.common.ApiException;
-import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
 import com.fabcontext.api.domain.processdata.DataVersion;
 import com.fabcontext.api.domain.processdata.PackStore;
@@ -68,7 +67,7 @@ public class MonitoringService {
 		if (runs.isEmpty()) {
 			throw ApiException.notFound("lot", lotId);
 		}
-		Map<String, String> incidentOfRun = incidentOfRun();
+		Map<String, String> incidentOfRun = incidentOfRun(runs.stream().map(r -> String.valueOf(r.get("runId"))).toList());
 		List<Map<String, Object>> out = new ArrayList<>();
 		for (Map<String, Object> r : runs) {
 			Map<String, Object> m = new LinkedHashMap<>(r);
@@ -120,10 +119,11 @@ public class MonitoringService {
 		accessPolicy.requireScope(user, processCode);
 	}
 
-	private Map<String, String> incidentOfRun() {
+	/** run ID → 그 run을 담은 사건(먼저 검출된 것) */
+	private Map<String, String> incidentOfRun(List<String> runIds) {
 		Map<String, String> m = new HashMap<>();
-		for (Incident i : incidentRepository.findAll()) {
-			i.getRunIds().forEach(r -> m.putIfAbsent(r, i.getIncidentId()));
+		for (IncidentRepository.RunIncident r : incidentRepository.findByRunIds(runIds)) {
+			m.putIfAbsent(r.getRunId(), r.getIncidentId());
 		}
 		return m;
 	}

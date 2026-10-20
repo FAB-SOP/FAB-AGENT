@@ -14,22 +14,40 @@ import java.util.UUID;
 import com.jayway.jsonpath.JsonPath;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * API 통합 테스트 공통 지원. 모든 테스트 클래스가 같은 Spring 컨텍스트(시드 데이터 포함)를 공유하므로,
  * 상태를 바꾸는 테스트는 {@link #newIncident}로 자기 사건을 만들어 쓴다.
+ * <p>
+ * DB는 compose와 같은 이미지의 Postgres 컨테이너 하나를 테스트 실행 전체가 함께 쓴다(실행이 끝나면 Ryuk가 지운다).
+ * 컨텍스트는 스키마로 나눈다 — 기본은 {@value #SCHEMA}, 설정이 다른 컨텍스트(SlowAgentApiTest)는 자기 스키마를 쓴다.
+ * 테이블은 컨텍스트를 띄울 때마다 새로 만들고 시드한다(ddl-auto=create).
  */
-@SpringBootTest(properties = {"fab.agent.step-delay-ms=30",
-		// 컨텍스트마다 별도 인메모리 DB (지연 설정이 다른 테스트 컨텍스트와 테이블을 공유하지 않도록)
-		"spring.datasource.url=jdbc:h2:mem:fab-${random.uuid};MODE=PostgreSQL;DB_CLOSE_DELAY=-1"})
+@SpringBootTest(properties = {"fab.agent.step-delay-ms=30", "spring.jpa.hibernate.ddl-auto=create",
+		"spring.jpa.properties.hibernate.default_schema=" + ApiTestSupport.SCHEMA,
+		"spring.datasource.hikari.schema=" + ApiTestSupport.SCHEMA})
 @AutoConfigureMockMvc
 public abstract class ApiTestSupport {
+
+	public static final String SCHEMA = "backend";
+
+	/** compose의 postgres와 같은 이미지. 클래스를 처음 쓸 때 한 번 띄우고 모든 컨텍스트가 재사용한다 */
+	@ServiceConnection
+	static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
+			DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"));
+
+	static {
+		POSTGRES.start();
+	}
 
 	public static final String SERVICE_TOKEN = "dev-simulator-token";
 

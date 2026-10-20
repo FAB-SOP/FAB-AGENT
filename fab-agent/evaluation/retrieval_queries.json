@@ -1,0 +1,272 @@
+{
+ "about": "지식 MCP 검색 평가 질의셋 — 한국어 위주. 기대 조각은 knowledge/cause-matrix · 팀 점검 문서 · 원문 조각 내용을 보고 정했다(정답 파일 · 시나리오 문서는 쓰지 않았다). paraphrase=true는 문서와 겹치는 낱말을 일부러 피한 질의다. agentQuery는 Agent 프롬프트가 권하는 꼴(한국어 + 영어 용어 · 약어)로 같은 뜻을 쓴 질의다 — 원문(영어) 검색에만 둔다.",
+ "metrics": "Hit@3 = 기대 조각이 상위 3개 안에 있는 비율, MRR = 첫 기대 조각 순위의 역수 평균(상위 10개까지)",
+ "queries": [
+  {
+   "id": "T01",
+   "tool": "search_technical_documents",
+   "query": "관리한계 이탈과 규격 이탈 차이",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "agentQuery": "관리 한계(control limit)와 규격 한계(specification limit) 이탈 차이"
+  },
+  {
+   "id": "T02",
+   "tool": "search_technical_documents",
+   "query": "질량유량계 교정 오차",
+   "expect": {
+    "documentId": [
+     "DOC03"
+    ]
+   },
+   "agentQuery": "질량유량제어기(MFC) calibration 교정 오차"
+  },
+  {
+   "id": "T03",
+   "tool": "search_technical_documents",
+   "query": "두께 계측 불확도",
+   "expect": {
+    "documentId": [
+     "DOC06"
+    ]
+   },
+   "agentQuery": "두께 계측 불확도(measurement uncertainty)"
+  },
+  {
+   "id": "T04",
+   "tool": "search_technical_documents",
+   "query": "플라스마 RF 센서로 공정 상태 감지",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "agentQuery": "플라스마 RF 센서(plasma sensing)로 공정 상태 감지"
+  },
+  {
+   "id": "T05",
+   "tool": "search_technical_documents",
+   "query": "CMP 연마 중 두께를 센서로 실시간 제어하는 방법",
+   "expect": {
+    "documentId": [
+     "DOC01"
+    ]
+   },
+   "agentQuery": "CMP 연마 중 in-situ 센서로 두께 실시간 제어(thickness control)"
+  },
+  {
+   "id": "T06",
+   "tool": "search_technical_documents",
+   "query": "화학 기상 증착에서 온도와 압력이 막 성장에 미치는 영향",
+   "expect": {
+    "documentId": [
+     "DOC04"
+    ]
+   },
+   "agentQuery": "CVD 화학 기상 증착에서 온도 · 압력이 막 성장(film growth)에 미치는 영향"
+  },
+  {
+   "id": "T07",
+   "tool": "search_technical_documents",
+   "query": "유도결합 플라스마 식각 장비 운전 방법",
+   "expect": {
+    "documentId": [
+     "DOC05"
+    ]
+   },
+   "agentQuery": "ICP(inductively coupled plasma) 식각 장비 운전 방법"
+  },
+  {
+   "id": "T08",
+   "tool": "search_technical_documents",
+   "query": "관리도에서 점들이 연속으로 한쪽에 몰릴 때 판단 규칙",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "agentQuery": "관리도(control chart)에서 점들이 연속으로 한쪽에 몰릴 때 판단 규칙(run rules)"
+  },
+  {
+   "id": "T09",
+   "tool": "search_technical_documents",
+   "query": "빛의 편광 변화로 박막 두께를 재는 방법",
+   "expect": {
+    "documentId": [
+     "DOC06"
+    ]
+   },
+   "paraphrase": true,
+   "agentQuery": "엘립소미트리(ellipsometry)로 박막 두께 측정"
+  },
+  {
+   "id": "T10",
+   "tool": "search_technical_documents",
+   "query": "연마를 언제 멈출지 알아내는 종점 검출",
+   "expect": {
+    "documentId": [
+     "DOC01"
+    ]
+   },
+   "agentQuery": "CMP 종점 검출(endpoint detection)"
+  },
+  {
+   "id": "P01",
+   "tool": "search_applicable_playbooks",
+   "query": "헤드 압력 점검",
+   "expect": {
+    "causeId": [
+     "CMP_PRESSURE"
+    ]
+   }
+  },
+  {
+   "id": "P02",
+   "tool": "search_applicable_playbooks",
+   "query": "슬러리 유량 부족",
+   "expect": {
+    "causeId": [
+     "CMP_SLURRY"
+    ]
+   }
+  },
+  {
+   "id": "P03",
+   "tool": "search_applicable_playbooks",
+   "query": "정비 후 챔버 시즈닝",
+   "expect": {
+    "causeId": [
+     "ETCH_WALL"
+    ]
+   }
+  },
+  {
+   "id": "P04",
+   "tool": "search_applicable_playbooks",
+   "query": "패드 수명과 컨디셔닝 상태",
+   "expect": {
+    "causeId": [
+     "CMP_PAD"
+    ]
+   }
+  },
+  {
+   "id": "P05",
+   "tool": "search_applicable_playbooks",
+   "query": "식각 중 RF 반사 전력이 늘었을 때 확인할 것",
+   "expect": {
+    "causeId": [
+     "ETCH_RF"
+    ]
+   }
+  },
+  {
+   "id": "P06",
+   "tool": "search_applicable_playbooks",
+   "query": "CVD 히터 온도가 불안정할 때",
+   "expect": {
+    "causeId": [
+     "CVD_THERMAL"
+    ]
+   }
+  },
+  {
+   "id": "P07",
+   "tool": "search_applicable_playbooks",
+   "query": "웨이퍼를 누르는 힘이 약해졌다",
+   "expect": {
+    "causeId": [
+     "CMP_PRESSURE"
+    ]
+   },
+   "paraphrase": true
+  },
+  {
+   "id": "P08",
+   "tool": "search_applicable_playbooks",
+   "query": "연마가 정해진 시간보다 일찍 끝났다",
+   "expect": {
+    "causeId": [
+     "CMP_TIME"
+    ]
+   },
+   "paraphrase": true
+  },
+  {
+   "id": "P09",
+   "tool": "search_applicable_playbooks",
+   "query": "측정값만 튀었는데 다시 재니 정상이었다",
+   "expect": {
+    "causeId": [
+     "METROLOGY"
+    ]
+   },
+   "paraphrase": true
+  },
+  {
+   "id": "P10",
+   "tool": "search_applicable_playbooks",
+   "query": "정전척 온도와 뒷면 헬륨 냉각",
+   "expect": {
+    "causeId": [
+     "ETCH_THERMAL"
+    ]
+   }
+  },
+  {
+   "id": "C01",
+   "tool": "search_past_cases",
+   "query": "입고 두께는 정상인데 헤드 압력이 낮았던 사례",
+   "expect": {
+    "chunkId": [
+     "DEMO-CASE-001"
+    ]
+   }
+  },
+  {
+   "id": "C02",
+   "tool": "search_past_cases",
+   "query": "공정 이상처럼 보였지만 계측 문제였던 경우",
+   "expect": {
+    "chunkId": [
+     "DEMO-CASE-006"
+    ]
+   }
+  },
+  {
+   "id": "C03",
+   "tool": "search_past_cases",
+   "query": "앞 공정 식각 잔막이 CMP 결과까지 이어진 사례",
+   "expect": {
+    "chunkId": [
+     "DEMO-CASE-003"
+    ]
+   }
+  },
+  {
+   "id": "C04",
+   "tool": "search_past_cases",
+   "query": "공정이 중간에 멈춰서 덜 깎인 일",
+   "expect": {
+    "chunkId": [
+     "DEMO-CASE-007"
+    ]
+   },
+   "paraphrase": true
+  },
+  {
+   "id": "C05",
+   "tool": "search_past_cases",
+   "query": "연마액이 덜 나와서 막이 두껍게 남은 일",
+   "expect": {
+    "chunkId": [
+     "DEMO-CASE-002"
+    ]
+   },
+   "paraphrase": true
+  }
+ ]
+}

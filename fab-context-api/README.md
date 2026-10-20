@@ -4,7 +4,7 @@
 **원칙: 공개 API = 프론트 계약, 내부 API · Agent 이벤트 = 팀 계약(원본은 팀 내부, 테스트용 사본 `../fab-agent/contracts/`), 둘 사이 변환은 Spring이 한다.**
 operationId · HTTP 메서드 · 경로는 프론트 계약과 1:1로 일치한다(`/v3/api-docs`, 대조 도구 `../tools/openapi_diff.py`).
 
-- Java 21 · Spring Boot 4.1 · Gradle · Spring Security(세션 + CSRF) · JPA + **PostgreSQL**(기본) / H2(`h2` 프로필 · 테스트)
+- Java 21 · Spring Boot 4.1 · Gradle · Spring Security(세션 + CSRF) · JPA + **PostgreSQL**(실행 · 테스트 모두 — 테스트는 Testcontainers)
 - 데이터 팩은 **v2 조립본 `../data/fab-causal-pack-v2/`**(dataVersion `causal-pack-v2-scenarios`)를 읽는다 — `../data/build_pack_v2.py`가 v1 전체(`../FAB-실제문서-…/fab-causal-pack-v1`)와 v2 CURRENT(`../backend-handoff-v2/data`, L006 CMP-PM3 한 run 수정 + sensorEnvelopes)를 합친다. 실제 원문 RAG는 동료 묶음의 `fab-rag-real-documents-v1/rag/source-chunks.jsonl`을 그대로 읽는다. `evaluation/`(정답) · 생성기는 어디에도 없다
 - 공정 **CVD → ETCH → CMP**, 공정마다 PM 셋. run · 5위치 계측 · run 특징 · 동결 관리한계(I-chart, R1) · 센서 참고 범위 · 정비 이력 · 원인 매트릭스 · 원시 시계열(gz, DB에 넣지 않고 파일에서 읽음)
 - Agent 자리는 `AGENT_MODE`로 고른다 — `simulator`(기본, 서버 안 규칙 분석) / `external`(fab-agent Worker가 `/internal/jobs`로 가져간다). Kafka는 아직 없다
@@ -34,7 +34,7 @@ src/main/java/com/fabcontext/api/
 ├─ simulator/     서버 안 가짜 Agent — AgentSimulator · AgentWorker · AnalysisFactory(ProcessEvidenceService 위 규칙 분석).
 │                 AGENT_MODE=external이면 작업을 잡지 않는다
 └─ seed/          SeedCatalog(묶음 → DB) · SeedRunner(시연 사건) — DB가 비어 있을 때 한 번
-src/main/resources/application.yml · application-h2.yml
+src/main/resources/application.yml
 src/test/java/…   api/(화면별 통합 테스트 + InternalApiTest) · domain/ · simulator/ · common/
 scripts/smoke-test.sh    실행 중인 서버에 전체 흐름을 curl로 (시뮬레이터 모드)
 Dockerfile               fab-agent/compose.yaml이 빌드한다(묶음은 /bundle로 마운트)
@@ -48,13 +48,15 @@ Dockerfile               fab-agent/compose.yaml이 빌드한다(묶음은 /bundl
 # 전체(권장) — Postgres · 이 backend · 업무 MCP · 지식 MCP · Agent Worker
 (cd ../fab-agent && FAB_LLM=rule docker compose up -d --build)          # backend는 http://localhost:8090
 
-# backend만 — Postgres(호스트 55432)에 붙는다. 테이블을 만들고 비어 있을 때만 시드
+# backend만 — compose의 postgres(호스트 55432)만 띄우고 붙는다. 테이블을 만들고 비어 있을 때만 시드
 (cd ../fab-agent && docker compose up -d postgres) && ./gradlew bootRun
 
-# Docker 없이 — 인메모리 H2, 띄울 때마다 새로 시드
-SPRING_PROFILES_ACTIVE=h2 ./gradlew bootRun
-SPRING_PROFILES_ACTIVE=h2 AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun   # fab-agent fab-eval · fab-demo · pytest용
+# 띄울 때마다 처음 데이터 — DDL_AUTO=create가 backend 테이블을 지우고 새로 만든 뒤 시드한다
+DDL_AUTO=create ./gradlew bootRun
+DDL_AUTO=create AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun   # fab-agent fab-eval · fab-demo용
 ```
+
+compose의 `backend` 컨테이너가 떠 있으면 먼저 끈다(`docker compose stop backend agent business-mcp`) — 같은 `backend` 스키마와 포트 8090을 쓴다.
 
 - 팩 경로는 `FAB_PACK_DIR`(기본 `../data/fab-causal-pack-v2`) · `FAB_RAG_DIR`(기본 `../FAB-실제문서-…/fab-rag-real-documents-v1`)로 바꾼다. v2 팩은 `python3 ../data/build_pack_v2.py`로 다시 만든다(같은 입력이면 같은 바이트, 검사 포함)
 - 다시 시드: `docker compose exec postgres psql -U fab -d fab -c "drop schema backend cascade"` 후 재시작. Agent 체크포인트도 같이 지우려면 `agent` 스키마도 지운다
@@ -70,7 +72,7 @@ SPRING_PROFILES_ACTIVE=h2 AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun
 
   `agent` 스키마도 함께 지우는 이유: Agent 체크포인트가 지운 backend의 작업 · 승인 ID를 기억하고 있어 재개가 어긋난다. `knowledge` 스키마(문서 벡터)는 그대로 둔다
 - Tomcat이 시드보다 먼저 열린다. 준비 확인은 `/internal/incidents/EV-1009`가 200인지로 한다(compose healthcheck도 같다)
-- 기본 포트 **8090**(`PORT`로 변경). Swagger UI http://localhost:8090/swagger-ui.html, H2 콘솔은 h2 프로필에서만
+- 기본 포트 **8090**(`PORT`로 변경). Swagger UI http://localhost:8090/swagger-ui.html
 
 | 계정 | userId | 역할 | 공정 범위 |
 |---|---|---|---|
@@ -85,12 +87,12 @@ SPRING_PROFILES_ACTIVE=h2 AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun
 ## 검증 (2026-10-20)
 
 ```bash
-./gradlew test                     # 108개 — 테스트는 h2 프로필
+./gradlew test                     # 108개 — Testcontainers Postgres(pgvector/pgvector:pg16, compose와 같은 이미지). Docker 필요
 ./scripts/smoke-test.sh http://localhost:8090   # 107개 — 시뮬레이터 모드 서버에 curl 전체 흐름 (jq 필요)
 python3 ../tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-docs ↔ 프론트 계약 차이 표
 ```
 
-통합 테스트는 컨텍스트를 공유하므로 상태를 바꾸는 테스트는 `ApiTestSupport.newIncident()`로 자기 사건을 만든다. 외부 Agent와의 연결은 fab-agent 쪽(pytest 27개 · `fab-eval` 규칙 모델 3/3 · 실제 모델 3/3 세 번 · compose 점검)에서 검증한다.
+통합 테스트는 컨텍스트와 Postgres 컨테이너 하나를 공유하므로 상태를 바꾸는 테스트는 `ApiTestSupport.newIncident()`로 자기 사건을 만든다. 설정이 다른 컨텍스트(`SlowAgentApiTest`, Agent 지연 1.5초)는 같은 컨테이너의 자기 스키마(`backend_slow`)에 따로 시드한다. 컨텍스트를 띄울 때마다 테이블을 새로 만든다(`ddl-auto=create`). 외부 Agent와의 연결은 fab-agent 쪽(pytest 27개 · `fab-eval` 규칙 모델 3/3 · 실제 모델 3/3 세 번 · compose 점검)에서 검증한다.
 
 ## 공통 규칙
 
@@ -227,7 +229,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 
 ### DB 스키마 (2026-10-20)
 
-**외래 키 — String ID 필드는 두고, 같은 컬럼에 읽기 전용 연관을 붙여 제약만 건다.** 엔티티를 `@ManyToOne`으로 갈아엎으면 서비스 · DTO 코드가 ID 대신 객체를 다루게 되고, 지연 로딩 · 직렬화를 손봐야 공개 · 내부 API 응답 모양을 지킬 수 있다. 대신 `@ManyToOne(fetch = LAZY) @JoinColumn(insertable = false, updatable = false, foreignKey = @ForeignKey(name = …))`를 `xxxRef` 필드로 하나 더 두었다(getter 없음). 값은 지금처럼 `incidentId` 같은 String으로 쓰고 읽고, Hibernate는 이 연관을 보고 H2 · Postgres 둘 다에 이름 붙은 외래 키를 만든다 — `schema.sql`을 DB마다 따로 두지 않아도 된다. `@JoinColumn(name)`은 물리 이름(`incident_id`)이 아니라 필드 이름(`incidentId`)을 써야 한다(같은 컬럼을 두 이름으로 보면 `DuplicateMappingException`).
+**외래 키 — String ID 필드는 두고, 같은 컬럼에 읽기 전용 연관을 붙여 제약만 건다.** 엔티티를 `@ManyToOne`으로 갈아엎으면 서비스 · DTO 코드가 ID 대신 객체를 다루게 되고, 지연 로딩 · 직렬화를 손봐야 공개 · 내부 API 응답 모양을 지킬 수 있다. 대신 `@ManyToOne(fetch = LAZY) @JoinColumn(insertable = false, updatable = false, foreignKey = @ForeignKey(name = …))`를 `xxxRef` 필드로 하나 더 두었다(getter 없음). 값은 지금처럼 `incidentId` 같은 String으로 쓰고 읽고, Hibernate는 이 연관을 보고 이름 붙은 외래 키를 만든다 — `schema.sql`을 따로 두지 않아도 된다. `@JoinColumn(name)`은 물리 이름(`incident_id`)이 아니라 필드 이름(`incidentId`)을 써야 한다(같은 컬럼을 두 이름으로 보면 `DuplicateMappingException`).
 
 | 테이블.컬럼 | → 참조 | 제약 이름 | 비고 |
 |---|---|---|---|
@@ -248,7 +250,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 - `check_request.waiting_job_id`(→ job) · `incident_action.approval_id`(→ approval) — 실제 관계지만 이번 작업의 관계 목록 밖이라 두었다(걸 때는 같은 방식으로 한 줄씩 더하고 테스트로 순서를 확인한다)
 - 시드 순서: 사용자 → 문서 → run(IDENTITY라 한 건씩 차례로 INSERT) → 계측 · 특징 → 사건 → 작업 · 결과 · 승인. 삭제 경로는 없다
 
-**JSON 컬럼 — `AttributeConverter`(JSON 문자열 → varchar)를 `@JdbcTypeCode(SqlTypes.JSON)`으로 바꿨다.** Hibernate 7.4가 Postgres에서는 `jsonb`, H2에서는 `json`을 고른다. `common/JsonConverters`는 지웠다. 이제 `wafer_ids ? 'W-CURRENT-009-3'` 같은 조회와 jsonb 인덱스를 쓸 수 있다. 상태 · 장비처럼 조건에 쓰는 값은 일반 컬럼 그대로다.
+**JSON 컬럼 — `AttributeConverter`(JSON 문자열 → varchar)를 `@JdbcTypeCode(SqlTypes.JSON)`으로 바꿨다.** Hibernate 7.4가 Postgres에서 `jsonb`를 고른다. `common/JsonConverters`는 지웠다. 목록 안의 값으로 찾는 조회는 jsonb 포함 연산자(`@>`)로 DB가 거른다 — 공정 담당자(`process_scopes`, `UserAccountRepository.findEngineersByProcess`), 웨이퍼가 든 사건(`wafer_ids`, `IncidentRepository.existsByProcessCodeInAndWafer`), run별 사건(`run_ids`를 `jsonb_array_elements_text`로 펼침, `findByRunIds`). 전에는 전부 읽어 Java에서 걸렀다. 네이티브 쿼리는 테이블 앞에 `{h-schema}`를 붙여 기본 스키마를 따른다. 상태 · 장비처럼 조건에 쓰는 값은 일반 컬럼 그대로다.
 
 | 테이블 | jsonb 컬럼 |
 |---|---|
@@ -265,4 +267,4 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 
 **컬럼 이름 — `metrology.cd_value` → `value_a`.** 옛 PHOTO 공정(CD 계측) 시절 이름이었고 지금은 위치 두께(Å)가 들어 있다. API의 JSON 필드 이름(`thicknessA` 등)은 계약을 따르므로 그대로다.
 
-`domain/SchemaTest`가 H2에서 외래 키 14개 · JSON 타입 · `value_a`를 확인하고, 없는 run을 가리키는 계측 INSERT가 거절되는지 본다.
+`domain/SchemaTest`가 테스트 Postgres에서 외래 키 14개 · jsonb 컬럼 23개(json 0개) · jsonb 연산자 · `value_a`를 확인하고, 없는 run을 가리키는 계측 INSERT가 거절되는지 본다.

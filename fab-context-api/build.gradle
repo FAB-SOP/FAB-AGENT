@@ -24,16 +24,17 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	implementation 'org.springframework.boot:spring-boot-h2console'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 	runtimeOnly 'org.postgresql:postgresql'
-	runtimeOnly 'com.h2database:h2'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+	// 테스트 DB = compose와 같은 이미지의 Postgres 컨테이너 하나(ApiTestSupport)
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	testImplementation 'org.testcontainers:testcontainers-postgresql'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -41,8 +42,6 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
-	// 테스트는 매번 새 DB가 필요해 H2(인메모리)로 돈다 — 실행 기본값은 Postgres
-	systemProperty 'spring.profiles.active', 'h2'
 	testLogging {
 		events 'failed'
 		exceptionFormat 'full'

@@ -1,8 +1,9 @@
 """모델별 정답 · 토큰 사용량 비교 — EV-1006 · EV-1007 · EV-1009를 Spring backend 위에서 끝까지 돌린다(fab-eval과 같은 흐름).
 
-  cd ../fab-context-api && SPRING_PROFILES_ACTIVE=h2 AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun
+  docker compose up -d postgres   # compose에서는 postgres만(backend · agent는 끈다)
+  cd ../fab-context-api && DDL_AUTO=create AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun
   uv run python evaluation/compare_models.py gpt-4.1-mini gpt-4o-mini
-모델마다 Spring을 다시 띄워야 같은 시드에서 잰다(h2는 재기동하면 처음 데이터). 대체 모델은 끈다(FAB_FALLBACK_MODEL=).
+모델마다 Spring을 다시 띄워야 같은 시드에서 잰다(DDL_AUTO=create는 띄울 때마다 처음 데이터). 대체 모델은 끈다(FAB_FALLBACK_MODEL=).
 """
 
 import asyncio

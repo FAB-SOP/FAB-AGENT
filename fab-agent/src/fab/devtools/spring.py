@@ -4,7 +4,7 @@
 - make_runner: 업무 MCP(BACKEND_URL=Spring) · 지식 MCP를 같은 프로세스에 띄운 JobRunner + HTTP 작업 소스
 - drive: 질문 → (승인/거절) → (회신) → 결과 → 보고서를 사람 역할로 끝까지 진행한다
 
-Spring은 외부 Agent 모드로 띄운다: SPRING_PROFILES_ACTIVE=h2 AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun
+Spring은 compose의 postgres 위에 외부 Agent 모드로 띄운다: DDL_AUTO=create AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun
 """
 
 from __future__ import annotations

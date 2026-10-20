@@ -132,8 +132,8 @@ public class ProcessDataService {
 			throw ApiException.notFound("wafer", waferId);
 		}
 		boolean runInScope = runs.stream().anyMatch(r -> user.hasScope(r.getProcessCode()));
-		boolean incidentInScope = incidentRepository.findByProcessCodeInOrderByDetectedAtDesc(user.processScopes())
-			.stream().anyMatch(i -> i.getWaferIds().contains(waferId));
+		boolean incidentInScope = !user.processScopes().isEmpty()
+				&& incidentRepository.existsByProcessCodeInAndWafer(user.processScopes(), waferId);
 		if (!runInScope && !incidentInScope) {
 			throw ApiException.forbidden("PROCESS_SCOPE_DENIED", "이 웨이퍼 경로를 조회할 공정 권한이 없습니다.");
 		}

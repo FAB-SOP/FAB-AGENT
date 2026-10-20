@@ -27,6 +27,7 @@ fab-rag-mcp = "fab.rag.server:main"
 fab-worker = "fab.agent.worker:main"
 fab-demo = "fab.devtools.demo:demo"
 fab-eval = "fab.devtools.demo:eval_main"
+fab-rag-index = "fab.rag.index:admin_main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -42,4 +43,5 @@ dev = [
     "jsonschema>=4.26.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "testcontainers[postgres]>=4.10",
 ]

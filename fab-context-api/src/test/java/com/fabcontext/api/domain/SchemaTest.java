@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** backend 스키마 — 외래 키 · JSON 컬럼 · 컬럼 이름이 H2(테스트)에도 만들어지는지. Postgres는 README 절차로 확인한다 */
+/** backend 스키마 — 외래 키 · jsonb 컬럼 · 컬럼 이름이 실제 Postgres(테스트 컨테이너)에 만들어지는지 */
 @DisplayName("DB 스키마 (외래 키 · JSON · 컬럼 이름)")
 class SchemaTest extends ApiTestSupport {
 
@@ -23,7 +23,8 @@ class SchemaTest extends ApiTestSupport {
 	@Test
 	void foreignKeysExist() {
 		List<String> fks = jdbc.queryForList("""
-			select constraint_name from information_schema.table_constraints where constraint_type = 'FOREIGN KEY'""",
+			select constraint_name from information_schema.table_constraints
+			where constraint_type = 'FOREIGN KEY' and constraint_schema = current_schema()""",
 			String.class).stream().map(s -> s.toLowerCase(Locale.ROOT)).toList();
 		assertThat(fks).contains("fk_job_incident", "fk_analysis_result_incident", "fk_analysis_result_job",
 			"fk_approval_incident", "fk_approval_job", "fk_check_request_incident", "fk_check_request_approval",
@@ -40,15 +41,23 @@ class SchemaTest extends ApiTestSupport {
 
 	@Test
 	void jsonColumnsAndRenamedColumn() {
-		String type = jdbc.queryForObject("""
-			select data_type from information_schema.columns where lower(table_name) = 'incident' and lower(column_name) = 'wafer_ids'""",
-			String.class);
-		assertThat(type).isEqualToIgnoringCase("JSON");
+		assertThat(jdbc.queryForObject("select current_schema()", String.class)).isEqualTo(SCHEMA);
+		// @JdbcTypeCode(SqlTypes.JSON) 컬럼 23개가 전부 jsonb다(json · text가 아니다)
+		List<String> json = jdbc.queryForList("""
+			select table_name || '.' || column_name from information_schema.columns
+			where table_schema = current_schema() and data_type in ('json', 'jsonb')""", String.class);
+		assertThat(json).hasSize(23).contains("incident.wafer_ids", "incident.run_ids", "user_account.process_scopes");
 		assertThat(jdbc.queryForObject("""
-			select count(*) from information_schema.columns where lower(table_name) = 'metrology' and lower(column_name) = 'value_a'""",
+			select count(*) from information_schema.columns where table_schema = current_schema() and data_type = 'json'""",
+			Integer.class)).isZero();
+		// jsonb 연산자가 실제로 먹는다 — 저장소 조회(findEngineersByProcess 등)가 기대는 것
+		assertThat(jdbc.queryForObject("""
+			select count(*) from incident where wafer_ids @> '["W-CURRENT-009-3"]'::jsonb""", Integer.class)).isPositive();
+		assertThat(jdbc.queryForObject("""
+			select count(*) from information_schema.columns where table_schema = current_schema() and table_name = 'metrology' and column_name = 'value_a'""",
 			Integer.class)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
-			select count(*) from information_schema.columns where lower(table_name) = 'metrology' and lower(column_name) = 'cd_value'""",
+			select count(*) from information_schema.columns where table_schema = current_schema() and table_name = 'metrology' and column_name = 'cd_value'""",
 			Integer.class)).isZero();
 	}
 }

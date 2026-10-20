@@ -35,9 +35,8 @@ public class SecurityConfig {
 				.csrfTokenRepository(csrfTokenRepository)
 				// /api/auth/csrf 응답 token을 그대로 X-CSRF-TOKEN 헤더에 넣어 쓰는 SPA 방식
 				.csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
-				.ignoringRequestMatchers("/api/events/**", "/internal/**", "/h2-console/**"))
+				.ignoringRequestMatchers("/api/events/**", "/internal/**"))
 			.securityContext(sc -> sc.securityContextRepository(securityContextRepository))
-			.headers(h -> h.frameOptions(f -> f.sameOrigin()))
 			.formLogin(f -> f.disable())
 			.httpBasic(b -> b.disable())
 			.logout(l -> l.disable())
@@ -49,8 +48,7 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
 				.requestMatchers("/api/events/**").hasRole("SERVICE")
 				.requestMatchers("/internal/**").hasRole("AGENT")
-				.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/h2-console/**")
-				.permitAll()
+				.requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
 				.requestMatchers("/api/**").hasAnyRole("ENGINEER", "MANAGER")
 				.anyRequest().permitAll())
 			.exceptionHandling(e -> e

@@ -4,7 +4,8 @@
   uv run fab-demo --incident EV-1006 --reject   # 승인 거절 경로
   uv run fab-eval                               # EV-1006 · EV-1007 · EV-1009 첫 판단을 정답표와 대조
 
-Spring: cd ../fab-context-api && SPRING_PROFILES_ACTIVE=h2 AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun
+Spring: compose에서 postgres만 띄우고(docker compose up -d postgres) cd ../fab-context-api && DDL_AUTO=create AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun
+(DDL_AUTO=create — 띄울 때마다 backend 테이블을 새로 만들고 시드한다)
 FAB_LLM=openai(+ OPENAI_API_KEY)이면 실제 모델, 아니면 규칙 모델로 돈다.
 """
 

@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import com.fabcontext.api.auth.Role;
 import com.fabcontext.api.auth.UserAccount;
 import com.fabcontext.api.auth.UserAccountRepository;
 import com.fabcontext.api.common.Ids;
@@ -157,8 +156,7 @@ public class AnalysisFactory {
 		if (target == null) {
 			return Optional.empty();
 		}
-		Optional<UserAccount> owner = userRepository.findAll().stream()
-			.filter(u -> u.getRole() == Role.ENGINEER && u.getProcessScopes().contains(target))
+		Optional<UserAccount> owner = userRepository.findEngineersByProcess(target).stream()
 			.filter(u -> !"설비정비팀".equals(u.getTeam())).findFirst();
 		if (owner.isEmpty()) {
 			return Optional.empty();

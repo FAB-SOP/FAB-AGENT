@@ -7,7 +7,8 @@ backend는 **Spring 하나**(`../fab-context-api`)이고, 데이터 팩은 **v2 
 ## 한 번에 띄우기 (Docker)
 
 ```bash
-FAB_LLM=rule docker compose up -d --build                                     # Postgres · Spring backend · 업무 MCP · 지식 MCP · Agent Worker
+FAB_LLM=rule docker compose up -d --build                                     # Postgres · Spring backend · 업무 MCP · 지식 MCP · Agent Worker (.env에 OPENAI_API_KEY 필요 — 임베딩)
+EMBEDDER=hash FAB_LLM=rule docker compose up -d --build                       # 키 없이 점검(시험용 해시 임베딩)
 docker compose --profile tools run --rm --no-deps smoke                       # EV-1009 질문 → 제안 → 승인 → 실행 → 회신 → 보고서
 docker compose --profile tools run --rm --no-deps smoke python evaluation/restart_smoke.py before
 docker compose restart agent                                                  # 승인 대기 중 Worker 재시작
@@ -20,20 +21,61 @@ docker compose down
 | `postgres` (호스트 55432) | 한 DB에 `backend`(Spring) · `agent`(LangGraph 체크포인트) · `knowledge`(문서 벡터) 스키마 |
 | `backend` (호스트 8090) | Spring. 공개 API `/api/**`, Agent 전용 내부 API `/internal/**`. `AGENT_MODE=external` — 작업은 Worker가 가져간다 |
 | `business-mcp` | 업무 MCP. Spring `/internal/**`만 부르는 어댑터(DB · 규칙 없음) |
-| `rag-mcp` | 지식 MCP. 실제 원문 청크 · 팀 점검 문서 · 가상 사례 |
+| `rag-mcp` | 지식 MCP. 실제 원문 청크 · 팀 점검 문서 · 가상 사례. OpenAI 임베딩(키 없으면 시작 실패 → `agent`도 안 뜬다) |
 | `agent` | Worker. `GET /internal/jobs`(QUEUED)를 가져가 처리하고 이벤트를 `POST /internal/jobs/{id}/events`로 돌려준다 |
 
 **정답은 어느 컨테이너에도 붙이지 않는다.** v2 조립본(`../data/fab-causal-pack-v2` — 정답 · 생성기가 없다)과 원문 RAG의 `fab-rag-real-documents-v1/rag`만 읽기 전용으로 마운트한다 — `evaluation/` · 생성기(`generate.py`) · 원문 PDF(`originals/` · `selected/`)는 보이지 않는다. `.env`(API 키)는 이미지에 들어가지 않는다(`.dockerignore`).
 `.env`의 `FAB_LLM=openai`가 compose에도 전달되므로, 결정적으로 점검할 때는 앞에 `FAB_LLM=rule`을 붙인다. 데이터를 처음부터 다시 넣으려면 `backend` · `agent` 스키마를 지우고 다시 올린다.
 
+## 지식 MCP 임베딩 — 의미 검색
+
+**compose · 시연은 OpenAI 임베딩(`EMBEDDER=openai`, `text-embedding-3-small`, 1536차원)이다 — `OPENAI_API_KEY`가 필요하다(`.env`).** 키는 `.env` → compose 환경 변수로만 들어가고 이미지 · 로그 · 오류 메시지에는 남지 않는다.
+
+| 상황 | 결과 |
+|---|---|
+| 키가 있다 | 첫 기동에 122조각을 64개씩 묶어 임베딩(`knowledge.chunks_d1536`). 다시 띄우면 `embedded 0`(chunkId · contentHash · embed_model이 같으면 건너뛴다) |
+| 키가 없다 · 틀렸다 · 네트워크 오류 · 429가 계속된다 | 지식 MCP가 **시작에 실패**한다(종료 코드 2, 로그에 원인만: 「OPENAI_API_KEY가 없습니다」 · 「인증 실패(401)」 · 「네트워크 오류」 · 「요청 한도 초과(429)」). healthcheck가 실패해 compose는 `agent`를 띄우지 않는다. 해시로 조용히 바꾸지 않는다 |
+| 키 없이 점검 | `EMBEDDER=hash docker compose up -d` — 시험용 글자 n-gram 해시(`hash-ngram-v1`, 768차원, `knowledge.chunks_d768`). pytest도 hash로 돈다 |
+
+- `.env`의 `EMBEDDER` 줄이 compose 기본값보다 앞선다. 예전 `.env.example`을 복사했다면 `EMBEDDER=hash`가 들어 있으니 `openai`로 고친다(지금 `.env.example`은 `openai`)
+- 문서는 `embed_documents`(묶음), 질의는 `embed_query`. 429 · 연결 오류 · 5xx는 0.5 · 1.5 · 3초 뒤 세 번 다시 시도한다
+- 차원이 다르면 표가 따로 생긴다. 검색은 **지금 임베더의 표 · embed_model 행만** 본다. 쓰지 않는 표(예: hash 시절 `chunks_d768`)는 남겨 두고 `/healthz`의 `otherTables`로 알린다 — `EMBEDDER=hash`로 다시 띄우면 그대로 쓰인다. 지우려면:
+  ```bash
+  PG_DSN=postgresql://fab:fab@localhost:55432/fab uv run fab-rag-index status        # 표 · 모델 · 행 수
+  PG_DSN=postgresql://fab:fab@localhost:55432/fab EMBEDDER=openai uv run fab-rag-index prune   # 지금 모델이 없는 표를 지운다(확인을 묻는다)
+  ```
+- 확인: `docker compose exec rag-mcp python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:9102/healthz').read().decode())"` → `embedModel` · `dim` · `embedded` · `table` · `otherTables`
+
+### 검색 평가 (`evaluation/retrieval_eval.py`, 수동 실행 — openai는 키가 필요하다)
+
+```bash
+uv run python evaluation/retrieval_eval.py                  # hash · openai 둘 다(메모리 색인, compose DB를 건드리지 않는다)
+uv run python evaluation/retrieval_eval.py --embedder hash  # 키 없이
+uv run python evaluation/retrieval_eval.py --details        # 질의마다 순위 · 상위 3개
+```
+
+질의 25개(`evaluation/retrieval_queries.json` — 원문 10 · 점검 문서 10 · 사례 5, 그중 6개는 문서 낱말을 피해 바꿔 쓴 질의). 기대 조각은 원인 매트릭스 · 팀 점검 문서 · 원문 조각 내용으로 정했고 정답 파일 · 시나리오 문서는 쓰지 않았다. 원문 질의에는 같은 뜻을 영어 용어와 함께 쓴 `agentQuery`를 따로 잰다. 2026-10-20 결과(Hit@3 / MRR@10):
+
+| 도구 | hash-ngram-v1 | text-embedding-3-small |
+|---|---|---|
+| `search_technical_documents` 한국어만 | 0.70 / 0.558 | 0.70 / 0.670 |
+| └ 영어 용어 병기(`agentQuery`) | 0.90 / 0.864 | **1.00 / 1.000** |
+| `search_applicable_playbooks` | 0.90 / 0.870 | 0.90 / 0.863 |
+| `search_past_cases` | 1.00 / 0.867 | 0.80 / 0.850 |
+
+- **openai가 hash보다 낮은 곳의 원인 — 한국어 전문 용어의 언어 간 대응이 약하다.** 「질량유량계 교정 오차」(DOC03)는 10위 밖인데 「질량유량제어기(MFC) 교정 오차」 · 「mass flow controller calibration error」는 1위, 「관리한계 이탈과 규격 이탈 차이」(DOC07)도 영어 용어를 병기하면 1위다. 한국어끼리도 같은 개념의 다른 말(「연마액」 ↔ 슬러리, 「누르는 힘」 ↔ 헤드 압력)은 순위가 내려간다(사례 C05 4위, 점검 문서 P07 8위). hash는 질의와 문서가 같은 낱말을 쓸 때 강하다 — 이 질의셋의 한국어 질의 다수가 점검 문서 · 사례와 낱말이 겹친다
+- 그래서 **Agent 프롬프트 · `search_technical_documents` 설명에 「원문은 영어 — 영어 용어 · 약어를 함께 쓴다」를 넣었다**(규칙 모델은 이미 영어로 찾는다). 원문 조각 앞에 제목 · 절 범위를 붙여 색인하는 것도 재 보았지만 openai MRR이 0.670 → 0.601로 내려 하지 않았다
+- **Hybrid(BM25 + 벡터, RRF)는 넣지 않았다.** 원문 쪽 실패는 한국어 질의 ↔ 영어 원문이라 낱말 검색이 도울 수 없고, 점검 문서는 두 임베더가 같으며, 사례는 5개 중 1개 차이(C05, 동의어)다. 질의셋이 커져 사례 · 점검 문서에서 차이가 벌어지면 다시 잰다
+
 ## Docker 없이 (개발 · 평가)
 
 ```bash
 uv sync
-uv run pytest -q          # 29개 — Spring bootJar를 빌드해 h2 · 외부 Agent 모드로 띄우고 붙는다(JDK 21 필요)
+uv run pytest -q          # 29개 — 테스트용 Postgres 컨테이너(testcontainers, backend · agent 스키마를 비움) 위에 Spring bootJar를 외부 Agent 모드로 띄우고 붙는다(JDK 21 · Docker)
 
-(cd ../fab-context-api && SPRING_PROFILES_ACTIVE=h2 AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun)
-uv run fab-eval                          # EV-1006 · EV-1007 · EV-1009 첫 판단을 정답표와 대조 (h2는 재기동하면 처음 데이터)
+docker compose stop backend agent business-mcp; docker compose up -d postgres   # compose에서는 postgres만
+(cd ../fab-context-api && DDL_AUTO=create AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun)   # 띄울 때마다 처음 데이터
+uv run fab-eval                          # EV-1006 · EV-1007 · EV-1009 첫 판단을 정답표와 대조
 uv run fab-demo --incident EV-1009       # 질문 → 제안 → 승인 → 회신 → 결과 → 보고서
 uv run fab-demo --incident EV-1006 --reject
 ```
@@ -86,11 +128,11 @@ uv run fab-demo --incident EV-1006 --reject
 
 ## 검증 (2026-10-20)
 
-- `uv run pytest -q` 29개 통과 — 시계열 구간(L006 head_pressure 101.1–210.9초 · L007 slurry_flow 14–309초 LOW, L009 · 정상 LOT 구간 없음, 규칙 모델이 구간을 관측 사실로 인용하고 「4σ · 2초 · 5초는 시연 선택값」 한계를 남김, 결과 dataVersion = 팩 버전), 요청 브리프(EV-1009 ETCH 제거량 · z · ETCH_WALL · 정비 이력 rootCauseConfirmed=false, EV-1006 head_pressure · CMP_PRESSURE, 조회하지 않은 숫자 · 근거 반려, 승인 해시가 브리프를 덮음), 도구 목록 · 설명, 데이터 팩 수치(EV-1009 Etch 제거량 · R1 · 참고 범위), 분석 시점 차단, 지식 검색 필터, 승인 전 변경 0건 · 거절 뒤 재개 · 같은 승인 중복 실행 1건, 회신 뒤 두 번째 제안이 재개 작업에 붙음, 제안 상한 · 반복 금지, 원인 ID가 팩 매트릭스와 같음, 없는 원인 ID · nextStep 불일치 반려, 이벤트 · 작업 메시지 JSON Schema
+- `uv run pytest -q` 38개 통과 — 임베딩(가짜 임베더 · 가짜 OpenAI 클라이언트로 문서 · 질의 분리, 64개 묶음, 429 · 연결 오류 재시도, 오류 메시지에 키 없음, `openai`인데 키 없음 → 시작 실패, Postgres 증분 색인 · 차원별 표), 시계열 구간(L006 head_pressure 101.1–210.9초 · L007 slurry_flow 14–309초 LOW, L009 · 정상 LOT 구간 없음, 규칙 모델이 구간을 관측 사실로 인용하고 「4σ · 2초 · 5초는 시연 선택값」 한계를 남김, 결과 dataVersion = 팩 버전), 요청 브리프(EV-1009 ETCH 제거량 · z · ETCH_WALL · 정비 이력 rootCauseConfirmed=false, EV-1006 head_pressure · CMP_PRESSURE, 조회하지 않은 숫자 · 근거 반려, 승인 해시가 브리프를 덮음), 도구 목록 · 설명, 데이터 팩 수치(EV-1009 Etch 제거량 · R1 · 참고 범위), 분석 시점 차단, 지식 검색 필터, 승인 전 변경 0건 · 거절 뒤 재개 · 같은 승인 중복 실행 1건, 회신 뒤 두 번째 제안이 재개 작업에 붙음, 제안 상한 · 반복 금지, 원인 ID가 팩 매트릭스와 같음, 없는 원인 ID · nextStep 불일치 반려, 이벤트 · 작업 메시지 JSON Schema
 - `fab-eval`은 **첫 판단**을 채점한다 — ① 기본 분석의 nextStep · 1순위 causeIds ② 팩 질문(E01–E03)에 대한 첫 제안의 종류 · 대상 공정. 회신 뒤 판단은 회신 내용에 따라 달라 정답표로 채점하지 않는다
   - 규칙 모델 3/3
   - **실제 모델(gpt-4.1-mini) 3/3을 세 번 연속**(회당 모델 17–19회 · 약 16–18만 토큰). 30초 제한에 걸린 호출은 대체 모델로 넘어가 끝까지 처리됐다
-- compose: `compose_smoke.py` 실패 0건, `restart_smoke.py`(승인 대기 중 Worker 재시작 → 재개 → 회신 → 보고서) 실패 0건, 컨테이너에 `evaluation/` · `.env` 없음 확인
+- compose(OpenAI 임베딩): `/healthz` text-embedding-3-small · 1536차원 · 첫 기동 122 → 다시 띄우면 0, 키 없이 `EMBEDDER=openai` → rag-mcp 종료 코드 2 · agent 미기동, `compose_smoke.py` 실패 0건, `restart_smoke.py`(승인 대기 중 Worker 재시작 → 재개 → 회신 → 보고서) 실패 0건, 컨테이너에 `evaluation/` · `.env` 없음 확인
 
 ## 아직 하지 않은 것
 

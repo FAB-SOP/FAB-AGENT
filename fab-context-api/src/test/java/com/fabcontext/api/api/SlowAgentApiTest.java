@@ -14,9 +14,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.context.TestPropertySource;
 
-/** Agent 지연을 길게 둬서 '진행 중' 상태의 충돌 규칙을 결정적으로 검증한다. */
+/**
+ * Agent 지연을 길게 둬서 '진행 중' 상태의 충돌 규칙을 결정적으로 검증한다.
+ * 설정이 달라 별도 컨텍스트가 뜨므로, 같은 Postgres 컨테이너 안에서 자기 스키마(backend_slow)에 따로 시드한다.
+ */
 @DisplayName("진행 중 작업 충돌 (Agent 지연 1.5초)")
-@TestPropertySource(properties = "fab.agent.step-delay-ms=1500")
+@TestPropertySource(properties = {"fab.agent.step-delay-ms=1500",
+		"spring.jpa.properties.hibernate.default_schema=backend_slow", "spring.datasource.hikari.schema=backend_slow"})
 class SlowAgentApiTest extends ApiTestSupport {
 
 	@Test

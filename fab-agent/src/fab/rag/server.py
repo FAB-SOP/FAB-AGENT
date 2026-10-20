@@ -13,6 +13,7 @@ Resource: doc://{chunkId} · case://{caseId} — 검색 결과의 전문과 메�
 from __future__ import annotations
 
 import os
+import sys
 from typing import Annotated, Literal
 
 from fastmcp import FastMCP
@@ -22,7 +23,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from fab.common.envelope import FabToolError, envelope, evidence_ref
-from fab.rag.index import analysis_as_of, load_corpora, make_embedder, make_store
+from fab.rag.index import EmbedderError, analysis_as_of, load_corpora, make_embedder, make_store
 
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 Process = Literal["CVD", "ETCH", "CMP"]
@@ -100,7 +101,8 @@ def build_server(kb: Knowledge | None = None) -> FastMCP:
         """실제 출판 문서 7편(MIT/TI CMP · 플라스마 센싱 논문 · MKS 유량/CVD · UCSB ICP 매뉴얼 · NIST 계측 · NIST/SEMATECH
         통계 핸드북)의 원문 조각을 찾는다. '왜 그 원인을 의심하는지'의 일반 원리를 인용할 때 쓴다.
         결과마다 원문 쪽 · 출처 · 적용 한계(applicabilityLimits)가 붙는다 — 답변에 적용 한계를 함께 밝힌다.
-        figuresEquationsTablesRequireSourceCheck=true면 수식 · 표 숫자는 원문 확인이 필요하다."""
+        figuresEquationsTablesRequireSourceCheck=true면 수식 · 표 숫자는 원문 확인이 필요하다.
+        원문은 영어다 — 질의에 영어 용어 · 약어를 함께 쓰면 잘 찾는다(예: 질량유량제어기(MFC) calibration 오차)."""
         items = kb.search(query, "TECH", {"process": process, "retrievalTier": retrievalTier, "documentId": documentId,
                                           "version": version}, topK)
         return _result(kb, query, items, ["실제 원문은 일반 원리의 근거이며 우리 장비의 허용값 · 조치 SOP가 아닙니다."], "TECH")
@@ -155,7 +157,15 @@ def main() -> None:
     from fab.common.env import load_env
 
     load_env()
-    build_server().run(transport="http", host="0.0.0.0", port=int(os.getenv("PORT", "9102")), path="/mcp")
+    try:
+        server = build_server()
+    except EmbedderError as e:  # 시작 실패 — 원인만 남기고 끝낸다(healthz가 뜨지 않아 compose의 agent도 기동하지 않는다)
+        print(f"[지식 MCP] 시작 실패: {e}", file=sys.stderr)
+        raise SystemExit(2) from None
+    info = server.kb.index_info
+    print(f"[지식 MCP] 색인 {info['chunks']}조각 · 새로 임베딩 {info.get('embedded')} · {info['embedModel']} · {info['dim']}차원"
+          + (f" · {info['table']}" if info.get("table") else ""), file=sys.stderr)
+    server.run(transport="http", host="0.0.0.0", port=int(os.getenv("PORT", "9102")), path="/mcp")
 
 
 if __name__ == "__main__":

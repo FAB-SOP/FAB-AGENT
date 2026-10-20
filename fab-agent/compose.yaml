@@ -47,6 +47,12 @@ services:
     environment:
       PORT: "9102"
       PG_DSN: postgresql://fab:fab@postgres:5432/fab
+      # 의미 검색(OpenAI 임베딩)이 기본 — 키는 .env에서 환경 변수로만 받는다(이미지에 넣지 않는다).
+      # 키가 없거나 첫 임베딩이 실패하면 시작에 실패하고(healthcheck 실패) agent도 뜨지 않는다.
+      # 키 없이 점검: EMBEDDER=hash docker compose up -d
+      EMBEDDER: ${EMBEDDER:-openai}
+      EMBED_MODEL: ${EMBED_MODEL:-text-embedding-3-small}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       FAB_PACK_DIR: /bundle/fab-causal-pack-v2
       FAB_RAG_DIR: /bundle/fab-rag-real-documents-v1
     volumes:

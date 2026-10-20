@@ -7,8 +7,10 @@
   - CASE     가상 과거 사례 7건     fab-causal-pack-v1/knowledge/synthetic-cases.jsonl
 evaluation/ · originals/ · selected/ · 원시 센서는 색인하지 않는다.
 
-- HashEmbedder: 외부 API 없이 도는 글자 n-gram 해시 임베딩(로컬 · 테스트용 — 키워드 검색에 가깝다)
-- OpenAIEmbedder: EMBEDDER=openai 이고 OPENAI_API_KEY가 있을 때
+- EMBEDDER=openai(compose · 시연 기본): OpenAIEmbedder — 의미 검색(EMBED_MODEL, 기본 text-embedding-3-small · 1536차원).
+  키가 없거나 첫 호출이 실패하면 EmbedderError로 **시작에 실패**한다(해시로 조용히 떨어지지 않는다)
+- EMBEDDER=hash(pytest · 키 없는 점검): HashEmbedder — 외부 API 없이 도는 글자 n-gram 해시(키워드 겹침에 가깝다)
+- 문서는 embed_documents(묶음), 질의는 embed_query로 임베딩한다
 - InMemoryStore: 로컬 기본값 / PgVectorStore: PG_DSN이 있을 때 knowledge.chunks_d{차원}
 """
 
@@ -18,6 +20,8 @@ import hashlib
 import json
 import os
 import re
+import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -93,11 +97,29 @@ def load_corpora(pack: Path | None = None, rag: Path | None = None) -> list[Chun
     return chunks
 
 
+def index_text(c: Chunk) -> str:
+    """임베딩에 넣는 글 — 조각 본문 그대로(팀 점검 문서는 load_corpora가 붙인 [원인ID · 후보명 · 센서] 머리줄 포함).
+
+    원문 조각 앞에 제목 · 절 범위를 붙여 보았지만(2026-10-20 검색 평가) Hit@3이 오르지 않고 MRR이 내려 붙이지 않는다.
+    """
+    return c.text
+
+
+def index_hash(c: Chunk) -> str:
+    """증분 색인 키 — 임베딩에 넣는 글이 본문과 같으면 contentHash 그대로, 다르면 그 글의 sha256"""
+    t = index_text(c)
+    return c.contentHash if t == c.text else "sha256:" + hashlib.sha256(t.encode()).hexdigest()
+
+
 def analysis_as_of(pack: Path | None = None) -> str:
     return json.loads(((pack or pack_dir()) / "knowledge" / "agent-contract.json").read_text(encoding="utf-8"))["analysisAsOf"]
 
 
 # ------------------------------------------------------------------ 임베딩
+class EmbedderError(RuntimeError):
+    """임베더를 쓸 수 없다 — 지식 MCP는 시작하지 않는다. 메시지에는 원인만 쓰고 키 값은 쓰지 않는다."""
+
+
 class HashEmbedder:
     name = "hash-ngram-v1"
 
@@ -115,28 +137,97 @@ class HashEmbedder:
         n = np.linalg.norm(v)
         return v / n if n else v
 
-    def embed(self, texts: list[str]) -> np.ndarray:
-        return np.stack([self._vec(t) for t in texts])
+    def check(self) -> None:
+        return None
+
+    def embed_documents(self, texts: list[str]) -> np.ndarray:
+        return np.stack([self._vec(t) for t in texts]) if texts else np.zeros((0, self.dim), dtype=np.float32)
+
+    def embed_query(self, text: str) -> np.ndarray:
+        return self._vec(text)
 
 
 class OpenAIEmbedder:
-    def __init__(self, model: str | None = None):
-        from langchain_openai import OpenAIEmbeddings
+    """OpenAI 임베딩 — 문서는 BATCH개씩 묶어 보내고, 429 · 일시 오류(연결 · 시간 초과 · 5xx)는 짧게 재시도한다.
 
-        self.name = model or os.getenv("EMBED_MODEL", "text-embedding-3-small")
-        self._e = OpenAIEmbeddings(model=self.name)
-        self.dim = None
+    오류 메시지는 원인 분류만 담는다. SDK 예외 문구(가린 키 일부가 들어 있을 수 있다)는 옮기지 않고 연결도 끊는다(from None).
+    """
 
-    def embed(self, texts: list[str]) -> np.ndarray:
-        arr = np.array(self._e.embed_documents(texts), dtype=np.float32)
-        self.dim = arr.shape[1]
-        return arr / np.linalg.norm(arr, axis=1, keepdims=True)
+    BATCH = 64
+    RETRIES = 3  # 첫 시도 뒤 재시도 횟수
+    BACKOFF = (0.5, 1.5, 3.0)
+
+    def __init__(self, model: str | None = None, client=None):
+        self.name = model or os.getenv("EMBED_MODEL") or "text-embedding-3-small"
+        self.dim: int | None = None
+        if client is None:
+            if not os.getenv("OPENAI_API_KEY"):
+                raise EmbedderError("EMBEDDER=openai인데 OPENAI_API_KEY가 없습니다 — fab-agent/.env에 키를 넣거나, "
+                                    "키 없이 점검하려면 EMBEDDER=hash로 띄우세요.")
+            from openai import OpenAI
+
+            client = OpenAI(max_retries=0, timeout=float(os.getenv("EMBED_TIMEOUT", "30")))
+        self._client = client
+
+    def _call(self, texts: list[str]) -> np.ndarray:
+        import openai
+
+        for attempt in range(self.RETRIES + 1):
+            try:
+                res = self._client.embeddings.create(model=self.name, input=texts)
+                arr = np.array([d.embedding for d in sorted(res.data, key=lambda d: d.index)], dtype=np.float32)
+                return arr / np.linalg.norm(arr, axis=1, keepdims=True)
+            except openai.AuthenticationError:
+                raise EmbedderError("OpenAI 인증 실패(401) — OPENAI_API_KEY가 틀렸거나 만료됐습니다.") from None
+            except openai.PermissionDeniedError:
+                raise EmbedderError(f"OpenAI 권한 없음(403) — 이 키로 {self.name}를 쓸 수 없습니다.") from None
+            except (openai.NotFoundError, openai.BadRequestError) as e:
+                raise EmbedderError(f"OpenAI 요청 거절({e.status_code}) — EMBED_MODEL={self.name}을 확인하세요.") from None
+            except (openai.RateLimitError, openai.APIConnectionError, openai.InternalServerError) as e:
+                if attempt < self.RETRIES:
+                    time.sleep(self.BACKOFF[attempt])
+                    continue
+                if isinstance(e, openai.RateLimitError):
+                    why = "요청 한도 초과(429) — 잠시 뒤 다시 띄우거나 사용 한도를 확인하세요."
+                elif isinstance(e, openai.APIConnectionError):
+                    why = "네트워크 오류 — OpenAI API에 연결하지 못했습니다(시간 초과 포함)."
+                else:
+                    why = f"OpenAI 서버 오류({e.status_code})."
+                raise EmbedderError(f"{why} {self.RETRIES + 1}번 시도했습니다.") from None
+            except openai.APIStatusError as e:
+                raise EmbedderError(f"OpenAI 오류({e.status_code}).") from None
+        raise AssertionError("unreachable")
+
+    def check(self) -> None:
+        """시작 확인 — 짧은 질의 하나를 임베딩해 키 · 네트워크 · 모델을 확인하고 차원을 안다"""
+        self.dim = int(self.embed_query("지식 MCP 시작 확인").shape[0])
+
+    def embed_documents(self, texts: list[str]) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, self.dim or 0), dtype=np.float32)
+        parts = [self._call(texts[i : i + self.BATCH]) for i in range(0, len(texts), self.BATCH)]
+        arr = np.concatenate(parts)
+        self.dim = int(arr.shape[1])
+        return arr
+
+    def embed_query(self, text: str) -> np.ndarray:
+        return self._call([text])[0]
 
 
 def make_embedder():
-    if os.getenv("EMBEDDER") == "openai" and os.getenv("OPENAI_API_KEY"):
-        return OpenAIEmbedder()
-    return HashEmbedder()
+    """EMBEDDER=openai | hash. 비어 있으면 hash(알림 한 줄). openai인데 쓸 수 없으면 EmbedderError — 해시로 바꾸지 않는다"""
+    kind = (os.getenv("EMBEDDER") or "").strip().lower()
+    if kind == "openai":
+        e = OpenAIEmbedder()
+    elif kind in ("hash", ""):
+        if not kind:
+            print("[지식 MCP] EMBEDDER가 없어 시험용 해시 임베딩(hash-ngram-v1)을 씁니다. 의미 검색은 EMBEDDER=openai.",
+                  file=sys.stderr)
+        e = HashEmbedder()
+    else:
+        raise EmbedderError(f"EMBEDDER={kind}는 지원하지 않습니다 — openai 또는 hash.")
+    e.check()
+    return e
 
 
 # ------------------------------------------------------------------ 저장소
@@ -164,11 +255,11 @@ class InMemoryStore:
 
     def index(self, chunks: list[Chunk]) -> dict:
         self.chunks = chunks
-        self.mat = self.embedder.embed([c.text for c in chunks])
-        return {"chunks": len(chunks), "embedModel": self.embedder.name, "dim": int(self.mat.shape[1])}
+        self.mat = self.embedder.embed_documents([index_text(c) for c in chunks])
+        return {"chunks": len(chunks), "embedded": len(chunks), "embedModel": self.embedder.name, "dim": int(self.mat.shape[1])}
 
     def search(self, query: str, corpus: str, filters: dict, top_k: int) -> list[tuple[Chunk, float]]:
-        q = self.embedder.embed([query])[0]
+        q = self.embedder.embed_query(query)
         scores = self.mat @ q
         out = []
         for i in np.argsort(-scores):
@@ -181,7 +272,11 @@ class InMemoryStore:
 
 
 class PgVectorStore:
-    """임베딩 차원마다 테이블을 따로 둔다(knowledge.chunks_d768 등). chunkId · contentHash로 증분 upsert, 사라진 조각은 지운다."""
+    """임베딩 차원마다 테이블을 따로 둔다(knowledge.chunks_d768 등). chunkId · contentHash로 증분 upsert, 사라진 조각은 지운다.
+
+    검색은 지금 임베더의 표 · embed_model 행만 본다. 다른 차원 표(예: hash 시절 chunks_d768)는 남겨 두고 healthz의
+    otherTables로 알린다 — EMBEDDER=hash로 다시 띄울 때 그대로 쓰인다. 지우려면 `fab-rag-index prune`.
+    """
 
     def __init__(self, embedder, dsn: str):
         import psycopg
@@ -201,8 +296,8 @@ class PgVectorStore:
             con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS corpus text")
             con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS content_hash text")
             have = {cid: (h, m) for cid, h, m in con.execute(f"SELECT chunk_id, content_hash, embed_model FROM {table}")}
-            todo = [c for c in chunks if have.get(c.chunkId) != (c.contentHash, self.embedder.name)]
-            vecs = self.embedder.embed([c.text for c in todo]) if todo else []
+            todo = [c for c in chunks if have.get(c.chunkId) != (index_hash(c), self.embedder.name)]
+            vecs = self.embedder.embed_documents([index_text(c) for c in todo]) if todo else []
             for c, v in zip(todo, vecs):
                 con.execute(
                     f"""INSERT INTO {table} (chunk_id, corpus, doc_id, text, meta, embed_model, embedding, content_hash)
@@ -211,18 +306,20 @@ class PgVectorStore:
                        text=EXCLUDED.text, meta=EXCLUDED.meta, embed_model=EXCLUDED.embed_model,
                        embedding=EXCLUDED.embedding, content_hash=EXCLUDED.content_hash""",
                     (c.chunkId, c.corpus, c.docId, c.text, json.dumps(c.meta, ensure_ascii=False), self.embedder.name,
-                     "[" + ",".join(f"{x:.6f}" for x in v) + "]", c.contentHash))
+                     "[" + ",".join(f"{x:.6f}" for x in v) + "]", index_hash(c)))
             ids = [c.chunkId for c in chunks]  # 빠진 조각(옛 문서 등)은 남기지 않는다
             con.execute(f"DELETE FROM {table} WHERE NOT (chunk_id = ANY(%s)) OR corpus IS NULL", (ids,))
+            others = [t for t in knowledge_tables(con) if t != table]
         self.by_id = {c.chunkId: c for c in chunks}
-        return {"chunks": len(chunks), "embedded": len(todo), "embedModel": self.embedder.name, "dim": dim, "table": table}
+        return {"chunks": len(chunks), "embedded": len(todo), "embedModel": self.embedder.name, "dim": dim, "table": table,
+                "otherTables": others}
 
     def _dim(self, chunks: list[Chunk]) -> int:
-        """표 이름을 정하려고 차원을 먼저 안다 — 해시는 설정값, OpenAI는 한 조각만 임베딩해 본다"""
-        return getattr(self.embedder, "dim", None) or int(self.embedder.embed([chunks[0].text]).shape[1])
+        """표 이름을 정하려고 차원을 먼저 안다 — 해시는 설정값, OpenAI는 시작 확인(check)에서 안 값"""
+        return getattr(self.embedder, "dim", None) or int(self.embedder.embed_query(index_text(chunks[0])).shape[0])
 
     def search(self, query, corpus, filters, top_k):
-        q = self.embedder.embed([query])[0]
+        q = self.embedder.embed_query(query)
         qs = "[" + ",".join(f"{x:.6f}" for x in q) + "]"
         sql = f"""SELECT chunk_id, 1 - (embedding <=> %s::vector) AS score FROM knowledge.chunks_d{len(q)}
                  WHERE embed_model = %s AND corpus = %s ORDER BY embedding <=> %s::vector LIMIT %s"""
@@ -241,3 +338,48 @@ class PgVectorStore:
 def make_store(embedder):
     dsn = os.getenv("PG_DSN")
     return PgVectorStore(embedder, dsn) if dsn else InMemoryStore(embedder)
+
+
+def knowledge_tables(con) -> list[str]:
+    rows = con.execute("""SELECT table_name FROM information_schema.tables
+                          WHERE table_schema = 'knowledge' AND table_name LIKE 'chunks\\_d%' ORDER BY table_name""")
+    return [f"knowledge.{r[0]}" for r in rows]
+
+
+def admin_main(argv: list[str] | None = None) -> None:
+    """fab-rag-index status | prune — 지식 색인 표 보기 · 쓰지 않는 표 지우기 (PG_DSN 필요, 임베딩 API는 부르지 않는다)
+
+    prune은 지금 설정(EMBEDDER · EMBED_MODEL)의 모델 행이 있는 표만 남기고 나머지 chunks_d* 표를 지운다.
+    """
+    import argparse
+
+    import psycopg
+
+    from fab.common.env import load_env
+
+    load_env()
+    ap = argparse.ArgumentParser(prog="fab-rag-index")
+    ap.add_argument("command", choices=["status", "prune"])
+    ap.add_argument("--yes", action="store_true", help="prune에서 확인 없이 지운다")
+    args = ap.parse_args(argv)
+    dsn = os.getenv("PG_DSN") or "postgresql://fab:fab@localhost:55432/fab"
+    kind = (os.getenv("EMBEDDER") or "hash").lower()
+    model = (os.getenv("EMBED_MODEL") or "text-embedding-3-small") if kind == "openai" else HashEmbedder.name
+    with psycopg.connect(dsn, autocommit=True) as con:
+        tables = {t: dict(con.execute(f"SELECT embed_model, count(*) FROM {t} GROUP BY 1").fetchall())
+                  for t in knowledge_tables(con)}
+        for t, models in tables.items():
+            mark = "사용 중" if model in models else "쓰지 않음"
+            print(f"{t:28} {mark:6} " + ", ".join(f"{m} {n}행" for m, n in models.items()))
+        if args.command == "status":
+            return
+        drop = [t for t, models in tables.items() if model not in models]
+        if not drop:
+            print(f"지울 표가 없습니다(현재 모델 {model}).")
+            return
+        if not args.yes and input(f"{', '.join(drop)}를 지웁니다(현재 모델 {model}). 계속할까요? [y/N] ").strip().lower() != "y":
+            print("취소했습니다.")
+            return
+        for t in drop:
+            con.execute(f"DROP TABLE {t}")
+            print(f"지움: {t}")

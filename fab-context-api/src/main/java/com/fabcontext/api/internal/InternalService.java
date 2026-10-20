@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import com.fabcontext.api.auth.Role;
 import com.fabcontext.api.auth.UserAccount;
 import com.fabcontext.api.auth.UserAccountRepository;
 import com.fabcontext.api.common.Json;
@@ -283,8 +282,7 @@ public class InternalService {
 
 	public Map<String, Object> owners(String processCode) {
 		faults.maybeFail("get_process_owner");
-		List<Map<String, Object>> items = userRepository.findAll().stream()
-			.filter(u -> u.getRole() == Role.ENGINEER && u.getProcessScopes().contains(processCode))
+		List<Map<String, Object>> items = userRepository.findEngineersByProcess(processCode).stream()
 			.sorted(Comparator.comparing((UserAccount u) -> MAINTENANCE_TEAM.equals(u.getTeam())))
 			.map(u -> {
 				Map<String, Object> m = new LinkedHashMap<>();
