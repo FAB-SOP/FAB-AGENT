@@ -3,7 +3,7 @@
 CMP 두께 관리한계 이탈 같은 공정 이상을 **Agent가 데이터 · 문서 근거로 조사**하고, 다른 공정 담당자 · 설비정비팀에게 보낼 확인 요청을 **제안**하면, **사람이 승인**한 뒤에만 실행되는 서비스다. 모든 운전 데이터는 시연용 합성 데이터다.
 
 ```
-React(프론트, 별도 저장소) ──/api/**──▶ Spring backend (fab-context-api)  ◀──/internal/**── 업무 MCP ◀─┐
+React 프론트(fab-context-web) ──/api/**──▶ Spring backend (fab-context-api)  ◀──/internal/**── 업무 MCP ◀─┐
                                           │  Postgres(backend 스키마)                              Agent Worker (LangGraph + Harness)
                                           │  데이터 팩 · 원시 시계열(파일)          지식 MCP(pgvector) ◀─┘   └ Postgres(agent 스키마: 체크포인트)
 ```
@@ -12,6 +12,7 @@ React(프론트, 별도 저장소) ──/api/**──▶ Spring backend (fab-co
 
 | 폴더 | 무엇 | 문서 |
 |---|---|---|
+| `fab-context-web/` | React 프론트 — LOT·PM·센서 조회, 사건 조사, 승인·회신·보고서 | `npm ci` · `npm run dev -- --port 8771` |
 | `fab-context-api/` | **Spring backend** — 공개 API 41개(프론트 계약) · 내부 API(Agent 전용) · 승인 · 확인 요청 · 보고서 · 모니터링 · 시뮬레이터 | [README](fab-context-api/README.md) |
 | `fab-agent/` | **업무 MCP · 지식 MCP · 조사 Agent(LangGraph) · Harness**, compose(전체 실행), 평가 | [README](fab-agent/README.md) · [계약 변경](fab-agent/docs/contract-changes.md) |
 | `data/` | 데이터 팩 v2 조립본 `fab-causal-pack-v2/`(dataVersion `causal-pack-v2-scenarios`)와 조립 스크립트 `build_pack_v2.py` | [README](data/fab-causal-pack-v2/README.md) |
@@ -72,6 +73,19 @@ docker compose --profile tools run --rm --no-deps smoke   # 전체 흐름 점검
   FAB_LLM=rule docker compose up -d --build
   ```
 - 끄기: `docker compose down` (데이터는 `pgdata` 볼륨에 남는다. 지우려면 `down -v`)
+
+### 프론트 실행
+
+백엔드가 `http://127.0.0.1:8090`에서 실행 중인 상태에서 시작한다. `/api`는 Vite 프록시를 거쳐 백엔드로 전달되며 세션 쿠키와 CSRF를 사용한다.
+
+```bash
+cd fab-context-web
+npm ci
+npm run dev -- --port 8771             # http://127.0.0.1:8771
+npm test && npm run build
+```
+
+프론트 연결만 점검할 때는 백엔드를 `AGENT_MODE=simulator`로 실행한다. Compose의 실제 Agent를 사용하는 경우는 `AGENT_MODE=external`을 유지한다.
 
 ### 2) 로그인 계정 (비밀번호 모두 `fab1234!`)
 
