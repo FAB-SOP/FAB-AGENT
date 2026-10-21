@@ -80,40 +80,6 @@ class CheckRequestApiTest extends ApiTestSupport {
 	}
 
 	@Test
-	void ownerAcceptsThenReplies() throws Exception {
-		Session etch = cmp();
-		Session photo = cvd();
-		String[] ids = openManualRequest(etch);
-		postAs(etch, "/api/check-requests/{id}/acceptance", "{\"expectedVersion\":1}", ids[1]).andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.error.code").value("NOT_REQUEST_OWNER"));
-		postAs(photo, "/api/check-requests/{id}/acceptance", "{\"expectedVersion\":1}", ids[1]).andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("ACCEPTED")).andExpect(jsonPath("$.data.version").value(2));
-		getAs(photo, "/api/check-requests?box=received&status=OPEN&incidentId=" + ids[0]).andExpect(jsonPath("$.data.items", hasSize(0)));
-		getAs(etch, "/api/incidents/{id}", ids[0]).andExpect(jsonPath("$.data.status").value("WAITING_REPLY"));
-		postAs(photo, "/api/check-requests/{id}/decline", "{\"reason\":\"r\",\"expectedVersion\":2}", ids[1])
-			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("REQUEST_NOT_OPEN"));
-		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"영향 없음\",\"confirmedByUser\":true,\"expectedVersion\":2}", ids[1])
-			.andExpect(status().isCreated()).andExpect(jsonPath("$.data.requestStatus").value("REPLIED"));
-		getAs(etch, "/api/incidents/{id}", ids[0]).andExpect(jsonPath("$.data.status").value("INVESTIGATING"));
-	}
-
-	@Test
-	void ownerDeclinesWithReason() throws Exception {
-		Session etch = cmp();
-		Session photo = cvd();
-		String[] ids = openManualRequest(etch);
-		postAs(photo, "/api/check-requests/{id}/decline", "{\"reason\":\"\",\"expectedVersion\":1}", ids[1])
-			.andExpect(status().isUnprocessableEntity());
-		postAs(photo, "/api/check-requests/{id}/decline", "{\"reason\":\"담당 설비가 아닙니다\",\"expectedVersion\":1}", ids[1])
-			.andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DECLINED"))
-			.andExpect(jsonPath("$.data.declineReason").value("담당 설비가 아닙니다"));
-		getAs(etch, "/api/incidents/{id}", ids[0]).andExpect(jsonPath("$.data.status").value("INVESTIGATING"))
-			.andExpect(jsonPath("$.data.timeline[-1].type").value("CHECK_REQUEST_DECLINED"));
-		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"f\",\"confirmedByUser\":true,\"expectedVersion\":2}", ids[1])
-			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("REQUEST_NOT_OPEN"));
-	}
-
-	@Test
 	void visibilityAndListValidation() throws Exception {
 		Session etch = cmp();
 		String requestId = openManualRequest(etch)[1];

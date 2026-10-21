@@ -14,7 +14,7 @@ import org.hibernate.type.SqlTypes;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class WorkItem {
-	public enum Status { PROPOSED, DECLINED, READY, WAITING_MANAGER, APPROVED, REJECTED, REQUESTED, REQUEST_DECLINED, COMPLETED }
+	public enum Status { PROPOSED, DECLINED, READY, WAITING_MANAGER, APPROVED, REJECTED, REQUESTED, COMPLETED }
 	@Id private String taskId;
 	private String incidentId;
 	private String processCode;
@@ -58,7 +58,5 @@ public class WorkItem {
 	}
 	void decide(boolean approved, String comment, Instant now) { status=approved?Status.APPROVED:Status.REJECTED; decisionComment=comment; updatedAt=now; }
 	void complete(String action, Instant now) { actionId=action; status=Status.COMPLETED; updatedAt=now; }
-	/** 다른 팀 담당자가 요청을 거절함 — 사유는 검토 의견으로 남긴다 */
-	public void declineFromRequest(String reason, Instant now) { status=Status.REQUEST_DECLINED; decisionComment=reason; updatedAt=now; }
 	public void completeFromReply(String reply, Instant now) { replyId=reply; status=Status.COMPLETED; updatedAt=now; }
 }

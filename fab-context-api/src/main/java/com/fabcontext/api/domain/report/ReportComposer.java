@@ -120,7 +120,7 @@ class ReportComposer {
 		workItems.findByIncidentIdOrderByCreatedAtAsc(incident.getIncidentId()).stream()
 			.filter(w -> java.util.Set.of("READY","WAITING_MANAGER","APPROVED").contains(w.getStatus().name()))
 			.forEach(w -> open.append("- 미완료 업무(").append(w.getStatus()).append("): ").append(w.getTitle()).append(" [").append(w.getTaskId()).append("]\n"));
-		requests.stream().filter(r -> CheckRequestStatus.AWAITING_REPLY.contains(r.getStatus()))
+		requests.stream().filter(r -> r.getStatus() == CheckRequestStatus.OPEN)
 			.forEach(r -> open.append("- 회신 대기: ").append(r.getQuestion()).append('\n'));
 		actions.stream().filter(a -> a.getVerificationStatus() == VerificationStatus.PENDING)
 			.forEach(a -> open.append("- 효과 확인 대기: ").append(a.getDescription()).append('\n'));

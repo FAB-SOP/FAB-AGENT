@@ -47,8 +47,7 @@ public class WorkService {
 		return repository.findAll().stream().filter(w -> user.hasScope(w.getProcessCode()))
 			.filter(w -> w.getStatus()!=WorkItem.Status.PROPOSED && w.getStatus()!=WorkItem.Status.DECLINED)
 			.filter(w -> "approval".equals(box) ? user.isManager() && user.userId().equals(w.getApproverUserId()) && w.getStatus()==WorkItem.Status.WAITING_MANAGER
-				// 다른 팀 요청을 받은 담당자는 요청함에서 수락한 뒤 받은 요청으로 본다(업무 항목은 요청자 것)
-				: user.userId().equals(w.getRequestedBy()) || user.userId().equals(w.getAssigneeUserId()) && w.getRoute()!=WorkOperation.Route.TEAM_REQUEST)
+				: user.userId().equals(w.getAssigneeUserId()) || user.userId().equals(w.getRequestedBy()))
 			.sorted(Comparator.comparing(WorkItem::getCreatedAt).reversed()).map(WorkDtos.View::from).toList();
 	}
 	public Map<String,Object> policy() {
@@ -87,11 +86,10 @@ public class WorkService {
 		entityManager.lock(i,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		WorkOperation selected=op;
 		var duplicate=repository.findByIncidentIdOrderByCreatedAtAsc(i.getIncidentId()).stream()
-			.filter(w->w.getStatus()!=WorkItem.Status.REQUEST_DECLINED&&w.getOperationCode()==selected&&WorkSimilarity.same(w.getTitle(),title)).findFirst();
+			.filter(w->w.getOperationCode()==selected&&WorkSimilarity.same(w.getTitle(),title)).findFirst();
 		if(duplicate.isPresent()) return duplicate.get();
 		if(op.route==WorkOperation.Route.TEAM_REQUEST) {
 			var previous=requests.findByIncidentIdOrderByCreatedAtAsc(i.getIncidentId()).stream()
-				.filter(q->q.getStatus()!=com.fabcontext.api.domain.checkrequest.CheckRequestStatus.DECLINED)
 				.filter(q->(selected==WorkOperation.UPSTREAM_CHECK)==!"MAINTENANCE".equals(q.getRequestType()))
 				.filter(q->WorkSimilarity.same(q.getQuestion(),title)).findFirst();
 			if(previous.isPresent()) {

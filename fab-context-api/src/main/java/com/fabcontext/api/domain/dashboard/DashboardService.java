@@ -85,7 +85,7 @@ public class DashboardService {
 			inScope.stream().filter(Incident::isActive).count(),
 			pendingApprovals,
 			checkRequestRepository.countByOwnerUserIdAndStatus(user.userId(), CheckRequestStatus.OPEN),
-			checkRequestRepository.countByRequesterUserIdAndStatusIn(user.userId(), CheckRequestStatus.AWAITING_REPLY),
+			checkRequestRepository.countByRequesterUserIdAndStatus(user.userId(), CheckRequestStatus.OPEN),
 			inScope.stream().filter(i -> "QUEUED".equals(i.getLatestJobStatus()) || "RUNNING".equals(i.getLatestJobStatus()))
 				.count(),
 			inScope.stream().filter(i -> "FAILED".equals(i.getLatestJobStatus())).count());

@@ -103,8 +103,8 @@ public class AgentWorker {
 
 	private void completeDeep(Job job, Incident incident) {
 		AnalysisResult result = resultRepository.save(analysisFactory.deep(incident, job));
-		boolean hasOpenRequest = checkRequestRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(),
-			CheckRequestStatus.AWAITING_REPLY);
+		boolean hasOpenRequest = checkRequestRepository.existsByIncidentIdAndStatus(incident.getIncidentId(),
+			CheckRequestStatus.OPEN);
 		Optional<Map<String, Object>> payload = hasOpenRequest ? Optional.empty()
 			: analysisFactory.checkRequestPayload(incident, job);
 		if (payload.isPresent()) {

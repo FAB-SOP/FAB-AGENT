@@ -10,9 +10,7 @@ import com.fabcontext.api.common.ApiException;
 import com.fabcontext.api.common.Cursors;
 import com.fabcontext.api.common.Ids;
 import com.fabcontext.api.common.PageResponse;
-import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.AcceptInput;
 import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.CheckRequestSummary;
-import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.DeclineInput;
 import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.CheckRequestView;
 import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.IncidentContext;
 import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.ReplyInput;
@@ -168,65 +166,16 @@ public class CheckRequestService {
 		String savedReplyId=reply.getReplyId();
 		workItems.findByRequestId(requestId).ifPresent(w->w.completeFromReply(savedReplyId,now));
 
-		leaveWaitingReply(incident);
+		if (incident.getStatus() == IncidentStatus.WAITING_REPLY
+				&& !requestRepository.existsByIncidentIdAndStatus(incident.getIncidentId(), CheckRequestStatus.OPEN)) {
+			incident.setStatus(IncidentStatus.INVESTIGATING);
+		}
 		incident.record(now, "REPLY_RECEIVED", user.userId(), "확인 요청 회신: " + input.findings(), "REPLY",
 			reply.getReplyId());
 		streamHub.publish(incident.getIncidentId(), "check-request.replied",
 			Map.of("requestId", requestId, "replyId", reply.getReplyId(), "resumeJobId", String.valueOf(resumeJobId)));
 		return new ReplyResult(reply.getReplyId(), requestId, reply.getFindings(), reply.getEvidenceIds(),
 			user.userId(), now, resumeJobId, request.getStatus(), request.getVersion());
-	}
-
-	/** 담당자가 요청을 맡는다. 이후 내 할 일에 보인다. */
-	@Transactional
-	public CheckRequestView accept(String requestId, AuthUser user, AcceptInput input) {
-		CheckRequest request = loadOwned(requestId, user, input.expectedVersion());
-		request.accept();
-		Incident incident = loadIncident(request);
-		incident.record(Instant.now(clock), "CHECK_REQUEST_ACCEPTED", user.userId(), "확인 요청 수락: " + request.getQuestion(),
-			"CHECK_REQUEST", requestId);
-		streamHub.publish(incident.getIncidentId(), "check-request.accepted", Map.of("requestId", requestId));
-		return view(request);
-	}
-
-	/** 담당자가 수락 전에 거절한다. 연결 업무는 거절로 닫고, 회신을 기다리던 분석은 승인 거절과 같이 종료한다. */
-	@Transactional
-	public CheckRequestView decline(String requestId, AuthUser user, DeclineInput input) {
-		CheckRequest request = loadOwned(requestId, user, input.expectedVersion());
-		request.decline(input.reason());
-		Instant now = Instant.now(clock);
-		Incident incident = loadIncident(request);
-		workItems.findByRequestId(requestId).ifPresent(w -> w.declineFromRequest(input.reason(), now));
-		if (request.getWaitingJobId() != null) {
-			jobRepository.findById(request.getWaitingJobId()).filter(job -> job.getStatus() == JobStatus.WAITING_REPLY)
-				.ifPresent(job -> jobService.succeed(job, incident, new com.fabcontext.api.common.Ref("REQUEST_DECLINED", requestId)));
-		}
-		leaveWaitingReply(incident);
-		incident.record(now, "CHECK_REQUEST_DECLINED", user.userId(), "확인 요청 거절: " + input.reason(), "CHECK_REQUEST",
-			requestId);
-		streamHub.publish(incident.getIncidentId(), "check-request.declined", Map.of("requestId", requestId));
-		return view(request);
-	}
-
-	private CheckRequest loadOwned(String requestId, AuthUser user, Long expectedVersion) {
-		CheckRequest request = loadVisible(requestId, user);
-		if (!user.userId().equals(request.getOwnerUserId())) {
-			throw ApiException.forbidden("NOT_REQUEST_OWNER", "이 요청의 담당자만 처리할 수 있습니다.");
-		}
-		ApiException.checkVersion("checkRequest", expectedVersion, request.getVersion());
-		return request;
-	}
-
-	private Incident loadIncident(CheckRequest request) {
-		return incidentRepository.findById(request.getIncidentId())
-			.orElseThrow(() -> ApiException.notFound("incident", request.getIncidentId()));
-	}
-
-	private void leaveWaitingReply(Incident incident) {
-		if (incident.getStatus() == IncidentStatus.WAITING_REPLY
-				&& !requestRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(), CheckRequestStatus.AWAITING_REPLY)) {
-			incident.setStatus(IncidentStatus.INVESTIGATING);
-		}
 	}
 
 	/** 요청자 · 담당자 · 사건 공정 권한이 있는 사용자만 조회 가능 */
@@ -247,7 +196,7 @@ public class CheckRequestService {
 			r.getTargetProcessCode(), r.getApprovalId(), r.getRequestType(), r.getEquipmentId(), r.getQuestion(), r.getBrief(),
 			List.copyOf(r.getCauseIds()), List.copyOf(r.getEvidenceIds()),
 			r.getRequesterUserId(), r.getOwnerUserId(), r.getStatus(), r.getVersion(), r.getThreadId(),
-			r.getWaitingJobId(), r.getDueAt(), r.getCreatedAt(), r.getRepliedAt(), r.getDeclineReason(),
+			r.getWaitingJobId(), r.getDueAt(), r.getCreatedAt(), r.getRepliedAt(),
 			replyRepository.findByRequestIdOrderByCreatedAtAsc(r.getRequestId()).stream().map(ReplyView::from).toList());
 	}
 

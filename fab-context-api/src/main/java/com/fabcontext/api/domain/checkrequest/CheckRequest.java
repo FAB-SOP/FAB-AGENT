@@ -99,9 +99,6 @@ public class CheckRequest {
 
 	private Instant repliedAt;
 
-	@Column(length = 2000)
-	private String declineReason;
-
 	@Version
 	private long rowVersion;
 
@@ -130,31 +127,13 @@ public class CheckRequest {
 		this.createdAt = createdAt;
 	}
 
-	/** 수락하지 않고 바로 회신해도 된다(회신이 곧 수락) */
 	void markReplied(Instant at) {
-		requireStatus(CheckRequestStatus.AWAITING_REPLY);
-		status = CheckRequestStatus.REPLIED;
-		repliedAt = at;
-		version++;
-	}
-
-	void accept() {
-		requireStatus(java.util.Set.of(CheckRequestStatus.OPEN));
-		status = CheckRequestStatus.ACCEPTED;
-		version++;
-	}
-
-	void decline(String reason) {
-		requireStatus(java.util.Set.of(CheckRequestStatus.OPEN));
-		status = CheckRequestStatus.DECLINED;
-		declineReason = reason;
-		version++;
-	}
-
-	private void requireStatus(java.util.Set<CheckRequestStatus> allowed) {
-		if (!allowed.contains(status)) {
+		if (status != CheckRequestStatus.OPEN) {
 			throw ApiException.conflict("REQUEST_NOT_OPEN", "이미 처리된 요청입니다.",
 				Map.of("status", status.name(), "currentVersion", version));
 		}
+		status = CheckRequestStatus.REPLIED;
+		repliedAt = at;
+		version++;
 	}
 }

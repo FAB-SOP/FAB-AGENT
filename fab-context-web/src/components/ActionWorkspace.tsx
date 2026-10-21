@@ -1,17 +1,28 @@
 import {useState} from 'react';
-import {useMutation,useQueryClient} from '@tanstack/react-query';
+import {useMutation,useQueries,useQuery,useQueryClient} from '@tanstack/react-query';
 import {Plus} from 'lucide-react';
-import {write} from '../api/client';
-import {type Incident,type Obj,when} from '../api/types';
+import {api,write} from '../api/client';
+import {type Incident,type Obj,type Page,labels,when} from '../api/types';
 import {actionKinds,buildActionChoices,actionSourceKey,type ActionChoice} from '../domain/actionSources';
 import {WorkItemsPanel} from './WorkItems';
 import {Badge,Empty,ErrorMessage,Field,Modal,Panel} from './ui';
 
-export function ActionWorkspace({canManage,incident,actions,actionsError,onVerify}:{canManage:boolean;incident:Incident;actions:Obj[];actionsError?:unknown;onVerify:(action:Obj)=>void}){
+export function ActionWorkspace({canManage,incident,analysis,actions,actionsError,onVerify}:{canManage:boolean;incident:Incident;analysis?:Obj;actions:Obj[];actionsError?:unknown;onVerify:(action:Obj)=>void}){
  const [selection,setSelection]=useState<string|null>(null);
+ const histories=useQueries({queries:[...new Set<string>((analysis?.history||[]).map((result:Obj)=>result.resultId))].filter(id=>id!==analysis?.resultId).map(id=>({queryKey:['analysis-source',incident.incidentId,id],queryFn:()=>api<Obj>(`/api/incidents/${incident.incidentId}/analysis-results?resultId=${encodeURIComponent(id)}`)}))});
+ const proposalList=useQuery({queryKey:['action-proposals',incident.incidentId],queryFn:async()=>{
+  const items:Obj[]=[];let cursor:string|null=null;
+  do{const page:Page<Obj>=await api(`/api/approvals?incidentId=${incident.incidentId}&size=100${cursor?'&cursor='+encodeURIComponent(cursor):''}`);items.push(...page.items);cursor=page.nextCursor}while(cursor);
+  return items;
+ },refetchInterval:5000});
+ const proposalDetails=useQueries({queries:(proposalList.data||[]).map(proposal=>({queryKey:['approval',proposal.approvalId],queryFn:()=>api<Obj>('/api/approvals/'+proposal.approvalId)}))});
+ const analysisSources=buildActionChoices([...(analysis?[analysis]:[]),...histories.flatMap(query=>query.data?[query.data]:[])],proposalDetails.flatMap(query=>query.data?[query.data]:[]),actions);
+ const sourceResults=[...(analysis?[analysis]:[]),...histories.flatMap(query=>query.data?[query.data]:[])];
  const sources=buildActionChoices([],[],actions).filter(source=>source.type!=='WORK_ITEM');
+ const sourceError=proposalList.error||histories.find(query=>query.error)?.error||proposalDetails.find(query=>query.error)?.error;
  return <div className="side-stack">
-  <WorkItemsPanel incident={incident} canManage={canManage}/>
+  {sourceError&&<ErrorMessage error={sourceError}/>}
+  <WorkItemsPanel incident={incident} sources={analysisSources.filter(source=>source.type==='CAUSE'||source.type==='NEXT_ACTION')} results={sourceResults} canManage={canManage}/>
   <Panel title="작성한 검토·점검·조치 기록" extra={<button className="button secondary" disabled={!canManage||incident.status==='CLOSED'} onClick={()=>setSelection('')}><Plus size={18}/>별도 기록 추가</button>}>
    {actionsError?<ErrorMessage error={actionsError}/>:actions.length?actions.map(action=><div className="record" key={action.actionId}>
     <div className="row-between"><h3>{actionKinds[action.actionType]||action.actionType}</h3><Badge value={action.verificationStatus==='PENDING'?'NOT_VERIFIED':action.verificationStatus}/></div>

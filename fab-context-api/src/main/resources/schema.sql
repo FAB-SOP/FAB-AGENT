@@ -10,7 +10,4 @@ BEGIN
 		ALTER TABLE check_request ADD CONSTRAINT fk_check_request_approval
 			FOREIGN KEY (approval_id) REFERENCES approval (approval_id);
 	END IF;
-	-- 상태 enum이 늘어도 ddl-auto=update는 예전 CHECK 제약을 고치지 않는다 — 값 검증은 엔티티 enum이 맡는다
-	ALTER TABLE IF EXISTS check_request DROP CONSTRAINT IF EXISTS check_request_status_check;
-	ALTER TABLE IF EXISTS work_item DROP CONSTRAINT IF EXISTS work_item_status_check;
 END $$
