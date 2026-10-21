@@ -41,6 +41,14 @@ public class IncidentService {
 		return incident;
 	}
 
+	/** 조회 범위와 사건 운영 권한을 구분한다. */
+	@Transactional
+	public Incident loadForWrite(String incidentId, AuthUser user) {
+		Incident incident = loadForUser(incidentId, user);
+		accessPolicy.requireInvestigationScope(user, incident.getProcessCode());
+		return incident;
+	}
+
 	@Transactional(readOnly = true)
 	public PageResponse<IncidentSummary> list(AuthUser user, String q, String status, String jobStatus,
 			String processCode, String cursor, Integer size) {

@@ -27,10 +27,10 @@ public final class AuthDtos {
 
 	/** 세션 응답. role · processScopes는 user 안과 최상위 양쪽에 둔다(화면 매핑 호환). */
 	public record Session(SessionUser user, Role role, List<String> processScopes, boolean authenticated,
-			Instant expiresAt) {
+			Instant expiresAt, List<String> investigationProcessScopes) {
 
 		static Session of(AuthUser user, Instant expiresAt) {
-			return new Session(SessionUser.from(user), user.role(), user.processScopes(), true, expiresAt);
+			return new Session(SessionUser.from(user), user.role(), user.processScopes(), true, expiresAt, user.investigationProcessScopes());
 		}
 	}
 }

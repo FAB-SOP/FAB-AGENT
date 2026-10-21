@@ -25,6 +25,11 @@ public record AuthUser(String userId, String username, String displayName, Role 
 		return role == Role.MANAGER;
 	}
 
+	/** 정비팀은 조회·배정 요청 회신을 담당하고 사건 운영은 공정 담당자가 맡는다. */
+	public List<String> investigationProcessScopes() {
+		return !isManager() && "설비정비팀".equals(team) ? List.of() : processScopes;
+	}
+
 	public boolean hasScope(String processCode) {
 		return processCode != null && processScopes.contains(processCode);
 	}

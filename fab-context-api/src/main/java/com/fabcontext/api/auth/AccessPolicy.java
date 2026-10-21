@@ -13,6 +13,13 @@ public class AccessPolicy {
 		}
 	}
 
+	public void requireInvestigationScope(AuthUser user, String processCode) {
+		requireScope(user, processCode);
+		if (!user.investigationProcessScopes().contains(processCode)) {
+			throw ApiException.forbidden("INVESTIGATION_WRITE_DENIED", "이 사건의 분석·요청·기록은 담당 공정 운영자만 변경할 수 있습니다.");
+		}
+	}
+
 	public void requireManager(AuthUser user) {
 		if (!user.isManager()) {
 			throw ApiException.forbidden("MANAGER_ROLE_REQUIRED", "관리자(MANAGER) 권한이 필요합니다.");

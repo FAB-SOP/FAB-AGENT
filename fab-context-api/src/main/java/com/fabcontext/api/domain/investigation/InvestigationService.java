@@ -27,7 +27,7 @@ public class InvestigationService {
 
 	@Transactional
 	public Accepted ask(String incidentId, AuthUser user, Query body) {
-		Incident incident = incidentService.loadForUser(incidentId, user);
+		Incident incident = incidentService.loadForWrite(incidentId, user);
 		incident.requireNotClosed();
 		incident.checkVersion(body.expectedIncidentVersion());
 		jobService.assertNoRunningJob(incident);
@@ -40,7 +40,7 @@ public class InvestigationService {
 
 	@Transactional
 	public Accepted rerunBasic(String incidentId, AuthUser user, BasicAnalysisRequest body) {
-		Incident incident = incidentService.loadForUser(incidentId, user);
+		Incident incident = incidentService.loadForWrite(incidentId, user);
 		incident.requireNotClosed();
 		incident.checkVersion(body.expectedIncidentVersion());
 		jobService.assertNoRunningJob(incident);

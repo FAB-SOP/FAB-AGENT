@@ -1,6 +1,6 @@
 /** Wire DTOs based on attached Spring controllers. Map-valued fields stay extensible. */
 export type Obj = Record<string, any>;
-export interface Session {user:{userId:string;username:string;displayName:string;role:'ENGINEER'|'MANAGER';processScopes:string[];team:string};role:string;processScopes:string[];authenticated:boolean;expiresAt:string}
+export interface Session {user:{userId:string;username:string;displayName:string;role:'ENGINEER'|'MANAGER';processScopes:string[];team:string};role:string;processScopes:string[];investigationProcessScopes?:string[];authenticated:boolean;expiresAt:string}
 export interface Incident {incidentId:string;displayId:string;title:string;summary?:string;processCode:string;equipmentId:string;chamberId:string;lotId:string;waferIds:string[];runIds?:string[];sensorIds?:string[];metrics?:Obj;status:string;version:number;detectedAt:string;updatedAt:string;activeJobId:string|null;activeJob?:Obj|null;jobStatus?:string;severity:string;timeline?:Obj[]}
 export interface SensorSample {sensorId:string;sensorName:string;runId:string;waferId:string;equipmentId:string;recipeStep:string;measuredAt:string;value:number;unit:string;quality:string}
 export interface RawData {samples:SensorSample[];totalCount:number;truncated:boolean;baseline:Obj|null;dataVersion:string}

@@ -293,3 +293,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 서버가 같은 사건의 원본을 검증하고 제목·내용의 스냅샷을 `incident_action.related_source` JSONB에 저장한다(기존 DB에는 nullable 컬럼이 추가됨). 연결은 제안 승인이나 원인 확정을 의미하지 않는다. `actionType`으로 `REVIEW`(검토), `INSPECTION`(점검), `MANUAL_MAINTENANCE`(조치), `OTHER`를 구분하고 같은 항목에 여러 기록을 남길 수 있다. 각 기록의 확인·효과 이력은 기존 verification API를 사용한다. 관련 정보는 내부 조치 조회와 보고서 맥락에도 포함된다.
 
 과거 분석의 전체 항목은 `GET /api/incidents/{id}/analysis-results?resultId=...`로 조회한다. 같은 사건의 결과만 반환한다.
+
+### 사건 조회와 운영 권한
+
+세션의 `processScopes`는 조회 범위, `investigationProcessScopes`는 사건 운영 범위다. 공정 담당자는 자기 공정, 관리자는 부여받은 모든 공정에서 분석·질문·제안/승인·조치·보고서를 변경할 수 있다. 기존 계정 정책의 `설비정비팀`은 세 공정을 조회하지만 사건 운영 범위는 비어 있다. 정비 및 타 공정 담당자는 자신에게 배정된 확인 요청에 회신한다. 타 공정 사건 전체를 추가로 공개하지 않고 받은 요청의 사건 정보·브리프로 협업한다. 서버의 모든 사용자 사건 쓰기는 `loadForWrite`로 검사하며 내부 Agent 작업·배정 요청 회신 경로와 분리한다.

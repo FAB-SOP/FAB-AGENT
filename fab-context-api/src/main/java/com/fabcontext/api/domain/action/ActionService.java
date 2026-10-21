@@ -41,7 +41,7 @@ public class ActionService {
 
 	@Transactional
 	public ActionView record(String incidentId, AuthUser user, ActionInput input) {
-		Incident incident = incidentService.loadForUser(incidentId, user);
+		Incident incident = incidentService.loadForWrite(incidentId, user);
 		incident.requireNotClosed();
 		incident.checkVersion(input.expectedIncidentVersion());
 		if (!Boolean.TRUE.equals(input.confirmedByUser())) {
@@ -65,7 +65,7 @@ public class ActionService {
 	public ActionView verify(String actionId, AuthUser user, VerificationInput input) {
 		IncidentAction action = repository.findById(actionId)
 			.orElseThrow(() -> ApiException.notFound("action", actionId));
-		Incident incident = incidentService.loadForUser(action.getIncidentId(), user);
+		Incident incident = incidentService.loadForWrite(action.getIncidentId(), user);
 		if (!Boolean.TRUE.equals(input.confirmedByUser())) {
 			throw ApiException.unprocessable("USER_CONFIRMATION_REQUIRED", "후속 데이터를 직접 검토했음을 confirmedByUser=true로 확인해야 합니다.");
 		}

@@ -41,9 +41,9 @@ export function AnalysisRequestStatus({job,approval,error}:{job?:Obj;approval?:O
 export function questionEntries(timeline:Obj[]=[]){
  return timeline.filter(item=>item.type==='QUESTION_ASKED'&&item.ref?.type==='JOB'&&item.ref.id).map(item=>({jobId:item.ref.id,question:String(item.message||'').replace(/^추가 조사 질문:\s*/,''),createdAt:item.at}));
 }
-export function QuestionHistory({entries,jobs=[],threads=[],results=[],proposal}:{entries:Obj[];jobs?:(Obj|undefined)[];threads?:(QuestionThread|undefined)[];results?:Obj[];proposal?:Obj}){
+export function QuestionHistory({entries,jobs=[],threads=[],results=[],proposal,embedded=false}:{entries:Obj[];jobs?:(Obj|undefined)[];threads?:(QuestionThread|undefined)[];results?:Obj[];proposal?:Obj;embedded?:boolean}){
  if(!entries.length)return null;
- return <Panel title="질문·답변"><div className="question-history">{entries.map((entry,index)=>{
+ const content=<div className="question-history">{entries.map((entry,index)=>{
   const thread=threads[index];const job=thread?.latestJob||jobs[index];
   const jobIds=new Set(thread?.jobs.map(item=>item.jobId)||[entry.jobId]);
   const answers=results.filter(result=>jobIds.has(result.jobId)||(job?.resultRef?.id&&result.resultId===job.resultRef.id)).sort((a,b)=>Date.parse(a.createdAt||'')-Date.parse(b.createdAt||''));
@@ -58,5 +58,6 @@ export function QuestionHistory({entries,jobs=[],threads=[],results=[],proposal}
     {job?.error?.message&&<p className="warning-text">{job.error.message}</p>}
    </div>
   </article>;
- })}</div></Panel>;
+ })}</div>;
+ return embedded?content:<Panel title="질문·답변">{content}</Panel>;
 }

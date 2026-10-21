@@ -71,7 +71,7 @@ public class ApprovalService {
 	/** 수동 제안 (P07/P08). 실제 업무 등록 전 단계이며 승인 후에만 실행된다. */
 	@Transactional
 	public ApprovalView createProposal(String incidentId, AuthUser user, Proposal body) {
-		Incident incident = incidentService.loadForUser(incidentId, user);
+		Incident incident = incidentService.loadForWrite(incidentId, user);
 		incident.requireNotClosed();
 		incident.checkVersion(body.expectedIncidentVersion());
 		if (body.jobId() != null) {
@@ -88,6 +88,7 @@ public class ApprovalService {
 	@Transactional
 	public ApprovalDecisionResult decide(String approvalId, AuthUser user, ApprovalDecision body) {
 		Approval approval = loadForUser(approvalId, user);
+		incidentService.loadForWrite(approval.getIncidentId(), user);
 		Instant now = Instant.now(clock);
 		if (approval.expireIfDue(now)) {
 			throw ApiException.conflict("APPROVAL_EXPIRED", "만료된 제안입니다. 최신 내용을 확인하고 필요하면 새 제안을 만드세요.",

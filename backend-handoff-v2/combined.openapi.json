@@ -2695,6 +2695,13 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "investigationProcessScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "분석 재요청·질문·제안 승인·조치·보고서 변경을 허용하는 공정. 조회 범위 processScopes와 별개."
           }
         }
       },

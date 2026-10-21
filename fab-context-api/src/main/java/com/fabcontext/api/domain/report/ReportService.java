@@ -58,7 +58,7 @@ public class ReportService {
 	/** 사용자가 요청할 때만 초안을 만든다 (사건 발생 직후 자동 생성 없음). */
 	@Transactional
 	public Accepted generate(String incidentId, AuthUser user, ReportGeneration body) {
-		Incident incident = incidentService.loadForUser(incidentId, user);
+		Incident incident = incidentService.loadForWrite(incidentId, user);
 		incident.checkVersion(body.expectedIncidentVersion());
 		if (body.baseReportVersion() != null
 				&& repository.findByIncidentIdAndVersion(incidentId, body.baseReportVersion()).isEmpty()) {
@@ -139,6 +139,7 @@ public class ReportService {
 	@Transactional
 	public ReportView edit(String reportId, AuthUser user, ReportEdit body) {
 		Report report = loadForUser(reportId, user);
+		incidentService.loadForWrite(report.getIncidentId(), user);
 		report.requireDraft();
 		report.checkRevision(body.expectedContentRevision());
 		report.edit(body.title(), body.sections(), user.userId(), Instant.now(clock));
@@ -148,6 +149,7 @@ public class ReportService {
 	@Transactional
 	public ReportView confirm(String reportId, AuthUser user, ReportConfirm body) {
 		Report report = loadForUser(reportId, user);
+		incidentService.loadForWrite(report.getIncidentId(), user);
 		if (!Boolean.TRUE.equals(body.reviewConfirmed())) {
 			throw ApiException.unprocessable("REVIEW_CONFIRMATION_REQUIRED", "검토를 마쳤음을 reviewConfirmed=true로 확인해야 합니다.");
 		}

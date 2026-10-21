@@ -6,7 +6,7 @@ import {type Incident,type Obj,type Page,labels,when} from '../api/types';
 import {actionKinds,buildActionChoices,actionSourceKey,type ActionChoice} from '../domain/actionSources';
 import {Badge,Empty,ErrorMessage,Field,Modal,Panel} from './ui';
 
-export function ActionWorkspace({incident,analysis,actions,actionsError,onVerify}:{incident:Incident;analysis?:Obj;actions:Obj[];actionsError?:unknown;onVerify:(action:Obj)=>void}){
+export function ActionWorkspace({canManage,incident,analysis,actions,actionsError,onVerify}:{canManage:boolean;incident:Incident;analysis?:Obj;actions:Obj[];actionsError?:unknown;onVerify:(action:Obj)=>void}){
  const [selection,setSelection]=useState<string|null>(null);
  const histories=useQueries({queries:[...new Set<string>((analysis?.history||[]).map((result:Obj)=>result.resultId))].filter(id=>id!==analysis?.resultId).map(id=>({queryKey:['analysis-source',incident.incidentId,id],queryFn:()=>api<Obj>(`/api/incidents/${incident.incidentId}/analysis-results?resultId=${encodeURIComponent(id)}`)}))});
  const proposalList=useQuery({queryKey:['action-proposals',incident.incidentId],queryFn:async()=>{
@@ -19,14 +19,14 @@ export function ActionWorkspace({incident,analysis,actions,actionsError,onVerify
  const loading=proposalList.isPending||histories.some(query=>query.isPending)||proposalDetails.some(query=>query.isPending);
  const sourceError=proposalList.error||histories.find(query=>query.error)?.error||proposalDetails.find(query=>query.error)?.error;
  return <div className="side-stack">
-  <Panel title="분석·제안별 확인 및 조치" extra={<button className="button" disabled={incident.status==='CLOSED'} onClick={()=>setSelection('')}><Plus size={18}/>별도 기록 추가</button>}>
+  <Panel title="분석·제안별 확인 및 조치" extra={<button className="button" disabled={!canManage||incident.status==='CLOSED'} onClick={()=>setSelection('')}><Plus size={18}/>별도 기록 추가</button>}>
    {sourceError&&<ErrorMessage error={sourceError}/>}
    <div className="action-source-grid">{sources.map(source=>{
     const records=actions.filter(action=>actionSourceKey(action)===source.key);
     const reviews=records.filter(record=>record.actionType==='REVIEW').length;
     const inspections=records.filter(record=>record.actionType==='INSPECTION').length;
     const performed=records.length-reviews-inspections;
-    return <button className="action-source-card" key={source.key} disabled={incident.status==='CLOSED'} onClick={()=>setSelection(source.key)}>
+    return <button className="action-source-card" key={source.key} disabled={!canManage||incident.status==='CLOSED'} onClick={()=>setSelection(source.key)}>
      <span className="eyebrow">{source.subtitle}</span><h3>{source.title}</h3>
      {source.check&&<p className="small muted">확인 항목 · {source.check}</p>}
      <div className="row-between"><span className="small">{records.length?`검토 ${reviews} · 점검 ${inspections} · 조치/기타 ${performed}`:'아직 기록 없음'}</span><span className="text-button">기록 추가 <ArrowUpRight size={16}/></span></div>
@@ -40,7 +40,7 @@ export function ActionWorkspace({incident,analysis,actions,actionsError,onVerify
     <p className="small action-link-label">{actionSourceKey(action)?'연결 항목 · '+(action.relatedSource?.title||sources.find(source=>source.key===actionSourceKey(action))?.title||'승인된 제안'):'별도 기록'}</p>
     <p>{action.description}</p><p className="small muted">{when(action.performedAt)} KST · {action.performedBy}</p>
     {action.verifications?.map((verification:Obj)=><div className="verification-record" key={verification.verificationId}><Badge value={verification.outcome}/><p>{verification.rationale}</p><span className="small muted">{when(verification.verifiedAt)} KST · {verification.verifiedBy}</span></div>)}
-    <button className="button secondary" onClick={()=>onVerify(action)}>확인·효과 기록 추가</button>
+    <button className="button secondary" disabled={!canManage} onClick={()=>onVerify(action)}>확인·효과 기록 추가</button>
    </div>):<Empty>아직 검토·점검·조치 기록이 없습니다.</Empty>}
   </Panel>
   {selection!==null&&<ActionRecordModal incident={incident} sources={sources} initialSelection={selection} onClose={()=>setSelection(null)}/>}
