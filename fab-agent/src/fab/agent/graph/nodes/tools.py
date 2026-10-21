@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import uuid
-import os
 from typing import Any
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
@@ -55,10 +54,7 @@ async def tools(state: AgentState, config) -> dict:
         elif name in ("submit_result", "submit_report"):
             handle_submit(turn, name, args, cid)
         elif name in PROPOSALS:
-            if os.getenv("FAB_LEGACY_REQUEST_PROPOSALS", "0") == "1":
-                await save_proposal(turn, name, args, cid)
-            else:
-                turn.say("[FORBIDDEN] 새 업무는 submit_result.workSuggestions로 제안하세요. 채택 전에는 발송하지 않습니다.", cid, name)
+            await save_proposal(turn, name, args, cid)
         elif name in HARNESS_NAMES:
             turn.say(f"[FORBIDDEN] {name}는 이 모드에서 쓸 수 없습니다.", cid, name)
         else:
@@ -75,7 +71,7 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         return
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
     # 심층 조사에서 점검 · 확인이 필요하다고 판단했으면 요청 초안을 먼저 제안한다(팩 E03 — 보낼지는 사람이 승인으로 정한다)
-    if (os.getenv("FAB_LEGACY_REQUEST_PROPOSALS", "0") == "1" and state["mode"] == "DEEP" and args.get("nextStep") in ("CURRENT_CHECK", "UPSTREAM_CHECK")
+    if (state["mode"] == "DEEP" and args.get("nextStep") in ("CURRENT_CHECK", "UPSTREAM_CHECK")
             and not state.get("proposals") and not turn.update.get("pending")):
         kind = "propose_cross_process_check(앞 공정 PROCESS_OWNER)" if args["nextStep"] == "UPSTREAM_CHECK" \
             else "propose_maintenance_request(설비정비팀 MAINTENANCE)"

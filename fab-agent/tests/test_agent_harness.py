@@ -11,14 +11,6 @@ from fab.devtools.demo import evaluate
 from fab.devtools.spring import User, drive, internal, make_runner
 
 
-@pytest.fixture(autouse=True)
-def legacy_request_regression(monkeypatch):
-    """기존 승인 interrupt·회신 checkpoint의 하위 호환 경로를 계속 검증한다.
-    새 기본 경로(분류된 업무 제안)는 test_work_suggestions.py에서 검증한다.
-    """
-    monkeypatch.setenv("FAB_LEGACY_REQUEST_PROPOSALS", "1")
-
-
 async def _ask(spring_url, display_id, question="원인 분석해줘", user="cmp.park"):
     u = await User(user, spring_url).login()
     i = await u.incident(display_id)
@@ -65,6 +57,33 @@ async def test_full_flow_records_request_only_after_approval(spring_url, kb):
     assert [p["actionType"] for p in r["proposals"]] == ["CREATE_CHECK_REQUEST"]
     assert r["report"] and set(r["report"]["sections"]) == {"overview", "investigation", "requestsAndReplies",
                                                             "actionsAndVerification", "unresolved"}
+
+
+async def test_basic_analysis_does_not_create_work_cards(spring_url, kb):
+    import uuid
+    import httpx
+
+    runner, backend = make_runner(kb, base=spring_url)
+    event = {"eventId": "ORIGINAL-FLOW-" + str(uuid.uuid4()), "anomalyType": "THICKNESS_OOC_R1",
+             "severity": "MEDIUM", "processCode": "CMP", "equipmentId": "CMP-PM3", "lotId": "CURRENT-L006",
+             "waferIds": ["W-CURRENT-006-3"], "runIds": ["RUN-W-CURRENT-006-3-CMP"],
+             "sensorIds": ["head_pressure"], "detectedAt": "2026-10-19T01:30:00Z", "metrics": {}}
+    async with httpx.AsyncClient(base_url=spring_url) as client:
+        response = await client.post("/api/events/anomalies", json=event,
+                                     headers={"X-Service-Token": "dev-simulator-token"})
+    assert response.status_code == 202, response.text
+    accepted = response.json()["data"]
+    processed = await poll_once(runner, backend)
+    result = next(item for item in processed if item["job"]["jobId"] == accepted["jobId"])
+    assert result["status"] == "DONE"
+    assert result["result"]["candidateCauses"]
+    event = next(e for e in runner.sink.events if e["jobId"] == accepted["jobId"] and e["type"] == "RESULT_READY")
+    assert "workSuggestions" not in event["payload"]
+    assert "toolCalls" in event["metrics"]  # 기존 흐름 복구 후에도 작업별 관측 정보는 유지한다.
+    user = await User("cmp.park", spring_url).login()
+    status, tasks = await user.get(f"/api/incidents/{accepted['incidentId']}/work-items")
+    assert status == 200 and tasks["data"]["items"] == []
+    await user.close()
 
 
 async def test_resume_with_wrong_interrupt_is_rejected(spring_url, kb):

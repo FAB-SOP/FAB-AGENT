@@ -73,18 +73,6 @@ def build_server(*, backend_url: str | None = None, transport: httpx.AsyncBaseTr
             "create_maintenance_request · confirm_report)는 사람이 승인한 approvalId로만 실행된다."
         ),
     )
-    @mcp.tool(annotations=READ)
-    async def get_work_policy() -> dict:
-        """업무 유형별 처리 규칙을 조회한다. SELF_CHECK는 담당자 채택, MANAGER_APPROVAL은 채택 후 관리자 결재,
-        TEAM_REQUEST는 다른 담당자에게 발송 확인이 필요하다. 분류 불명확은 REVIEW_REQUIRED다. 실제 설비 실행은 지원하지 않는다."""
-        return await backend.call("GET", "/internal/work-policy")
-
-    @mcp.tool(annotations=READ)
-    async def get_work_items(incidentId: IncidentId) -> dict:
-        """사건의 업무 제안·채택·거절·관리자 승인·완료 상태를 조회한다. 이미 채택/완료된 일을 반복 제안하지 않고 후속 분석에 참고한다.
-        계획·승인은 수행 사실이 아니다. COMPLETED의 actionId/replyId 원본 기록을 별도로 확인한다."""
-        return await backend.call("GET", f"/internal/incidents/{incidentId}/work-items")
-
     # ------------------------------------------------------------------ 읽기 도구 — 사건
     @mcp.tool(annotations=READ)
     async def get_incident(incidentId: IncidentId) -> dict:

@@ -15,7 +15,7 @@ needs_source = pytest.mark.skipif(not HAS_SOURCE, reason="실제 원문 조각(s
 
 READ = {"get_incident", "list_incidents", "get_wafer_lineage", "get_run_and_metrology", "get_run_features",
         "get_sensor_trace", "get_frozen_limits", "get_change_events", "get_process_owner", "get_check_requests",
-        "get_action_history", "get_report_context", "get_work_policy", "get_work_items"}
+        "get_action_history", "get_report_context"}
 WRITE = {"create_cross_process_check_request", "create_maintenance_request", "confirm_report"}
 
 

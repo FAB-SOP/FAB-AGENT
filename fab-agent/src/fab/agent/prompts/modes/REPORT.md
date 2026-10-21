@@ -10,5 +10,3 @@
 - unresolved: 미해결 사항 · 데이터 한계. 후속 확인 결과가 없으면 해결 완료로 쓰지 않는다
 
 evidenceIds에는 조회한 근거 ID만 넣는다. 기록에 없는 칸은 "기록 없음"으로 적는다. 초안 생성은 공식 확정이 아니다.
-
-- workItems의 PROPOSED·WAITING_MANAGER·APPROVED는 계획/승인 상태이며 수행 사실이 아니다. 수행은 actions 또는 담당자 replies 원본 기록으로만 적고, 미완료 업무는 미해결 사항에 정리한다.

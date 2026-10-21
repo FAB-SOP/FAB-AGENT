@@ -180,10 +180,10 @@ from backend.job where metrics is not null order by created_at desc;
 - 서비스 인증 방식(지금은 고정 Bearer 토큰), ID · 근거 형식은 팀 확정을 기다린다
 
 
-## 후속 업무 제안
+## 요청 제안과 화면 업무의 경계
 
-기본 흐름에서 Agent는 `submit_result.workSuggestions`로 최대 5개 업무를 제안한다. 각 항목에는 `operationCode`, `title`, `reason`, 조회한 근거의 `evidenceIds`를 넣는다. RESULT_READY의 `result`와 나란히 전달되며 Spring이 제안 상태로 저장한다. 모델이 직접 채택·승인·발송하지 않는다.
+Agent는 `e98df45` 직전의 요청 흐름을 사용한다. 심층 조사에서 `propose_cross_process_check` 또는 `propose_maintenance_request`로 요청을 제안하고, `approval_wait`에서 사람의 결정을 기다린다. 승인되면 Harness가 승인 ID로 업무 MCP의 변경 도구를 호출하고, `reply_wait`에서 회신을 기다린 뒤 같은 사건의 조사를 재개한다. 거절도 같은 thread에서 사유를 반영한다.
 
-업무 MCP에 읽기 도구 `get_work_policy`, `get_work_items`를 추가했다. 분석 시 서버 정책과 기존 업무를 조회하고, 보고 시 제안·승인 대기·실제 조치·담당자 회신을 구분한다. 확인 업무를 일괄 MAINTENANCE_REQUEST로 바꾸던 경로는 기본 비활성화했다. 과거 중단 체크포인트의 재개 처리는 유지하며, 구형 제안 도구가 필요한 호환 검증에만 `FAB_LEGACY_REQUEST_PROPOSALS=1`을 사용한다.
+`submit_result.workSuggestions` 자동 업무 카드는 생성하지 않는다. Frontend·Backend의 기존 업무 목록·관리자 변경 승인·담당자 선택·회신·보고서 이력 기능은 유지되며, 사용자는 화면의 「분석에서 업무 제안」으로 업무를 직접 만들 수 있다. 업무 MCP 도구 목록도 이전 목록으로 복구했다. `FAB_LEGACY_REQUEST_PROPOSALS`는 더 이상 필요하지 않으며 동작을 바꾸지 않는다.
 
-새 전체 흐름 검증: `tests/test_work_suggestions.py`. Rule 모델·격리된 Spring/Postgres로 제안 저장과 자동 발송·수행 기록이 생기지 않는 것을 확인한다.
+이후 추가된 Docker 구조화 로그와 작업별 metrics는 유지한다. 기존 DB와 체크포인트는 자동 삭제·변경하지 않는다. 새 동작 검증에는 새 사건을 사용하고, 변경 기간에 만들어진 기존 thread는 저장된 지시문·제안·대기 상태를 확인한 뒤 사용한다.

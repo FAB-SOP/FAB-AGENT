@@ -7,10 +7,6 @@ from __future__ import annotations
 
 from fab.agent.causes import CAUSE_IDS
 
-WORK_OPERATIONS = ["REVIEW_SENSOR_DATA", "REVIEW_PROCESS_HISTORY", "COMPARE_METROLOGY", "CHANGE_SETPOINT",
-                   "CHANGE_RECIPE", "REPLACE_COMPONENT", "RESTART_EQUIPMENT", "REVIEW_REQUIRED",
-                   "EQUIPMENT_INSPECTION", "FACILITY_INSPECTION", "UPSTREAM_CHECK"]
-
 WRITE_TOOLS = {"create_cross_process_check_request", "create_maintenance_request", "confirm_report"}
 
 # 제안 도구 → 승인 뒤 Harness가 부르는 변경 도구 · backend 승인 종류
@@ -87,13 +83,6 @@ HARNESS_TOOLS = [
                         "missingData": {"type": "array", "items": {"type": "string"}},
                         "nextCheck": {"type": "string"}},
                         "required": ["priority", "hypothesis", "supportingEvidenceIds", "missingData", "nextCheck"]}},
-                    "workSuggestions": {"type": "array", "maxItems": 5, "description": "다음에 확인/검토할 업무 제안. 아직 할 일 등록·발송·변경되지 않는다. 담당자가 채택한다.",
-                        "items": {"type": "object", "properties": {
-                            "operationCode": {"type": "string", "enum": WORK_OPERATIONS},
-                            "title": {"type": "string", "description": "실제로 확인할 구체적인 업무. 확인과 변경을 한 항목에 섞지 않는다."},
-                            "reason": {"type": "string"},
-                            "evidenceIds": {"type": "array", "items": {"type": "string"}}},
-                            "required": ["operationCode", "title", "reason", "evidenceIds"]}},
                     "limitations": {"type": "array", "items": {"type": "string"}},
                 },
                 "required": ["nextStep", "observedFacts", "candidateCauses", "limitations"],

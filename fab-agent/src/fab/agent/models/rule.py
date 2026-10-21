@@ -248,7 +248,4 @@ def _submit(step, facts, headline, cause, support, counter=None, limitations=Non
                              "conflictingEvidenceIds": [x for x in (counter or []) if x],
                              "missingData": ["부품 · 챔버 상태의 직접 확인 결과"],
                              "nextCheck": (cause or {}).get("excerpt", "담당 엔지니어 검토")[:160]}],
-        "workSuggestions": ([{"operationCode": "UPSTREAM_CHECK" if step == "UPSTREAM_CHECK" else "REVIEW_SENSOR_DATA",
-                              "title": "앞 공정 운전·계측 결과 확인 요청" if step == "UPSTREAM_CHECK" else "센서 실측값과 설정값·계측 결과 비교 확인",
-                              "reason": headline, "evidenceIds": [x for x in support if x]}] if cause else []),
         "limitations": lim})

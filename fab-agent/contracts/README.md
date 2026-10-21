@@ -12,4 +12,4 @@
 
 Observability 확장: 이벤트 바깥(envelope)에 선택 필드 `metrics`를 추가했다. 작업을 끝내거나 멈추는 이벤트에만 이번 시도의 trace 요약(모델 호출 · 토큰 · 실제 응답 모델 · 도구 호출 · 재시도 · Harness 거부 · 시간)을 싣고, backend가 `job.metrics`(jsonb)에 저장한다.
 
-업무 분류 확장: `RESULT_READY.payload.workSuggestions` 선택 필드를 추가했다. `result`의 기존 AnalysisResult 계약은 유지하며, 서버가 업무 유형으로 채택·관리자 승인·타 팀 발송 경로를 결정한다. 배포할 때 이 이벤트 스키마도 백엔드·Agent와 함께 동기화한다.
+호환용 업무 분류 필드: `RESULT_READY.payload.workSuggestions`는 기존 소비자와의 호환을 위해 선택 필드로 남긴다. 현재 Agent는 이 필드를 보내지 않고 요청 제안 → 사람 승인 → MCP 실행 → 회신 대기 흐름을 사용한다. `result`와 관측용 `metrics` 계약은 유지한다.

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from contextlib import AsyncExitStack
 
 from fastmcp import Client
@@ -53,8 +52,6 @@ class Toolbox:
 
     def model_tools(self, mode: str) -> list[dict]:
         allowed = {"REPORT": {"submit_report"}, "BASIC": {"submit_result"}}.get(mode, {"submit_result", *PROPOSALS})
-        if mode == "DEEP" and os.getenv("FAB_LEGACY_REQUEST_PROPOSALS", "0") != "1":
-            allowed = {"submit_result"}  # 새 업무 제안은 결과에 저장하고 담당자 채택 후에만 처리한다.
         return self.specs + [t for t in HARNESS_TOOLS if t["function"]["name"] in allowed]
 
     async def call(self, name: str, args: dict, tracer, *, allow_write: bool = False) -> dict:
