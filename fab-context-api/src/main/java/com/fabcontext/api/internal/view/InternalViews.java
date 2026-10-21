@@ -101,6 +101,7 @@ public class InternalViews {
 		m.put("performedAt", iso(a.getPerformedAt()));
 		m.put("performedBy", a.getPerformedBy());
 		m.put("verificationStatus", a.getVerificationStatus().name());
+		m.put("relatedSource", a.getRelatedSource());
 		m.put("createdAt", iso(a.getCreatedAt()));
 		return m;
 	}

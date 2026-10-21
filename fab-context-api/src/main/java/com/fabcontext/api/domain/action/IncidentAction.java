@@ -3,6 +3,8 @@ package com.fabcontext.api.domain.action;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 
 import com.fabcontext.api.domain.incident.Incident;
 import jakarta.persistence.CollectionTable;
@@ -68,6 +70,10 @@ public class IncidentAction {
 
 	private String approvalId;
 
+	/** 연결된 분석·제안의 저장 시점 스냅샷. 연결 자체는 승인·실행이 아니다. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	private Map<String, Object> relatedSource;
+
 	@Enumerated(EnumType.STRING)
 	private VerificationStatus verificationStatus;
 
@@ -86,7 +92,7 @@ public class IncidentAction {
 	@Builder
 	public IncidentAction(String actionId, String incidentId, String processCode, String actionType,
 			String description, Instant performedAt, String performedBy, List<String> evidenceIds, String source,
-			String approvalId, Instant createdAt) {
+			String approvalId, Instant createdAt, Map<String, Object> relatedSource) {
 		this.actionId = actionId;
 		this.incidentId = incidentId;
 		this.processCode = processCode;
@@ -98,6 +104,7 @@ public class IncidentAction {
 		this.confirmedByUser = true;
 		this.source = source;
 		this.approvalId = approvalId;
+		this.relatedSource = relatedSource == null ? null : new LinkedHashMap<>(relatedSource);
 		this.verificationStatus = VerificationStatus.PENDING;
 		this.version = 1;
 		this.createdAt = createdAt;

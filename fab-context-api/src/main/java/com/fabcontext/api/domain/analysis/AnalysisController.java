@@ -33,7 +33,7 @@ public class AnalysisController {
 	@GetMapping("/api/incidents/{incidentId}/analysis-results")
 	@Transactional(readOnly = true)
 	public ApiResponse<AnalysisResultView> getResults(@AuthenticationPrincipal AuthUser user,
-			@PathVariable String incidentId, @RequestParam(defaultValue = "true") boolean latest) {
+			@PathVariable String incidentId, @RequestParam(defaultValue = "true") boolean latest, @RequestParam(required = false) String resultId) {
 		Incident incident = incidentService.loadForUser(incidentId, user);
 		List<AnalysisResult> results = repository.findByIncidentIdOrderByCreatedAtDesc(incidentId);
 		if (results.isEmpty()) {
@@ -43,6 +43,9 @@ public class AnalysisController {
 					"jobStatus", String.valueOf(incident.getLatestJobStatus())));
 		}
 		List<HistoryItem> history = latest ? null : results.stream().map(HistoryItem::from).toList();
-		return ApiResponse.of(AnalysisResultView.from(results.getFirst(), history));
+		AnalysisResult selected = resultId == null ? results.getFirst() : results.stream()
+			.filter(r -> resultId.equals(r.getResultId())).findFirst()
+			.orElseThrow(() -> ApiException.notFound("analysis result", resultId));
+		return ApiResponse.of(AnalysisResultView.from(selected, history));
 	}
 }

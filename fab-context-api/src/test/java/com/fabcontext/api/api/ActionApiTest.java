@@ -96,4 +96,73 @@ class ActionApiTest extends ApiTestSupport {
 			.andExpect(status().isCreated()), "$.data.actionId");
 		assertThat(a1).isNotEqualTo(a2);
 	}
+	@Test
+	void linksCauseAndKeepsSnapshotAcrossNewAnalysis() throws Exception {
+		Session user = cmp();
+		String id = newIncident(user, false).incidentId();
+		var result = getAs(user, "/api/incidents/{id}/analysis-results", id);
+		String resultId = json(result, "$.data.resultId");
+		String causeId = json(result, "$.data.candidateCauses[0].causeId");
+		String title = json(result, "$.data.candidateCauses[0].hypothesis");
+		String link = "\"relatedSource\":{\"type\":\"CAUSE\",\"refId\":\"" + resultId + "\",\"itemId\":\"" + causeId + "\"},";
+		String body = actionBody(id, user, Instant.now().minusSeconds(60).toString(), true).replaceFirst("\\{", "{" + link);
+		String actionId = json(postAs(user, "/api/incidents/{id}/actions", body, id)
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.data.relatedSource.title").value(title))
+			.andExpect(jsonPath("$.data.relatedSource.refId").value(resultId)), "$.data.actionId");
+		postAs(user, "/api/incidents/{id}/actions", actionBody(id, user, Instant.now().minusSeconds(30).toString(), true)
+			.replaceFirst("\\{", "{" + link).replace("CHAMBER_SEASONING", "INSPECTION"), id)
+			.andExpect(status().isCreated());
+		var rerun = postAs(user, "/api/incidents/{id}/basic-analysis-jobs",
+			"{\"expectedIncidentVersion\":" + incidentVersion(user, id) + "}", id);
+		awaitJob(user, json(rerun, "$.data.jobId"), "SUCCEEDED");
+		getAs(user, "/api/incidents/{id}/analysis-results?resultId=" + resultId, id)
+			.andExpect(jsonPath("$.data.resultId").value(resultId))
+			.andExpect(jsonPath("$.data.candidateCauses[0].causeId").value(causeId));
+		getAs(user, "/api/incidents/{id}/actions", id)
+			.andExpect(jsonPath("$.data.items", hasSize(2)))
+			.andExpect(jsonPath("$.data.items[0].actionId").value(actionId))
+			.andExpect(jsonPath("$.data.items[0].relatedSource.title").value(title))
+			.andExpect(jsonPath("$.data.items[0].verificationStatus").value("PENDING"));
+	}
+
+	@Test
+	void rejectsForeignOrMissingAnalysisSources() throws Exception {
+		Session user = cmp();
+		String id = newIncident(user, false).incidentId();
+		String other = newIncident(user, false).incidentId();
+		var result = getAs(user, "/api/incidents/{id}/analysis-results", other);
+		String resultId = json(result, "$.data.resultId");
+		String causeId = json(result, "$.data.candidateCauses[0].causeId");
+		String link = "\"relatedSource\":{\"type\":\"CAUSE\",\"refId\":\"" + resultId + "\",\"itemId\":\"" + causeId + "\"},";
+		postAs(user, "/api/incidents/{id}/actions", actionBody(id, user, Instant.now().toString(), true)
+			.replaceFirst("\\{", "{" + link), id)
+			.andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.error.code").value("ACTION_SOURCE_INVALID"));
+		getAs(user, "/api/incidents/{id}/analysis-results?resultId=" + resultId, id).andExpect(status().isNotFound());
+		String localResult = json(getAs(user, "/api/incidents/{id}/analysis-results", id), "$.data.resultId");
+		for (String type : new String[]{"CAUSE", "NEXT_ACTION"}) {
+			String invalidLink = "\"relatedSource\":{\"type\":\"" + type + "\",\"refId\":\"" + localResult + "\",\"itemId\":\"-1\"},";
+			postAs(user, "/api/incidents/{id}/actions", actionBody(id, user, Instant.now().toString(), true)
+				.replaceFirst("\\{", "{" + invalidLink), id).andExpect(status().isUnprocessableEntity());
+		}
+	}
+
+	@Test
+	void recordingReviewOfProposalDoesNotApproveIt() throws Exception {
+		Session user = cmp();
+		String id = newIncident(user, false).incidentId();
+		var asked = postAs(user, "/api/incidents/{id}/questions",
+			"{\"question\":\"점검 요청을 제안해줘\",\"expectedIncidentVersion\":" + incidentVersion(user, id) + "}", id);
+		String jobId = json(asked, "$.data.jobId");
+		awaitJob(user, jobId, "WAITING_APPROVAL");
+		String approvalId = waitingRefId(user, jobId);
+		String link = "\"relatedSource\":{\"type\":\"PROPOSAL\",\"refId\":\"" + approvalId + "\"},";
+		postAs(user, "/api/incidents/{id}/actions", actionBody(id, user, Instant.now().toString(), true)
+			.replaceFirst("\\{", "{" + link).replace("CHAMBER_SEASONING", "REVIEW"), id)
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.data.relatedSource.proposalStatusAtRecord").value("PENDING"))
+			.andExpect(jsonPath("$.data.approvalId").doesNotExist());
+		getAs(user, "/api/approvals/{id}", approvalId).andExpect(jsonPath("$.data.status").value("PENDING"));
+	}
+
 }

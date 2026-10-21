@@ -1451,6 +1451,15 @@
               "type": "boolean",
               "default": true
             }
+          },
+          {
+            "name": "resultId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "같은 사건에 저장된 특정 분석 결과 조회"
           }
         ],
         "responses": {
@@ -2451,6 +2460,9 @@
           "expectedIncidentVersion": {
             "type": "integer",
             "format": "int64"
+          },
+          "relatedSource": {
+            "$ref": "#/components/schemas/SourceRef"
           }
         },
         "required": [
@@ -3936,6 +3948,11 @@
             "items": {
               "$ref": "#/components/schemas/VerificationView"
             }
+          },
+          "relatedSource": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "연결된 분석 항목 또는 제안의 저장 시점 스냅샷"
           }
         }
       },
@@ -5134,6 +5151,27 @@
           "meta"
         ],
         "additionalProperties": true
+      },
+      "SourceRef": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "pattern": "CAUSE|NEXT_ACTION|PROPOSAL"
+          },
+          "refId": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "itemId": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "type",
+          "refId"
+        ]
       }
     },
     "securitySchemes": {

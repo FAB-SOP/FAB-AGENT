@@ -104,6 +104,10 @@ class ReportComposer {
 			act.append("- ").append(TIME.format(a.getPerformedAt())).append(" ").append(a.getActionType()).append(" (")
 				.append(a.getPerformedBy()).append("): ").append(a.getDescription()).append(" → 효과: ")
 				.append(a.getVerificationStatus()).append('\n');
+			if (a.getRelatedSource() != null) {
+				act.append("  - 연결 항목: ").append(a.getRelatedSource().get("title"))
+					.append(" [").append(a.getRelatedSource().get("refId")).append("]\n");
+			}
 			a.getVerifications().forEach(v -> act.append("  - 확인(").append(v.getOutcome()).append("): ")
 				.append(v.getRationale()).append('\n'));
 			evidence.addAll(a.getEvidenceIds());

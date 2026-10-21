@@ -285,3 +285,11 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 **컬럼 이름 — `metrology.cd_value` → `value_a`.** 옛 PHOTO 공정(CD 계측) 시절 이름이었고 지금은 위치 두께(Å)가 들어 있다. API의 JSON 필드 이름(`thicknessA` 등)은 계약을 따르므로 그대로다.
 
 `domain/SchemaTest`가 테스트 Postgres에서 외래 키 14개 · jsonb 컬럼 23개(json 0개) · jsonb 연산자 · `value_a`를 확인하고, 없는 run을 가리키는 계측 INSERT가 거절되는지 본다.
+
+### 검토·점검·조치와 분석 항목 연결
+
+`POST /api/incidents/{id}/actions`의 선택 필드 `relatedSource`로 연결한다. 예: `{"type":"CAUSE","refId":"분석 resultId","itemId":"causeId"}`. `NEXT_ACTION`은 `itemId`에 분석의 `nextActions` 인덱스 문자열을, `PROPOSAL`은 `refId`에 승인 제안 ID를 넣고 `itemId`는 생략한다. 필드를 생략하거나 null이면 별도 기록이다. 기존 요청은 그대로 호환된다.
+
+서버가 같은 사건의 원본을 검증하고 제목·내용의 스냅샷을 `incident_action.related_source` JSONB에 저장한다(기존 DB에는 nullable 컬럼이 추가됨). 연결은 제안 승인이나 원인 확정을 의미하지 않는다. `actionType`으로 `REVIEW`(검토), `INSPECTION`(점검), `MANUAL_MAINTENANCE`(조치), `OTHER`를 구분하고 같은 항목에 여러 기록을 남길 수 있다. 각 기록의 확인·효과 이력은 기존 verification API를 사용한다. 관련 정보는 내부 조치 조회와 보고서 맥락에도 포함된다.
+
+과거 분석의 전체 항목은 `GET /api/incidents/{id}/analysis-results?resultId=...`로 조회한다. 같은 사건의 결과만 반환한다.

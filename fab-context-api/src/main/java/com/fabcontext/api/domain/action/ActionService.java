@@ -30,6 +30,7 @@ public class ActionService {
 	private final IncidentService incidentService;
 	private final IncidentStreamHub streamHub;
 	private final Clock clock;
+	private final ActionSourceResolver sourceResolver;
 
 	@Transactional(readOnly = true)
 	public ActionPage list(String incidentId, AuthUser user) {
@@ -48,7 +49,7 @@ public class ActionService {
 				"실제로 수행한 조치임을 confirmedByUser=true로 확인해야 합니다.");
 		}
 		IncidentAction action = save(incident, input.actionType(), input.description(), input.performedAt(),
-			user.userId(), input.evidenceIds(), "USER", null);
+			user.userId(), input.evidenceIds(), "USER", null, sourceResolver.resolve(incident.getIncidentId(), input.relatedSource()));
 		return ActionView.from(action);
 	}
 
@@ -57,7 +58,7 @@ public class ActionService {
 			List<String> evidenceIds, String approverId) {
 		return save(incident, (String) payload.get("actionType"), (String) payload.get("description"),
 			Instant.parse(payload.get("performedAt").toString()),
-			payload.getOrDefault("performedBy", approverId).toString(), evidenceIds, "APPROVAL", approvalId);
+			payload.getOrDefault("performedBy", approverId).toString(), evidenceIds, "APPROVAL", approvalId, null);
 	}
 
 	@Transactional
@@ -84,7 +85,7 @@ public class ActionService {
 	}
 
 	private IncidentAction save(Incident incident, String actionType, String description, Instant performedAt,
-			String performedBy, List<String> evidenceIds, String source, String approvalId) {
+			String performedBy, List<String> evidenceIds, String source, String approvalId, Map<String, Object> relatedSource) {
 		Instant now = Instant.now(clock);
 		if (performedAt.isAfter(now.plus(CLOCK_SKEW))) {
 			throw ApiException.unprocessable("PERFORMED_AT_IN_FUTURE", "performedAt은 미래일 수 없습니다. 실제 수행한 조치만 기록합니다.");
@@ -100,6 +101,7 @@ public class ActionService {
 			.evidenceIds(evidenceIds)
 			.source(source)
 			.approvalId(approvalId)
+			.relatedSource(relatedSource)
 			.createdAt(now)
 			.build();
 		action = repository.save(action);
