@@ -7,8 +7,10 @@ import com.fabcontext.api.auth.SecurityConfig;
 import com.fabcontext.api.common.ApiResponse;
 import com.fabcontext.api.common.IdempotencyService;
 import com.fabcontext.api.common.PageResponse;
+import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.AcceptInput;
 import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.CheckRequestSummary;
 import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.CheckRequestView;
+import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.DeclineInput;
 import com.fabcontext.api.domain.checkrequest.CheckRequestDtos.ReplyInput;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -48,6 +50,24 @@ public class CheckRequestController {
 	public ApiResponse<CheckRequestView> getRequest(@AuthenticationPrincipal AuthUser user,
 			@PathVariable String requestId) {
 		return ApiResponse.of(service.get(requestId, user));
+	}
+
+	@Operation(operationId = "acceptRequest", summary = "받은 요청 수락 — 내 할 일로 옮긴다")
+	@PostMapping("/{requestId}/acceptance")
+	public ResponseEntity<?> acceptRequest(@AuthenticationPrincipal AuthUser user, @PathVariable String requestId,
+			@RequestHeader(SecurityConfig.CSRF_HEADER) String csrf,
+			@RequestHeader(IdempotencyService.HEADER) String idempotencyKey, @Valid @RequestBody AcceptInput body) {
+		return idempotency.execute(user.userId(), "acceptRequest:" + requestId, idempotencyKey, body,
+			() -> ResponseEntity.ok(ApiResponse.of(service.accept(requestId, user, body))));
+	}
+
+	@Operation(operationId = "declineRequest", summary = "받은 요청 거절 — 사유 필수")
+	@PostMapping("/{requestId}/decline")
+	public ResponseEntity<?> declineRequest(@AuthenticationPrincipal AuthUser user, @PathVariable String requestId,
+			@RequestHeader(SecurityConfig.CSRF_HEADER) String csrf,
+			@RequestHeader(IdempotencyService.HEADER) String idempotencyKey, @Valid @RequestBody DeclineInput body) {
+		return idempotency.execute(user.userId(), "declineRequest:" + requestId, idempotencyKey, body,
+			() -> ResponseEntity.ok(ApiResponse.of(service.decline(requestId, user, body))));
 	}
 
 	@Operation(operationId = "submitReply", summary = "담당자가 확인한 회신 등록")

@@ -49,7 +49,13 @@ public final class CheckRequestDtos {
 			String targetProcessCode, String approvalId, String requestType, String equipmentId, String question,
 			Map<String, Object> brief, List<String> causeIds, List<String> evidenceIds,
 			String requesterUserId, String ownerUserId, CheckRequestStatus status, long version, String threadId,
-			String waitingJobId, Instant dueAt, Instant createdAt, Instant repliedAt, List<ReplyView> replies) {
+			String waitingJobId, Instant dueAt, Instant createdAt, Instant repliedAt, String declineReason, List<ReplyView> replies) {
+	}
+
+	public record DeclineInput(@NotBlank @Size(max = 2000) String reason, @NotNull Long expectedVersion) {
+	}
+
+	public record AcceptInput(@NotNull Long expectedVersion) {
 	}
 
 	public record ReplyInput(@NotBlank @Size(max = 4000) String findings, List<String> evidenceIds,

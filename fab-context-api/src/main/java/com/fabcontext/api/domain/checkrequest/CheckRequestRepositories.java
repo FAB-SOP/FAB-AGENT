@@ -19,9 +19,9 @@ public final class CheckRequestRepositories {
 
 		long countByOwnerUserIdAndStatus(String ownerUserId, CheckRequestStatus status);
 
-		long countByRequesterUserIdAndStatus(String requesterUserId, CheckRequestStatus status);
+		boolean existsByIncidentIdAndStatusIn(String incidentId, java.util.Collection<CheckRequestStatus> statuses);
 
-		boolean existsByIncidentIdAndStatus(String incidentId, CheckRequestStatus status);
+		long countByRequesterUserIdAndStatusIn(String requesterUserId, java.util.Collection<CheckRequestStatus> statuses);
 	}
 
 	public interface ReplyRepository extends JpaRepository<Reply, String> {

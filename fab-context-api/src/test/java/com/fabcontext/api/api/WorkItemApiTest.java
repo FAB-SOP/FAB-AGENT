@@ -87,6 +87,18 @@ class WorkItemApiTest extends ApiTestSupport {
 		getAs(s,"/api/incidents/{id}/work-items",id).andExpect(jsonPath("$.data.items[0].status").value("COMPLETED"));
 	}
 	@Test
+	void recipientDeclineClosesTeamWorkAndReceivedRequestsStayOutOfMyWork() throws Exception {
+		Session s=cmp();String id=newIncident(s,false).incidentId();String task=propose(s,id,"EQUIPMENT_INSPECTION","슬러리 공급 계통 현장 점검");
+		var adopted=postAs(s,"/api/work-items/{id}/adoptions","{\"expectedVersion\":1,\"ownerUserId\":\"USR-MNT-01\",\"targetProcessCode\":\"CMP\"}",task).andExpect(status().isOk());
+		String request=json(adopted,"$.data.requestId");Session mnt=login("mnt.jung");
+		getAs(mnt,"/api/work-items?box=mine").andExpect(jsonPath("$.data.items[?(@.taskId=='"+task+"')]",hasSize(0)));
+		getAs(s,"/api/work-items?box=mine").andExpect(jsonPath("$.data.items[?(@.taskId=='"+task+"')]",hasSize(1)));
+		postAs(mnt,"/api/check-requests/{id}/decline","{\"reason\":\"공급 계통은 시설팀 담당입니다\",\"expectedVersion\":1}",request).andExpect(status().isOk());
+		getAs(s,"/api/incidents/{id}/work-items",id).andExpect(jsonPath("$.data.items[0].status").value("REQUEST_DECLINED"))
+			.andExpect(jsonPath("$.data.items[0].decisionComment").value("공급 계통은 시설팀 담당입니다"));
+		getAs(s,"/api/incidents/{id}",id).andExpect(jsonPath("$.data.status").value("INVESTIGATING"));
+	}
+	@Test
 	void processScopedManagerIsPreferredAndOnlyAssignedManagerMayApprove() throws Exception {
 		String uid="USR-MID-"+UUID.randomUUID();String username="mid."+UUID.randomUUID();
 		var parent=accounts.findByUsername("manager.choi").orElseThrow();
