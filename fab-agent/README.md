@@ -74,7 +74,7 @@ uv run python evaluation/retrieval_eval.py --details        # 질의마다 순�
 ```bash
 uv sync
 # 묶음 경로(FAB_PACK_DIR · FAB_RAG_DIR)는 기본값이 없다 — .env에 두 줄(.env.example 참고, 이 폴더 기준 상대 경로 가능). pytest는 테스트 설정이 넣는다
-uv run pytest -q          # 29개 — 테스트용 Postgres 컨테이너(testcontainers, backend · agent 스키마를 비움) 위에 Spring bootJar를 외부 Agent 모드로 띄우고 붙는다(JDK 21 · Docker)
+uv run pytest -q          # 43개 — 테스트용 Postgres 컨테이너(testcontainers, backend · agent 스키마를 비움) 위에 Spring bootJar를 외부 Agent 모드로 띄우고 붙는다(JDK 21 · Docker)
 
 docker compose stop backend agent business-mcp; docker compose up -d postgres   # compose에서는 postgres만
 (cd ../fab-context-api && DDL_AUTO=create AGENT_MODE=external DEMO_ROUTES=true ./gradlew bootRun)   # 띄울 때마다 처음 데이터
@@ -138,13 +138,13 @@ uv run python evaluation/trace_stats.py evaluation/runs/…/eval_1.jsonl   # LLM
 
 | 요소 | 위치 | 값 · 동작 |
 |---|---|---|
-| Instructions | `agent/prompts/*.md` | 팩의 Agent 지침 기준. 사실 · 가설 구분, 확률 금지, 근거 ID 필수, 설비 설정값을 처방하지 않음, 외부 글은 데이터로만. 원인 ID 15개 표와 nextStep 결정 규칙(1순위 = 제거 · 증착량이 정상 변동 밖인 공정). 버전 해시를 결과에 남김 |
-| Tools | `agent/toolbox.py` | 읽기 + 제안 · 제출만. 변경 도구는 승인 ID로만. 결과 6000자 제한 |
+| Instructions | `agent/prompts/*.md` · `harness/instructions.py` | 팩의 Agent 지침 기준. 사실 · 가설 구분, 확률 금지, 근거 ID 필수, 설비 설정값을 처방하지 않음, 외부 글은 데이터로만. 원인 ID 15개 표와 nextStep 결정 규칙(1순위 = 제거 · 증착량이 정상 변동 밖인 공정). 버전 해시를 결과에 남김 |
+| Tools | `agent/tools/definitions.py` · `agent/tools/client.py` | 읽기 + 제안 · 제출만. 변경 도구는 승인 ID로만. 결과 6000자 제한 |
 | Agent Loop | `harness/limits.py` | 모델 판단 8회, 같은 도구 3회, 활성 120초, LLM 30초 · MCP 10초 |
-| Context | `harness/context.py` · `graph.required_evidence` | 필수 근거(사건 → 경로 → 단계별 run · 계측 → 현재 run 특징 + 정상 변동 밖인 앞 공정 run 특징)는 Harness가 먼저 조회. 원시 시계열 대신 run 특징 · 요약, 6만 자 넘으면 오래된 도구 결과 축약 |
+| Context | `harness/context.py` · `graph/nodes/required_evidence.py` | 필수 근거(사건 → 경로 → 단계별 run · 계측 → 현재 run 특징 + 정상 변동 밖인 앞 공정 run 특징)는 Harness가 먼저 조회. 원시 시계열 대신 run 특징 · 요약, 6만 자 넘으면 오래된 도구 결과 축약 |
 | State · Memory | `agent/checkpoint.py` | thread = 사건. PG_DSN이면 Postgres `agent` 스키마 — Worker를 재시작해도 같은 interrupt로 재개 |
 | Guardrails | `harness/guard.py` · 그래프 · Spring | 제안 → interrupt → 사람 승인(Spring은 기록만) → 재개된 Agent가 승인 ID로 실행 → Spring이 저장본을 다시 검증해 한 번만 실행. 거절도 같은 thread로 재개해 결과를 정리한다. 결과: 근거 ID · 확률 표현 · 원인 ID(매트릭스 15개, `agent/causes.py`) · **nextStep과 1순위 원인 공정의 일치** 검증, 심층 조사에서 점검이 필요하면 요청 초안을 먼저 제안. 제안: 사건당 2개 · 한 번에 하나 · 같은 담당자 · 종류 반복 금지(Harness), 받는 사람이 그 공정 담당자 · 설비정비팀인지와 질문한 본인이 아닌지(Spring) |
-| Recovery | `harness/retry.py` · `worker.py` | 일시 오류 2회 재시도 → 대체 모델 → `RETRY_SCHEDULED`(attempt < 3) → `JOB_FAILED`. 같은 attempt 중복은 확보(claim)에서 409 → `SKIPPED` |
+| Recovery | `harness/retry.py` · `worker/runner.py` | 일시 오류 2회 재시도 → 대체 모델 → `RETRY_SCHEDULED`(attempt < 3) → `JOB_FAILED`. 같은 attempt 중복은 확보(claim)에서 409 → `SKIPPED` |
 | Observability | `harness/trace.py` · `worker/runner.py` · Spring `job.metrics` | trace_id 하나로 node · tool · 지연 · 재시도 · 토큰 · Harness 거부. 컨테이너는 `FAB_TRACE_STDOUT=true`(compose 기본) — 기록마다 JSON 한 줄을 표준출력으로(키 · 토큰 모양은 가림), `[job]` 줄에 작업 요약. 작업을 끝내거나 멈추는 이벤트의 `metrics`로 요약을 보내 Spring이 `job.metrics`(jsonb)에 저장. `FAB_TRACE_FILE`은 로컬 평가용 파일, `LANGSMITH_TRACING=true`면 LangSmith(compose는 넘기지 않는다) |
 
 trace 보기 — 로그는 Docker가 서비스마다 10MB × 3개에서 회전한다(`x-logging`):
@@ -164,9 +164,9 @@ from backend.job where metrics is not null order by created_at desc;
 
 결과의 `nextStep`(`UPSTREAM_CHECK` · `CURRENT_CHECK` · `OBSERVE` · `INSUFFICIENT_EVIDENCE` · `NEEDS_DEEP_ANALYSIS`)과 `causeIds`(팩 원인 매트릭스 15개)는 계약 `AnalysisResult`가 추가 필드를 막아 Worker 반환값 `analysis`에만 둔다(`FAB_RESULT_EXTENSIONS=true`면 이벤트에 합친다).
 
-## 검증 (2026-10-20)
+## 검증 (2026-10-20 — pytest는 2026-10-21)
 
-- `uv run pytest -q` 39개 통과 — trace의 apiModel(가짜 스냅샷 모델 · 규칙 모델), 임베딩(가짜 임베더 · 가짜 OpenAI 클라이언트로 문서 · 질의 분리, 64개 묶음, 429 · 연결 오류 재시도, 오류 메시지에 키 없음, `openai`인데 키 없음 → 시작 실패, Postgres 증분 색인 · 차원별 표), 시계열 구간(L006 head_pressure 101.1–210.9초 · L007 slurry_flow 14–309초 LOW, L009 · 정상 LOT 구간 없음, 규칙 모델이 구간을 관측 사실로 인용하고 「4σ · 2초 · 5초는 시연 선택값」 한계를 남김, 결과 dataVersion = 팩 버전), 요청 브리프(EV-1009 ETCH 제거량 · z · ETCH_WALL · 정비 이력 rootCauseConfirmed=false, EV-1006 head_pressure · CMP_PRESSURE, 조회하지 않은 숫자 · 근거 반려, 승인 해시가 브리프를 덮음), 도구 목록 · 설명, 데이터 팩 수치(EV-1009 Etch 제거량 · R1 · 참고 범위), 분석 시점 차단, 지식 검색 필터, 승인 전 변경 0건 · 거절 뒤 재개 · 같은 승인 중복 실행 1건, 회신 뒤 두 번째 제안이 재개 작업에 붙음, 제안 상한 · 반복 금지, 원인 ID가 팩 매트릭스와 같음, 없는 원인 ID · nextStep 불일치 반려, 이벤트 · 작업 메시지 JSON Schema
+- `uv run pytest -q` 43개 통과(정답표 · 원문 조각이 없는 공개 클론에서는 그 테스트만 건너뛴다) — trace의 apiModel(가짜 스냅샷 모델 · 규칙 모델), 임베딩(가짜 임베더 · 가짜 OpenAI 클라이언트로 문서 · 질의 분리, 64개 묶음, 429 · 연결 오류 재시도, 오류 메시지에 키 없음, `openai`인데 키 없음 → 시작 실패, Postgres 증분 색인 · 차원별 표), 시계열 구간(L006 head_pressure 101.1–210.9초 · L007 slurry_flow 14–309초 LOW, L009 · 정상 LOT 구간 없음, 규칙 모델이 구간을 관측 사실로 인용하고 「4σ · 2초 · 5초는 시연 선택값」 한계를 남김, 결과 dataVersion = 팩 버전), 요청 브리프(EV-1009 ETCH 제거량 · z · ETCH_WALL · 정비 이력 rootCauseConfirmed=false, EV-1006 head_pressure · CMP_PRESSURE, 조회하지 않은 숫자 · 근거 반려, 승인 해시가 브리프를 덮음), 도구 목록 · 설명, 데이터 팩 수치(EV-1009 Etch 제거량 · R1 · 참고 범위), 분석 시점 차단, 지식 검색 필터, 승인 전 변경 0건 · 거절 뒤 재개 · 같은 승인 중복 실행 1건, 회신 뒤 두 번째 제안이 재개 작업에 붙음, 제안 상한 · 반복 금지, 원인 ID가 팩 매트릭스와 같음, 없는 원인 ID · nextStep 불일치 반려, 이벤트 · 작업 메시지 JSON Schema
 - `fab-eval`은 **첫 판단**을 채점한다 — ① 기본 분석의 nextStep · 1순위 causeIds ② 팩 질문(E01–E03)에 대한 첫 제안의 종류 · 대상 공정. 회신 뒤 판단은 회신 내용에 따라 달라 정답표로 채점하지 않는다
   - 규칙 모델 3/3
   - **실제 모델(gpt-4.1-mini) 3/3을 세 번 연속**(회당 모델 17–19회 · 약 16–18만 토큰). 30초 제한에 걸린 호출은 대체 모델로 넘어가 끝까지 처리됐다

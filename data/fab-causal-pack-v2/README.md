@@ -1,6 +1,6 @@
 # fab-causal-pack-v2 — dataVersion `causal-pack-v2-scenarios`
 
-**전부 시연용 합성 데이터다.** `data/build_pack_v2.py`가 두 원본을 합쳐 만든다(원본은 고치지 않는다). 다시 돌리면 같은 바이트가 나온다.
+**전부 시연용 합성 데이터다.** `data/build_pack_v2.py`가 두 원본을 합쳐 만든다(원본은 고치지 않는다). 다시 돌리면 같은 바이트가 나오고, 조립이 끝나면 v1 · v2 원본과 행 · 개수를 대조하는 검사를 함께 돌린다(`python3 data/build_pack_v2.py`).
 
 | 출처 | 쓴 것 |
 |---|---|

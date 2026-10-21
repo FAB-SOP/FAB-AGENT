@@ -1,6 +1,6 @@
 # FAB CONTEXT API — Spring backend (하나뿐인 backend)
 
-공개 API 41개(기존 38 + 모니터링 3, 프론트 계약 `../backend-handoff-v2/combined.openapi.json`)와, fab-agent의 업무 MCP · Agent Worker가 부르는 내부 API(`/internal/**`)를 함께 연다.
+공개 API 51개(기존 38 + 모니터링 3 + 화면 업무 · 회신 목록 · 과거 분석 · 시연 계정 전환 10, 프론트 계약 `../backend-handoff-v2/combined.openapi.json`)와, fab-agent의 업무 MCP · Agent Worker가 부르는 내부 API(`/internal/**`)를 함께 연다.
 **원칙: 공개 API = 프론트 계약, 내부 API · Agent 이벤트 = 팀 계약(원본은 팀 내부, 테스트용 사본 `../fab-agent/contracts/`), 둘 사이 변환은 Spring이 한다.**
 operationId · HTTP 메서드 · 경로는 프론트 계약과 1:1로 일치한다(`/v3/api-docs`, 대조 도구 `../tools/openapi_diff.py`).
 
@@ -15,7 +15,7 @@ operationId · HTTP 메서드 · 경로는 프론트 계약과 1:1로 일치한�
 src/main/java/com/fabcontext/api/
 ├─ common/        공통 응답({data, meta}) · 오류 · JSON · ID · 멱등 키 · 커서 · stream/IncidentStreamHub(사건별 SSE)
 ├─ config/        FabProperties — 토큰 · 승인 만료 · 시드 · Agent 모드 · 데모 경로 · 묶음 경로(pack-dir · rag-dir)
-├─ auth/          로그인 · 세션 · CSRF · 서비스 토큰(/api/events → ROLE_SERVICE, /internal → ROLE_AGENT) · 공정 범위 권한
+├─ auth/          로그인 · 세션 · CSRF · 서비스 토큰(/api/events → ROLE_SERVICE, /internal → ROLE_AGENT) · 공정 범위 권한 · 시연 계정 전환
 ├─ domain/        화면(공개 API /api/**) 기능 — 기능마다 Controller · Service · Entity · Repository · Dtos
 │  ├─ incident/      P03 사건 목록 · 상세 · 관리자 상태 전이 · 타임라인
 │  ├─ events/        이상 이벤트 접수 (탐지 서비스 → 사건 생성 + 기본 분석 작업)
@@ -30,6 +30,8 @@ src/main/java/com/fabcontext/api/
 │  ├─ action/        P10 조치 기록 · 효과 확인 · 실행기 RecordActionHandler
 │  ├─ report/        P11 보고서 초안 · 편집 · 확정 · 내보내기 (sections 다섯 키 — contract/ReportSections) · 실행기 ConfirmReportHandler
 │  ├─ knowledge/     P12 지식 문서 검색 · 본문 (실제 원문 7종 · 팀 점검 문서 15 · 가상 사례 7)
+│  ├─ monitoring/    정상 LOT · PM 모니터링 3개 (팩 JSON 그대로)
+│  ├─ work/          화면 업무 — 확인 업무 · 변경 계획(관리자 승인) · 다른 팀 요청, WorkOperation(업무 코드 → 경로)
 │  └─ dashboard/     P02 대시보드 집계
 ├─ internal/      내부 API(/internal/**) — 업무 MCP 도구 묶음과 1:1. 컨트롤러는 InternalApi 표시(InternalAdvice가 오류 모양을 맞춘다)
 │  ├─ query/        InternalIncidentQuery(사건) · InternalProcessQuery(경로 · run · 특징 · 시계열 · 관리한계 · 변경) ·
@@ -101,15 +103,15 @@ compose의 `backend` 컨테이너가 떠 있으면 먼저 끈다(`docker compose
 
 비밀번호는 모두 `fab1234!`. 이벤트 접수 서비스 토큰은 `X-Service-Token: dev-simulator-token`, 내부 API 토큰은 `Authorization: Bearer dev-service-token`(`SERVICE_TOKEN`).
 
-## 검증 (2026-10-20)
+## 검증 (2026-10-21 — smoke-test는 2026-10-20)
 
 ```bash
-./gradlew test                     # 105개 — Testcontainers Postgres(pgvector/pgvector:pg16, compose와 같은 이미지). Docker 필요
+./gradlew test                     # 122개 — Testcontainers Postgres(pgvector/pgvector:pg16, compose와 같은 이미지). Docker 필요
 ./scripts/smoke-test.sh http://localhost:8090   # 107개 — 시뮬레이터 모드 서버에 curl 전체 흐름 (jq 필요)
 python3 ../tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-docs ↔ 프론트 계약 차이 표
 ```
 
-통합 테스트는 컨텍스트와 Postgres 컨테이너 하나를 공유하므로 상태를 바꾸는 테스트는 `ApiTestSupport.newIncident()`로 자기 사건을 만든다. 설정이 다른 컨텍스트(`SlowAgentApiTest`, Agent 지연 1.5초)는 같은 컨테이너의 자기 스키마(`backend_slow`)에 따로 시드한다. 컨텍스트를 띄울 때마다 테이블을 새로 만든다(`ddl-auto=create`). 외부 Agent와의 연결은 fab-agent 쪽(pytest 27개 · `fab-eval` 규칙 모델 3/3 · 실제 모델 3/3 세 번 · compose 점검)에서 검증한다.
+통합 테스트는 컨텍스트와 Postgres 컨테이너 하나를 공유하므로 상태를 바꾸는 테스트는 `ApiTestSupport.newIncident()`로 자기 사건을 만든다. 설정이 다른 컨텍스트(`SlowAgentApiTest`, Agent 지연 1.5초)는 같은 컨테이너의 자기 스키마(`backend_slow`)에 따로 시드한다. 컨텍스트를 띄울 때마다 테이블을 새로 만든다(`ddl-auto=create`). 외부 Agent와의 연결은 fab-agent 쪽(pytest 43개 · `fab-eval` 규칙 모델 3/3 · 실제 모델 3/3 세 번 · compose 점검)에서 검증한다.
 
 ## 공통 규칙
 
@@ -134,7 +136,7 @@ python3 ../tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-docs �
 7. **보고서** 사용자가 요청할 때만 REPORT 작업으로 DRAFT를 만듭니다. 편집(`contentRevision`) → 확정(스냅샷 보존) → Markdown 내보내기. 확정 후 변경하려면 새 version을 만듭니다.
 8. **관리자 전이** OPEN · INVESTIGATING · WAITING_REPLY → ON_HOLD, ON_HOLD → INVESTIGATING, 그 외 모든 상태 → CLOSED.
 
-SSE `GET /api/incidents/{id}/stream` 이벤트: `snapshot`, `job.status`, `analysis.result`, `approval.created`, `approval.decided`, `check-request.created`, `check-request.replied`, `action.recorded`, `action.verified`, `report.ready`, `report.confirmed`, `incident.updated`. 연결이 끊기면 `getJob`으로 상태를 복구합니다. 대시보드 전역 스트림은 계약에 없으므로 `GET /api/dashboard`를 다시 조회합니다.
+SSE `GET /api/incidents/{id}/stream` 이벤트: `snapshot`, `job.status`, `analysis.result`, `approval.created`, `approval.decided`, `approval.executed`, `work-item.updated`, `check-request.created`, `check-request.replied`, `action.recorded`, `action.verified`, `report.ready`, `report.confirmed`, `incident.updated`. 연결이 끊기면 `getJob`으로 상태를 복구합니다. 대시보드 전역 스트림은 계약에 없으므로 `GET /api/dashboard`를 다시 조회합니다.
 
 ## 시드 시나리오
 
@@ -193,7 +195,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 
 - 팀 계약 `public-openapi.json`(원본은 팀 내부, 사본 `fab-agent/contracts/`)의 공개 actionType도 같은 네 값으로 고쳤다 — 공개 API 계약 문서가 둘이던 것을 하나로 맞췄다
 - **dataVersion** — 결과 · 근거 · 화면 응답은 팩 `pack-manifest.json`의 `causal-pack-v2-scenarios`를 쓴다(예전 `dv-N` 카운터는 없앴다 — 이벤트 접수는 팩을 바꾸지 않는다)
-- OpenAPI 대조(`../tools/openapi_diff.py`) 결과 41개 operation이 모두 같고, 차이는 `MAINTENANCE_REQUEST` 추가(승인 목록 · 상세 · 제안 요청 · 응답)와 위 comparisons뿐이다. 모니터링 3개의 문서 스키마는 프론트 계약을 그대로 붙였다(`resources/openapi/monitoring-contract.json`, `OpenApiConfig`) — 응답이 팩 JSON을 그대로 내리는 Map이라서다
+- OpenAPI 대조(`../tools/openapi_diff.py`) 결과 41개 operation이 모두 같고(2026-10-20 기준 — 지금은 업무 · 회신 · 시연 API가 더해져 51개), 차이는 `MAINTENANCE_REQUEST` 추가(승인 목록 · 상세 · 제안 요청 · 응답)와 위 comparisons뿐이다. 모니터링 3개의 문서 스키마는 프론트 계약을 그대로 붙였다(`resources/openapi/monitoring-contract.json`, `OpenApiConfig`) — 응답이 팩 JSON을 그대로 내리는 Map이라서다
 
 ### 모니터링 API 3개 (정상 LOT · PM)
 
@@ -301,7 +303,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 
 ## 확인·변경 계획·다른 팀 요청
 
-AI의 `workSuggestions`는 `PROPOSED` 업무로만 저장된다. 담당자가 채택하기 전에는 할 일·요청·수행 기록이 생기지 않는다. 채택하지 않은 제안은 `DECLINED`로 보존한다.
+업무는 사용자가 분석 결과의 「분석에서 업무 제안」으로 등록한다(`POST /api/incidents/{id}/work-items`). 결과 이벤트에 `workSuggestions`가 오면 같은 `PROPOSED` 업무로 저장하지만, 이 필드는 호환용이고 현재 Agent는 보내지 않는다(Agent의 요청은 위 「승인 뒤 실행」 흐름이다). 담당자가 채택하기 전에는 할 일·요청·수행 기록이 생기지 않는다. 채택하지 않은 제안은 `DECLINED`로 보존한다.
 
 | 분류 | 업무 코드 | 채택 이후 |
 |---|---|---|
@@ -332,7 +334,7 @@ AI의 `workSuggestions`는 `PROPOSED` 업무로만 저장된다. 담당자가 �
 
 `GET /api/incidents/{id}/check-requests`는 사건 조회 공정 권한을 확인하고, 기존 요청을 포함해 요청·회신 전체를 반환한다. 프론트의 검토·조치 화면은 이 원본의 REPLIED 상태와 회신 내용으로 완료 표시를 만든다. 회신 완료와 사건 해결·효과 검증은 구분한다.
 
-새 업무는 저장 시 사건 잠금 안에서 기존 업무와 비교한다. 같은 업무 종류의 동일 제목, 공백·문장부호만 다른 제목, 대상·센서·숫자가 같고 문구가 매우 유사한 제안은 기존 업무를 재사용한다. 다른 센서나 변경 수치가 다른 제안은 별도 업무로 보존한다. 다른 팀 업무는 기존 요청 제목과도 비교한다. 기존 이력은 삭제하지 않는다. 자연어 의미가 크게 다른 표현의 중복까지 문구 검사만으로 보장하지 않으므로 Agent도 매 분석마다 기존 업무·요청·회신을 조회한다.
+새 업무는 저장 시 사건 잠금 안에서 기존 업무와 비교한다. 같은 업무 종류의 동일 제목, 공백·문장부호만 다른 제목, 대상·센서·숫자가 같고 문구가 매우 유사한 제안은 기존 업무를 재사용한다. 다른 센서나 변경 수치가 다른 제안은 별도 업무로 보존한다. 다른 팀 업무는 기존 요청 제목과도 비교한다. 기존 이력은 삭제하지 않는다. 자연어 의미가 크게 다른 표현의 중복까지 문구 검사만으로 보장하지는 않는다. Agent는 업무 목록을 보지 않는다 — 조회할 수 있는 것은 확인 요청 · 회신(`get_check_requests`)이다.
 
 새 보고서에는 DB 기록에서 요청자, 수신 담당자, 발송 검토자, 회신자, 수행자, 지정 승인자 및 시각을 덧붙인다. 실제 LLM 보고서에도 서버에서 이 이력을 붙인다. 확정된 과거 보고서는 유지하므로 새 이력이 필요하면 새 초안을 생성한다.
 
