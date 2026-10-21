@@ -1,5 +1,5 @@
 import {type Obj,when} from '../api/types';
-export type ActionChoice={key:string;type:'CAUSE'|'NEXT_ACTION'|'PROPOSAL';refId:string;itemId?:string;title:string;subtitle:string;check?:string;action?:string;rationale?:string};
+export type ActionChoice={key:string;type:'CAUSE'|'NEXT_ACTION'|'PROPOSAL'|'WORK_ITEM';refId:string;itemId?:string;title:string;subtitle:string;check?:string;action?:string;rationale?:string};
 export const actionKinds:Record<string,string>={REVIEW:'검토 기록',INSPECTION:'현장 점검',MANUAL_MAINTENANCE:'조치 수행',OTHER:'기타 기록'};
 export const sourceKey=(source?:Obj|null)=>source?`${source.type}:${source.refId}:${source.itemId??''}`:'';
 export const actionSourceKey=(action:Obj)=>sourceKey(action.relatedSource)||(action.approvalId?sourceKey({type:'PROPOSAL',refId:action.approvalId}):'');

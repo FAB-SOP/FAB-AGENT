@@ -62,6 +62,7 @@ async def finalize(state: AgentState, config) -> dict:
                "nextCheck": str(c.get("nextCheck", ""))}
               for i, c in enumerate(r.get("candidateCauses", []))]
     used = {e for f in facts for e in f["evidenceIds"]} | {e for c in causes for e in c["supportingEvidenceIds"]}
+    used |= {e for item in r.get("workSuggestions", []) for e in item.get("evidenceIds", [])}
     ev = state.get("evidence", {})
     result = {
         "resultId": f"RESULT-{current_job(state, config)}",
@@ -74,6 +75,6 @@ async def finalize(state: AgentState, config) -> dict:
     }
     # 계약 AnalysisResult.candidateCauses는 추가 필드를 막는다 — 원인 매트릭스 ID는 계약 밖 analysis에 둔다
     analysis = {"nextStep": r.get("nextStep"), "stopReason": state.get("stopReason"),
-                "promptVersion": state.get("promptVersion"),
+                "promptVersion": state.get("promptVersion"), "workSuggestions": r.get("workSuggestions", []),
                 "causeIds": [[str(x) for x in c.get("causeIds") or []] for c in r.get("candidateCauses", [])]}
     return {"result": result, "analysis": analysis}

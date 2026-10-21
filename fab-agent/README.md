@@ -163,3 +163,12 @@ uv run python evaluation/trace_stats.py evaluation/runs/…/eval_1.jsonl   # LLM
 - 채점이 느슨한 곳: 1순위 causeIds에 정답이 「들어 있으면」 통과다(한 번은 ETCH 원인 다섯 개를 모두 나열했다)
 - Kafka — 어디까지 쓸지 정하면 Spring 발행 쪽과 함께 붙인다
 - 서비스 인증 방식(지금은 고정 Bearer 토큰), ID · 근거 형식은 팀 확정을 기다린다
+
+
+## 후속 업무 제안
+
+기본 흐름에서 Agent는 `submit_result.workSuggestions`로 최대 5개 업무를 제안한다. 각 항목에는 `operationCode`, `title`, `reason`, 조회한 근거의 `evidenceIds`를 넣는다. RESULT_READY의 `result`와 나란히 전달되며 Spring이 제안 상태로 저장한다. 모델이 직접 채택·승인·발송하지 않는다.
+
+업무 MCP에 읽기 도구 `get_work_policy`, `get_work_items`를 추가했다. 분석 시 서버 정책과 기존 업무를 조회하고, 보고 시 제안·승인 대기·실제 조치·담당자 회신을 구분한다. 확인 업무를 일괄 MAINTENANCE_REQUEST로 바꾸던 경로는 기본 비활성화했다. 과거 중단 체크포인트의 재개 처리는 유지하며, 구형 제안 도구가 필요한 호환 검증에만 `FAB_LEGACY_REQUEST_PROPOSALS=1`을 사용한다.
+
+새 전체 흐름 검증: `tests/test_work_suggestions.py`. Rule 모델·격리된 Spring/Postgres로 제안 저장과 자동 발송·수행 기록이 생기지 않는 것을 확인한다.

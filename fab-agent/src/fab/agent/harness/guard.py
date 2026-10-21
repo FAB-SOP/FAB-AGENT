@@ -46,6 +46,22 @@ def validate_result(result: dict, known_evidence: set[str], incident_process: st
         cited |= ids
     for c in result.get("candidateCauses") or []:
         cited |= set(c.get("supportingEvidenceIds") or [])
+    from fab.agent.tools.definitions import WORK_OPERATIONS
+    suggestions = result.get("workSuggestions") or []
+    if not isinstance(suggestions, list) or len(suggestions) > 5:
+        errs.append("workSuggestions는 최대 5개의 배열입니다.")
+        suggestions = []
+    for item in suggestions:
+        if not isinstance(item, dict):
+            errs.append("업무 제안은 객체입니다.")
+            continue
+        if item.get("operationCode") not in WORK_OPERATIONS:
+            errs.append("업무 유형은 get_work_policy의 operationCode를 사용하세요.")
+        if not item.get("title") or not item.get("reason"):
+            errs.append("업무 제목과 제안 이유가 필요합니다.")
+        if not item.get("evidenceIds"):
+            errs.append("업무 제안에는 조회한 evidenceId가 필요합니다.")
+        cited |= set(item.get("evidenceIds") or [])
     unknown = cited - known_evidence
     if unknown:
         errs.append(f"조회하지 않은 근거 ID를 인용했습니다: {sorted(unknown)}. 도구 결과의 evidenceId만 쓰세요.")

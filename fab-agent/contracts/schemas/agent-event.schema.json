@@ -142,6 +142,55 @@
             "properties": {
               "result": {
                 "$ref": "../public-openapi.json#/components/schemas/AnalysisResult"
+              },
+              "workSuggestions": {
+                "type": "array",
+                "maxItems": 5,
+                "description": "선택적 업무 제안. 채택·승인·발송·수행 기록이 아니다.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "operationCode": {
+                      "type": "string",
+                      "enum": [
+                        "REVIEW_SENSOR_DATA",
+                        "REVIEW_PROCESS_HISTORY",
+                        "COMPARE_METROLOGY",
+                        "CHANGE_SETPOINT",
+                        "CHANGE_RECIPE",
+                        "REPLACE_COMPONENT",
+                        "RESTART_EQUIPMENT",
+                        "REVIEW_REQUIRED",
+                        "EQUIPMENT_INSPECTION",
+                        "FACILITY_INSPECTION",
+                        "UPSTREAM_CHECK"
+                      ]
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "operationCode",
+                    "title",
+                    "reason",
+                    "evidenceIds"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [

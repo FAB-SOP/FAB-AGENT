@@ -49,7 +49,7 @@ public class ActionService {
 				"실제로 수행한 조치임을 confirmedByUser=true로 확인해야 합니다.");
 		}
 		IncidentAction action = save(incident, input.actionType(), input.description(), input.performedAt(),
-			user.userId(), input.evidenceIds(), "USER", null, sourceResolver.resolve(incident.getIncidentId(), input.relatedSource()));
+			user.userId(), input.evidenceIds(), "USER", null, sourceResolver.resolve(incident.getIncidentId(), input.relatedSource(), user.userId()));
 		return ActionView.from(action);
 	}
 

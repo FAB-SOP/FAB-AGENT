@@ -297,3 +297,45 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 ### 사건 조회와 운영 권한
 
 세션의 `processScopes`는 조회 범위, `investigationProcessScopes`는 사건 운영 범위다. 공정 담당자는 자기 공정, 관리자는 부여받은 모든 공정에서 분석·질문·제안/승인·조치·보고서를 변경할 수 있다. 기존 계정 정책의 `설비정비팀`은 세 공정을 조회하지만 사건 운영 범위는 비어 있다. 정비 및 타 공정 담당자는 자신에게 배정된 확인 요청에 회신한다. 타 공정 사건 전체를 추가로 공개하지 않고 받은 요청의 사건 정보·브리프로 협업한다. 서버의 모든 사용자 사건 쓰기는 `loadForWrite`로 검사하며 내부 Agent 작업·배정 요청 회신 경로와 분리한다.
+
+
+## 확인·변경 계획·다른 팀 요청
+
+AI의 `workSuggestions`는 `PROPOSED` 업무로만 저장된다. 담당자가 채택하기 전에는 할 일·요청·수행 기록이 생기지 않는다. 채택하지 않은 제안은 `DECLINED`로 보존한다.
+
+| 분류 | 업무 코드 | 채택 이후 |
+|---|---|---|
+| 내 확인 업무 | REVIEW_SENSOR_DATA, REVIEW_PROCESS_HISTORY, COMPARE_METROLOGY | READY → 담당자가 수행 결과 기록 → COMPLETED |
+| 관리자 승인 | CHANGE_SETPOINT, CHANGE_RECIPE, REPLACE_COMPONENT, RESTART_EQUIPMENT, REVIEW_REQUIRED | WAITING_MANAGER → APPROVED 또는 REJECTED. 승인 후 담당자가 실제 결과를 기록해야 COMPLETED |
+| 다른 팀 요청 | EQUIPMENT_INSPECTION, FACILITY_INSPECTION, UPSTREAM_CHECK | 수신 담당자 선택·발송 → REQUESTED → 담당자 회신 → COMPLETED |
+
+서버의 `WorkOperation` 정책이 경로를 결정한다. AI는 업무 코드를 제안하며 승인 여부를 결정하지 않는다. 확인·이관 제목에 변경 표현이 섞이면 `REVIEW_REQUIRED`로 올린다. 문구 검사만으로 모든 자연어의 변경 의도를 판별할 수는 없으므로 담당자는 구체적인 업무 종류와 내용을 검토한다. 이 서비스는 실제 설비 제어 명령을 실행하지 않는다.
+
+현재 전체 관리자는 기존 `manager.choi` 계정을 사용한다. 관리자 후보는 MANAGER 역할과 사건 공정 권한으로 찾으며, 담당 공정 범위가 좁은 관리자를 우선한다. 따라서 추후 CMP 등 공정별 관리자를 등록하면 해당 공정 승인에 우선 배정된다. 지정 관리자만 승인·반려 가능하며 자기 승인은 금지한다. 반려에는 사유가 필요하다.
+
+`UPSTREAM_CHECK`는 PM 번호 추정 대신 해당 웨이퍼의 실제 공정 경로에서 대상 설비를 찾는다. 장비·시설 요청은 등록된 정비 담당자에게만 보낼 수 있다. 회신과 기존 중단 작업이 연결되어 있으면 기존 RESUME을 유지한다. 새 업무 요청은 분석이 진행 중이지 않을 때 회신 내용을 반영하는 새 DEEP 분석을 시작한다. 이미 분석 중이면 회신을 저장하고 후속 분석 조회 자료로 제공한다.
+
+### 추가 공개 API
+
+- `GET /api/work-policy`: 업무 종류·경로·등록 담당자 목록
+- `GET /api/incidents/{id}/work-items`: 사건의 제안과 채택 업무
+- `GET /api/work-items?box=mine|approval`: 내 업무 또는 지정 관리자 승인 대기
+- `POST /api/incidents/{id}/work-items`: 분석 결과 근거로 제안 등록
+- `POST /api/work-items/{id}/adoptions`: 채택·관리자 요청·다른 팀 발송
+- `POST /api/work-items/{id}/decisions`: DECLINE / APPROVE / REJECT
+- `POST /api/work-items/{id}/completions`: 직접 확인한 실제 수행 결과 기록
+
+쓰기에는 세션·CSRF·Idempotency-Key·버전 검사를 적용한다. 다른 공정 담당자와 정비 담당자의 사건 변경 권한은 기존 제한을 유지한다. 관리자 승인과 실제 수행 기록은 별도 상태로 관리하며, 보고서에는 미수행 업무가 실행 결과로 포함되지 않는다.
+
+
+### 회신·중복 제안·시연 계정 전환
+
+`GET /api/incidents/{id}/check-requests`는 사건 조회 공정 권한을 확인하고, 기존 요청을 포함해 요청·회신 전체를 반환한다. 프론트의 검토·조치 화면은 이 원본의 REPLIED 상태와 회신 내용으로 완료 표시를 만든다. 회신 완료와 사건 해결·효과 검증은 구분한다.
+
+새 업무는 저장 시 사건 잠금 안에서 기존 업무와 비교한다. 같은 업무 종류의 동일 제목, 공백·문장부호만 다른 제목, 대상·센서·숫자가 같고 문구가 매우 유사한 제안은 기존 업무를 재사용한다. 다른 센서나 변경 수치가 다른 제안은 별도 업무로 보존한다. 다른 팀 업무는 기존 요청 제목과도 비교한다. 기존 이력은 삭제하지 않는다. 자연어 의미가 크게 다른 표현의 중복까지 문구 검사만으로 보장하지 않으므로 Agent도 매 분석마다 기존 업무·요청·회신을 조회한다.
+
+새 보고서에는 DB 기록에서 요청자, 수신 담당자, 발송 검토자, 회신자, 수행자, 지정 승인자 및 시각을 덧붙인다. 실제 LLM 보고서에도 서버에서 이 이력을 붙인다. 확정된 과거 보고서는 유지하므로 새 이력이 필요하면 새 초안을 생성한다.
+
+시연에서만 `FAB_DEMO_PERSONA_SWITCH=true`를 설정하면 로그인 이후 `GET/POST /api/auth/demo-personas`를 사용한다. 최초 로그인과 CSRF 검사는 유지하고, 전환할 때 세션 ID·인증 주체·권한을 바꾼다. 전환 가능 계정은 시드 계정 5개로 제한하며 비밀번호를 프론트에 전달하지 않는다. 기본값은 false다. 도커 배포에서는 `DEPLOY_DEMO_PERSONA_SWITCH=true`로 명시적으로 켠다. 공개 운영에서는 비활성화한다.
+
+새 이상 알림은 로그인 사용자·선택 공정 기준으로 5초마다 사건 목록을 확인한다. 첫 목록은 기준으로 삼고 이후 새 사건만 닫기 전까지 토스트에 유지한다. 토스트의 로트·설비 링크는 `/dashboard?lot=...&pm=...`로 이동하며 화면을 자동 전환하지 않는다.

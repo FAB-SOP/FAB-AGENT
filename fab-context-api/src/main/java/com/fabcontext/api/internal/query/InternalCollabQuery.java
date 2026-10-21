@@ -31,6 +31,7 @@ public class InternalCollabQuery {
 	private final InternalIncidentQuery incidents;
 	private final DemoFaults faults;
 	private final InternalViews views;
+	private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
 
 	public Map<String, Object> owners(String processCode) {
 		faults.maybeFail("get_process_owner");
@@ -75,6 +76,7 @@ public class InternalCollabQuery {
 			.map(r -> Map.<String, Object>of("reportId", r.getReportId(), "version", r.getVersion(), "status",
 				r.getStatus().name()))
 			.toList());
+		data.put("workItems",workItems.findByIncidentIdOrderByCreatedAtAsc(i.getIncidentId()).stream().map(com.fabcontext.api.domain.work.WorkDtos.View::from).toList());
 		data.put("followupNote", "후속 확인 run 결과가 없으면 해결 완료로 보고하지 않습니다.");
 		return views.env(data, List.of(views.ref("E-RPTCTX-" + i.getDisplayId(), "REPORT_CONTEXT", i.getDisplayId())), List.of());
 	}

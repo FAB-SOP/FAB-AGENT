@@ -3,6 +3,7 @@ package com.fabcontext.api.internal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
+import java.util.List;
 
 import com.fabcontext.api.common.Ref;
 import com.fabcontext.api.contract.AgentResultMapper;
@@ -35,6 +36,7 @@ public class AgentEventService {
 	private final AnalysisResultRepository resultRepository;
 	private final IncidentStreamHub streamHub;
 	private final AgentResultMapper mapper;
+	private final com.fabcontext.api.domain.work.WorkService work;
 	private final Clock clock;
 
 	@Transactional
@@ -61,6 +63,7 @@ public class AgentEventService {
 			}
 			case "RESULT_READY" -> {
 				AnalysisResult result = resultRepository.save(mapper.toResult(job, incident, (Map<String, Object>) p.get("result")));
+				work.importSuggestions(incident,result,(List<Map<String,Object>>)p.getOrDefault("workSuggestions",List.of()));
 				jobService.succeed(job, incident, new Ref("ANALYSIS_RESULT", result.getResultId()));
 				if (incident.getStatus() == IncidentStatus.OPEN) {
 					incident.setStatus(IncidentStatus.INVESTIGATING);

@@ -16,12 +16,21 @@ import org.springframework.stereotype.Component;
 class ActionSourceResolver {
  private final AnalysisResultRepository results;
  private final ApprovalRepository approvals;
+ private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
 
- Map<String, Object> resolve(String incidentId, SourceRef ref) {
+ Map<String, Object> resolve(String incidentId, SourceRef ref, String actorId) {
   if (ref == null) return null;
   Map<String, Object> snapshot = new LinkedHashMap<>();
   snapshot.put("type", ref.type());
   snapshot.put("refId", ref.refId());
+  if ("WORK_ITEM".equals(ref.type())) {
+   var task=workItems.findById(ref.refId()).filter(w->incidentId.equals(w.getIncidentId())).orElseThrow(ActionSourceResolver::invalid);
+   if(!actorId.equals(task.getAssigneeUserId())||ref.itemId()!=null||!java.util.Set.of("READY","APPROVED","COMPLETED").contains(task.getStatus().name())) throw invalid();
+   snapshot.put("title",task.getTitle());snapshot.put("operationCode",task.getOperationCode().name());snapshot.put("route",task.getRoute().name());
+   if(task.getApproverUserId()!=null) snapshot.put("approverUserId",task.getApproverUserId());
+   snapshot.put("managerApproved",task.getRoute()==com.fabcontext.api.domain.work.WorkOperation.Route.MANAGER_APPROVAL&&(task.getStatus()==com.fabcontext.api.domain.work.WorkItem.Status.APPROVED||task.getStatus()==com.fabcontext.api.domain.work.WorkItem.Status.COMPLETED));
+   return snapshot;
+  }
   if ("PROPOSAL".equals(ref.type())) {
    var approval = approvals.findById(ref.refId()).filter(a -> incidentId.equals(a.getIncidentId()))
     .orElseThrow(ActionSourceResolver::invalid);

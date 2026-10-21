@@ -9,6 +9,14 @@ from fab.devtools.demo import evaluate
 from fab.devtools.spring import User, drive, internal, make_runner
 
 
+@pytest.fixture(autouse=True)
+def legacy_request_regression(monkeypatch):
+    """기존 승인 interrupt·회신 checkpoint의 하위 호환 경로를 계속 검증한다.
+    새 기본 경로(분류된 업무 제안)는 test_work_suggestions.py에서 검증한다.
+    """
+    monkeypatch.setenv("FAB_LEGACY_REQUEST_PROPOSALS", "1")
+
+
 async def _ask(spring_url, display_id, question="원인 분석해줘", user="cmp.park"):
     u = await User(user, spring_url).login()
     i = await u.incident(display_id)

@@ -94,4 +94,12 @@ class AuthApiTest extends ApiTestSupport {
 		Session s = cmp();
 		mvc.perform(post("/api/auth/logout").session(s.http())).andExpect(status().isForbidden());
 	}
+	@Test
+	void demoSwitchIsDisabledByDefaultAndCannotChangeAnAuthenticatedIdentity() throws Exception {
+		Session s=cmp();
+		getAs(s,"/api/auth/demo-personas").andExpect(jsonPath("$.data.enabled").value(false)).andExpect(jsonPath("$.data.items",hasSize(0)));
+		postAs(s,"/api/auth/demo-personas","{\"username\":\"manager.choi\"}").andExpect(status().isNotFound());
+		getAs(s,"/api/auth/session").andExpect(jsonPath("$.data.user.username").value("cmp.park"));
+	}
+
 }

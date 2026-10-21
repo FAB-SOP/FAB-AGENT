@@ -37,6 +37,7 @@ public class DashboardService {
 	private final CheckRequestRepository checkRequestRepository;
 	private final AccessPolicy accessPolicy;
 	private final Clock clock;
+	private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
 
 	public record Counts(long total, long active, long pendingApprovals, long openRequests, long sentOpenRequests,
 			long analyzing, long analysisFailed) {
@@ -78,6 +79,8 @@ public class DashboardService {
 		long pendingApprovals = approvalRepository.findByProcessCodeInOrderByCreatedAtDesc(scopes).stream()
 			.filter(a -> a.getStatus() == ApprovalStatus.PENDING && (a.getExpiresAt() == null || a.getExpiresAt().isAfter(to)))
 			.count();
+		List<String> visibleScopes=scopes;
+		pendingApprovals += workItems.findAll().stream().filter(w->visibleScopes.contains(w.getProcessCode())&&user.userId().equals(w.getApproverUserId())&&w.getStatus()==com.fabcontext.api.domain.work.WorkItem.Status.WAITING_MANAGER).count();
 		Counts counts = new Counts(inPeriod.size(),
 			inScope.stream().filter(Incident::isActive).count(),
 			pendingApprovals,

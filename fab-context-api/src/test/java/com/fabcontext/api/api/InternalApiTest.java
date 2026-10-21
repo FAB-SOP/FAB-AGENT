@@ -231,6 +231,7 @@ class InternalApiTest extends ApiTestSupport {
 			{"sections":{"overview":"o","investigation":"i","requestsAndReplies":"r","actionsAndVerification":"a",
 			 "unresolved":"u"},"evidenceIds":["E-INC"]}""").andExpect(status().isCreated())
 			.andExpect(jsonPath("$.data.status").value("DRAFT"))
-			.andExpect(jsonPath("$.data.sections.requestsAndReplies").value("r"));
+			.andExpect(jsonPath("$.data.sections.requestsAndReplies").value(startsWith("r")))
+			.andExpect(jsonPath("$.data.sections.requestsAndReplies").value(containsString("담당자·요청·검토 이력")));
 	}
 }

@@ -78,10 +78,12 @@ public class ReportService {
 	}
 
 	/** REPORT 작업이 호출: 기록을 모아 새 version의 DRAFT를 만든다. */
-	/** 외부 Agent가 쓴 초안 저장 — 기록을 모아 쓰는 대신 Agent의 다섯 섹션을 그대로 새 DRAFT 버전으로 둔다 */
+	/** 외부 Agent 초안의 다섯 섹션에 DB의 담당자·처리 이력을 덧붙여 새 DRAFT로 저장한다 */
 	@Transactional
 	public Report createAgentDraft(Incident incident, ReportSections sections, List<String> evidenceIds, String jobId,
 			String createdBy) {
+		sections = new ReportSections(sections.overview()+"\n- 보고서 작성 요청자: "+composer.person(jobId==null?createdBy:jobService.load(jobId).getRequestedBy()),sections.investigation(),
+			sections.requestsAndReplies()+"\n\n"+composer.audit(incident),sections.actionsAndVerification(),sections.unresolved());
 		int nextVersion = repository.findFirstByIncidentIdOrderByVersionDesc(incident.getIncidentId())
 			.map(r -> r.getVersion() + 1).orElse(1);
 		Instant now = Instant.now(clock);
@@ -121,7 +123,7 @@ public class ReportService {
 			.version(nextVersion)
 			.title(incident.getDisplayId() + " " + incident.getTitle() + " 조사 보고서")
 			.sourceRevision(incident.getVersion())
-			.sections(composition.sections())
+			.sections(new ReportSections(composition.sections().overview()+"\n- 보고서 작성 요청자: "+composer.person(job.getRequestedBy()),composition.sections().investigation(),composition.sections().requestsAndReplies(),composition.sections().actionsAndVerification(),composition.sections().unresolved()))
 			.evidenceIds(composition.evidenceIds())
 			.baseReportVersion(baseVersion)
 			.generatedByJobId(job.getJobId())

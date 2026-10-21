@@ -41,6 +41,7 @@ public class CheckRequestService {
 	private final JobService jobService;
 	private final IncidentStreamHub streamHub;
 	private final Clock clock;
+	private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
 
 	/** 승인된 CHECK_REQUEST · MAINTENANCE_REQUEST 제안의 저장된 payload로 요청을 발송한다. */
 	public CheckRequest createFromApproval(Incident incident, String approvalId, Map<String, Object> payload,
@@ -99,6 +100,13 @@ public class CheckRequestService {
 	}
 
 	@Transactional(readOnly = true)
+	public List<CheckRequestView> forIncident(String id, AuthUser user) {
+		Incident incident=incidentRepository.findById(id).orElseThrow(()->ApiException.notFound("incident",id));
+		if(!user.hasScope(incident.getProcessCode())) throw ApiException.forbidden("PROCESS_SCOPE_REQUIRED","사건 공정의 조회 권한이 필요합니다.");
+		return requestRepository.findByIncidentIdOrderByCreatedAtAsc(id).stream().map(this::view).toList();
+	}
+
+	@Transactional(readOnly = true)
 	public CheckRequestView get(String requestId, AuthUser user) {
 		CheckRequest request = loadVisible(requestId, user);
 		return view(request);
@@ -139,8 +147,24 @@ public class CheckRequestService {
 				resumeJobId = resume.getJobId();
 			}
 		}
+		// 새 업무 요청은 중단된 Agent가 없으므로 회신을 반영하는 새 분석을 시작한다.
+		// 진행 중 분석이 있으면 회신 저장을 우선하고 그 분석의 조회 자료로 제공한다.
+		var linkedWork = workItems.findByRequestId(requestId);
+		if (resumeJobId == null && linkedWork.isPresent()
+				&& incident.getStatus() != IncidentStatus.CLOSED
+				&& !jobRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(),
+					java.util.EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING))) {
+			Job followup = jobService.enqueue(incident, com.fabcontext.api.domain.job.JobKind.DEEP,
+				request.getRequesterUserId(), "담당자 회신을 반영해 원인 후보와 후속 확인 사항을 다시 분석해 주세요. 요청: "
+					+ request.getQuestion() + " / 회신: " + input.findings(), "ALL",
+				Map.of("trigger", "WORK_REPLY", "requestId", requestId, "replyId", reply.getReplyId(),
+					"workItemId", linkedWork.get().getTaskId()), null, null);
+			resumeJobId = followup.getJobId();
+		}
 		reply.setResumeJobId(resumeJobId);
 		reply = replyRepository.save(reply);
+		String savedReplyId=reply.getReplyId();
+		workItems.findByRequestId(requestId).ifPresent(w->w.completeFromReply(savedReplyId,now));
 
 		if (incident.getStatus() == IncidentStatus.WAITING_REPLY
 				&& !requestRepository.existsByIncidentIdAndStatus(incident.getIncidentId(), CheckRequestStatus.OPEN)) {

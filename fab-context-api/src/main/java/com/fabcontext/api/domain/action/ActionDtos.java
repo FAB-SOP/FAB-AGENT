@@ -41,7 +41,7 @@ public final class ActionDtos {
 	public record ActionPage(String incidentId, List<ActionView> items) {
 	}
 
-	public record SourceRef(@NotBlank @Pattern(regexp = "CAUSE|NEXT_ACTION|PROPOSAL") String type,
+	public record SourceRef(@NotBlank @Pattern(regexp = "CAUSE|NEXT_ACTION|PROPOSAL|WORK_ITEM") String type,
 			@NotBlank @Size(max = 200) String refId, @Size(max = 200) String itemId) {
 	}
 

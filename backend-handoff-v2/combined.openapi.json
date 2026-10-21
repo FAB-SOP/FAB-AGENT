@@ -2014,6 +2014,397 @@
         },
         "x-implementation-status": "PROPOSED_NOT_IN_ATTACHED_BACKEND"
       }
+    },
+    "/api/work-items/{id}/decisions": {
+      "post": {
+        "tags": [
+          "work-controller"
+        ],
+        "operationId": "decide",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-items/{id}/completions": {
+      "post": {
+        "tags": [
+          "work-controller"
+        ],
+        "operationId": "complete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkCompletion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-items/{id}/adoptions": {
+      "post": {
+        "tags": [
+          "work-controller"
+        ],
+        "operationId": "adopt",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkAdoption"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{id}/work-items": {
+      "get": {
+        "tags": [
+          "work-controller"
+        ],
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "work-controller"
+        ],
+        "operationId": "propose",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkProposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-policy": {
+      "get": {
+        "tags": [
+          "work-controller"
+        ],
+        "operationId": "policy",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-items": {
+      "get": {
+        "tags": [
+          "work-controller"
+        ],
+        "operationId": "inbox",
+        "parameters": [
+          {
+            "name": "box",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "mine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/{id}/check-requests": {
+      "get": {
+        "tags": [
+          "work-controller"
+        ],
+        "operationId": "requests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseMapStringListCheckRequestView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/demo-personas": {
+      "get": {
+        "tags": [
+          "demo-persona-controller"
+        ],
+        "operationId": "list_1",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseObject"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "demo-persona-controller"
+        ],
+        "operationId": "select",
+        "parameters": [
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Selection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseSession"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5164,7 +5555,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "pattern": "CAUSE|NEXT_ACTION|PROPOSAL"
+            "pattern": "CAUSE|NEXT_ACTION|PROPOSAL|WORK_ITEM"
           },
           "refId": {
             "type": "string",
@@ -5179,6 +5570,303 @@
           "type",
           "refId"
         ]
+      },
+      "WorkProposal": {
+        "type": "object",
+        "properties": {
+          "operationCode": {
+            "type": "string",
+            "enum": [
+              "REVIEW_SENSOR_DATA",
+              "REVIEW_PROCESS_HISTORY",
+              "COMPARE_METROLOGY",
+              "CHANGE_SETPOINT",
+              "CHANGE_RECIPE",
+              "REPLACE_COMPONENT",
+              "RESTART_EQUIPMENT",
+              "REVIEW_REQUIRED",
+              "EQUIPMENT_INSPECTION",
+              "FACILITY_INSPECTION",
+              "UPSTREAM_CHECK"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 0
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 0
+          },
+          "sourceResultId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceCauseId": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expectedIncidentVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "expectedIncidentVersion",
+          "operationCode",
+          "reason",
+          "sourceResultId",
+          "title"
+        ]
+      },
+      "WorkDecision": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "APPROVE|REJECT|DECLINE"
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 0
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "decision",
+          "expectedVersion"
+        ]
+      },
+      "WorkCompletion": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 0
+          },
+          "performedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmedByUser": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expectedIncidentVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "confirmedByUser",
+          "description",
+          "expectedIncidentVersion",
+          "expectedVersion",
+          "performedAt"
+        ]
+      },
+      "ApiResponseObject": {
+        "type": "object",
+        "properties": {
+          "data": {},
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
+      },
+      "WorkAdoption": {
+        "type": "object",
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ownerUserId": {
+            "type": "string"
+          },
+          "targetProcessCode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedVersion"
+        ]
+      },
+      "WorkItemView": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "equipmentId": {
+            "type": "string"
+          },
+          "operationCode": {
+            "type": "string"
+          },
+          "operationLabel": {
+            "type": "string"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "SELF_CHECK",
+              "MANAGER_APPROVAL",
+              "TEAM_REQUEST"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "sourceResultId": {
+            "type": "string"
+          },
+          "sourceCauseId": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "assigneeUserId": {
+            "type": "string"
+          },
+          "approverUserId": {
+            "type": "string"
+          },
+          "targetProcessCode": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "actionId": {
+            "type": "string"
+          },
+          "replyId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PROPOSED",
+              "DECLINED",
+              "READY",
+              "WAITING_MANAGER",
+              "APPROVED",
+              "REJECTED",
+              "REQUESTED",
+              "COMPLETED"
+            ]
+          },
+          "decisionComment": {
+            "type": "string"
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WorkItemResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WorkItemView"
+          },
+          "meta": {
+            "type": "object"
+          }
+        }
+      },
+      "WorkItemListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WorkItemView"
+                }
+              }
+            }
+          },
+          "meta": {
+            "type": "object"
+          }
+        }
+      },
+      "Selection": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "username"
+        ]
+      },
+      "ApiResponseMapStringListCheckRequestView": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/CheckRequestView"
+              }
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
       }
     },
     "securitySchemes": {

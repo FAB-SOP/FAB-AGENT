@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     environment:
       DEMO_ROUTES: "false"
+      FAB_DEMO_PERSONA_SWITCH: ${DEPLOY_DEMO_PERSONA_SWITCH:-false}
   business-mcp:
     restart: unless-stopped
   rag-mcp:

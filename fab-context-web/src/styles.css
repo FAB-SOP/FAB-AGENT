@@ -33,3 +33,59 @@ textarea:disabled{background:#f1f4f5;color:#7c8d95;cursor:not-allowed;border-col
 .question-thread{border:1px solid #dce7e5;border-radius:10px;overflow:hidden;margin-bottom:20px}.question-thread:last-child{margin-bottom:0}.qa-question{padding:18px 20px;background:#edf6f2}.qa-question p{margin-top:12px;font-size:17px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.qa-answer{padding:20px}.qa-answer>.row-between{margin-bottom:16px}.qa-answer p{font-size:16px;line-height:1.85;white-space:pre-wrap;overflow-wrap:anywhere}.qa-result+.qa-result{border-top:1px solid #e2eae8;padding-top:16px;margin-top:16px}.qa-result h3,.qa-proposal h3{font-size:16px;margin-top:15px}.qa-proposal{margin:16px 0;padding:16px;background:#f7faf9;border-radius:8px}
 
 .conversation-panel{align-self:start}.investigation-conversation{display:flex;flex-direction:column;gap:28px}.conversation-analysis{padding:0 0 26px;border-bottom:1px solid #e2ebe8}.conversation-analysis>.row-between{margin-bottom:18px}.conversation-analysis>.row-between h3{font-size:18px}.conversation-analysis.is-running{border:1px solid #a8ccc2;border-radius:10px;padding:20px;background:#f6fbf9}.conversation-result{margin:16px 0}.conversation-evidence{font-size:15px;margin:18px 0;color:#546e77}.conversation-evidence summary{cursor:pointer;font-weight:600}.conversation-evidence p{margin:10px 0;line-height:1.8}.reanalysis-progress{display:flex;align-items:center;gap:14px;padding:20px;background:#e9f5ef;border-radius:9px;color:#236c5c}.reanalysis-progress strong{font-size:18px}.reanalysis-progress p{margin:5px 0 0;font-size:15px}.conversation-composer{padding-top:28px;margin-top:28px;border-top:1px solid #dce7e2}.conversation-composer h3{font-size:18px;margin-bottom:14px}.conversation-composer textarea{min-height:105px}.conversation-panel .question-thread{margin:0}.conversation-panel .qa-answer{padding:20px}.conversation-panel .analysis-summary{font-size:17px}
+
+/* 좁은 화면에서도 계측·결과 카드는 가용 너비를 채운다. */
+@media(max-width:1000px){
+ .detail-grid>.side-stack{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
+ .wafer-map{width:min(230px,100%);height:auto;aspect-ratio:1}
+}
+@media(max-width:900px){
+ .detail-grid>.side-stack{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:720px){
+ .detail-grid>.side-stack{align-items:stretch;width:100%;min-width:0}
+ .detail-grid>.side-stack>.panel{width:100%}
+ .side-stack,.analysis-grid,.detail-grid{min-width:0}
+ .panel-title{flex-wrap:wrap}
+ .panel-title>.button{max-width:100%}
+ .analysis-summary,.metrology-detection,.sensor-observation,.conversation-result{overflow-wrap:anywhere}
+ .metrology-detection strong{align-items:flex-start}
+ .metrology-detection svg{flex-shrink:0;margin-top:3px}
+ .table-wrap{max-width:100%}
+ .filter-row>*{min-width:0;max-width:100%}
+ .sensor-chip{max-width:100%;flex-wrap:wrap}
+ .chart-toolbar>label{flex-wrap:wrap}
+ .chart-toolbar select{max-width:100%}
+ .incident-summary>span:last-child{white-space:normal}
+ .modal-head{gap:12px}
+ .modal-head h2{min-width:0;font-size:21px}
+ .request-row>div,.report-row>div{min-width:0;overflow-wrap:anywhere}
+}
+@media(max-width:480px){
+ .topbar{height:auto;min-height:72px;padding:12px}
+ .topbar-actions{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:8px}
+ .topbar .user-avatar{display:none}
+ .topbar .process-select{margin:0;min-width:0}
+ .topbar .process-select select{max-width:80px;padding-left:8px}
+ .topbar .user-name{min-width:0;overflow-wrap:anywhere}
+ .topbar .icon-button{min-width:44px;min-height:44px;padding:8px}
+ main{padding:22px 12px 36px}
+ .panel{padding:16px}
+ .sidebar{padding:14px 12px}
+ .kpi-row>div{padding:15px 12px}
+ .kpi-row span{font-size:14px}
+ .kpi-row small{display:block;margin-left:0}
+ .facts>div{gap:12px}
+ .qa-question,.qa-answer,.conversation-panel .qa-answer{padding:16px}
+ .action-source-card{padding:16px}
+ .form-actions{flex-wrap:wrap}
+ .form-actions .button{flex:1}
+ .incident-notifications{right:12px;bottom:12px;width:calc(100vw - 24px)}
+ dialog{width:calc(100vw - 24px);padding:18px;max-height:calc(100dvh - 24px)}
+}
+
+.work-card{padding:20px 0;border-bottom:1px solid #e0e9e6;overflow-wrap:anywhere}.work-card:last-child{border-bottom:0}.work-card-header,.work-meta,.work-buttons{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.work-card-header{justify-content:space-between;margin-bottom:12px}.work-card h3{font-size:18px;margin-bottom:10px}.work-card p{font-size:16px;line-height:1.8;margin:8px 0}.work-meta{font-size:14px;color:#70858d;margin:12px 0}.work-buttons{margin-top:18px}.work-route{font-size:14px;border-radius:6px;background:#edf5f1;color:#28725c;padding:5px 10px;font-weight:600}.work-route.manager_approval{background:#fff3dd;color:#8d651b}.work-route.team_request{background:#edf1fa;color:#4d67a2}.work-waiting{padding:12px;background:#fff8eb;border-radius:8px;color:#84621d}.work-archive{padding:18px;border:1px solid #dce6e4;border-radius:9px;background:#f7faf9}.work-archive>summary{cursor:pointer;font-size:16px;font-weight:600}@media(max-width:480px){.work-card-header{align-items:flex-start}.work-buttons{align-items:stretch;flex-direction:column}.work-buttons>.button{width:100%}}
+
+.incident-row{cursor:pointer}.incident-row:hover td,.incident-row:focus-visible td{background:#edf6f4}.incident-row:focus-visible{outline:2px solid #187d72;outline-offset:-2px}.team-reply{margin:16px 0;padding:16px;background:#f1f7f5;border-left:3px solid #3d8d7f;border-radius:6px}.team-reply p{white-space:pre-wrap;overflow-wrap:anywhere}.team-result .work-card-header{flex-wrap:wrap}
+
+.demo-persona-select label{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}.demo-persona-select select{min-width:190px;font-size:15px}.demo-persona-select [role=alert]{font-size:14px;color:#a43e34}@media(max-width:900px){.demo-persona-select{grid-column:1/-1}.demo-persona-select label{justify-content:flex-end}.demo-persona-select select{min-width:0;max-width:240px}}

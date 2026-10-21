@@ -62,6 +62,7 @@ fab:
   rag-dir: ${FAB_RAG_DIR:}
   # 시연 · 평가 전용 경로(/internal/demo/** — 장애 주입). 운영에서는 끈다
   demo-routes: ${DEMO_ROUTES:false}
+  demo-persona-switch: ${FAB_DEMO_PERSONA_SWITCH:false}
   agent:
     # 시뮬레이션 Agent의 단계별 지연(ms). QUEUED → RUNNING → 완료
     step-delay-ms: 1500

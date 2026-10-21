@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import os
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 
@@ -22,9 +23,13 @@ async def required_evidence(state: AgentState, config) -> dict:
         plan = [("get_report_context", {"incidentId": inc})]
     else:
         already = {m.name for m in state.get("messages", []) if isinstance(m, ToolMessage)}
-        if "get_wafer_lineage" in already:  # 같은 thread의 다음 작업 — 이미 조회했다
-            return {}
-        plan = [("get_incident", {"incidentId": inc})]
+        if "get_wafer_lineage" in already:  # 센서 근거는 재사용하되 업무 상태는 매 작업 새로 조회한다.
+            plan = [("get_work_policy", {}), ("get_work_items", {"incidentId": inc}), ("get_check_requests", {"incidentId": inc})]
+        else:
+            plan = [("get_incident", {"incidentId": inc})]
+    legacy = os.getenv("FAB_LEGACY_REQUEST_PROPOSALS", "0") == "1"
+    if legacy:
+        plan = [(name, args) for name, args in plan if name != "get_check_requests"]
     msgs: list[AnyMessage] = []
     evidence, dv = {}, state.get("dataVersion")
 
@@ -68,6 +73,11 @@ async def required_evidence(state: AgentState, config) -> dict:
             for st in outside:
                 if st is not cur:
                     await run("get_run_features", {"runId": st["runId"]})
+    if state["mode"] != "REPORT" and plan[0][0] == "get_incident":
+        await run("get_work_policy", {})
+        await run("get_work_items", {"incidentId": inc})
+        if not legacy:
+            await run("get_check_requests", {"incidentId": inc})
     out = {"messages": msgs, "evidence": evidence, "dataVersion": dv}
     if incident_process:
         out["incidentProcess"] = incident_process

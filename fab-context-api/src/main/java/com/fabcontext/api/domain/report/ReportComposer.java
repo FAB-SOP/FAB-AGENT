@@ -35,6 +35,9 @@ class ReportComposer {
 	private final CheckRequestRepository requestRepository;
 	private final ReplyRepository replyRepository;
 	private final IncidentActionRepository actionRepository;
+	private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
+	private final com.fabcontext.api.auth.UserAccountRepository users;
+	private final com.fabcontext.api.domain.approval.ApprovalRepository approvals;
 
 	record Composition(ReportSections sections, List<String> evidenceIds) {
 	}
@@ -114,6 +117,9 @@ class ReportComposer {
 		}
 
 		StringBuilder open = new StringBuilder();
+		workItems.findByIncidentIdOrderByCreatedAtAsc(incident.getIncidentId()).stream()
+			.filter(w -> java.util.Set.of("READY","WAITING_MANAGER","APPROVED").contains(w.getStatus().name()))
+			.forEach(w -> open.append("- 미완료 업무(").append(w.getStatus()).append("): ").append(w.getTitle()).append(" [").append(w.getTaskId()).append("]\n"));
 		requests.stream().filter(r -> r.getStatus() == CheckRequestStatus.OPEN)
 			.forEach(r -> open.append("- 회신 대기: ").append(r.getQuestion()).append('\n'));
 		actions.stream().filter(a -> a.getVerificationStatus() == VerificationStatus.PENDING)
@@ -129,7 +135,39 @@ class ReportComposer {
 			open.append("기록상 미해결 항목이 없습니다. 사건 종료는 관리자가 별도로 판단합니다.\n");
 		}
 		return new Composition(new ReportSections(overview.toString().strip(), investigation.toString().strip(),
-			collab.toString().strip(), act.toString().strip(), open.toString().strip()), new ArrayList<>(evidence));
+			(collab.toString()+"\n\n"+audit(incident)).strip(), act.toString().strip(), open.toString().strip()), new ArrayList<>(evidence));
+	}
+
+	/** 사용자 이름·담당·결정·회신은 모델 요약과 별도로 DB 기록에서 붙인다. */
+	String audit(Incident incident) {
+		StringBuilder out=new StringBuilder("**담당자·요청·검토 이력 (등록 기록)**\n");
+		for(var request:requestRepository.findByIncidentIdOrderByCreatedAtAsc(incident.getIncidentId())) {
+			out.append("- 요청자: ").append(person(request.getRequesterUserId())).append(" → 수신 담당자: ")
+				.append(person(request.getOwnerUserId())).append(" · ").append(request.getTargetProcessCode())
+				.append(" / ").append(request.getEquipmentId()).append(" · 요청 시각 ").append(TIME.format(request.getCreatedAt())).append(" KST\n");
+			approvals.findById(request.getApprovalId()).filter(a->a.getDecidedBy()!=null).ifPresent(a->out
+				.append("  - 발송 검토자: ").append(person(a.getDecidedBy())).append(" · ").append(a.getStatus())
+				.append(" · ").append(TIME.format(a.getDecidedAt())).append(" KST\n"));
+			for(var reply:replyRepository.findByRequestIdOrderByCreatedAtAsc(request.getRequestId())) out
+				.append("  - 확인·회신자: ").append(person(reply.getAuthorUserId())).append(" · ")
+				.append(TIME.format(reply.getCreatedAt())).append(" KST · ").append(reply.getFindings()).append('\n');
+		}
+		for(var work:workItems.findByIncidentIdOrderByCreatedAtAsc(incident.getIncidentId())) {
+			if(work.getRequestedBy()==null)continue;
+			out.append("- 업무: ").append(work.getTitle()).append(" · 채택/검토 담당: ").append(person(work.getRequestedBy()))
+				.append(" · 수행 담당: ").append(person(work.getAssigneeUserId())).append(" · 상태 ").append(work.getStatus()).append('\n');
+			if(work.getApproverUserId()!=null)out.append("  - 지정 승인자: ").append(person(work.getApproverUserId()))
+				.append(" · 최종 갱신 ").append(TIME.format(work.getUpdatedAt())).append(" KST · 의견: ")
+				.append(work.getDecisionComment()==null?"없음":work.getDecisionComment()).append('\n');
+		}
+		for(var action:actionRepository.findByIncidentIdOrderByPerformedAtAsc(incident.getIncidentId())) out
+			.append("- 실제 확인·조치 수행자: ").append(person(action.getPerformedBy())).append(" · ")
+			.append(TIME.format(action.getPerformedAt())).append(" KST · ").append(action.getDescription()).append('\n');
+		return out.toString().strip();
+	}
+	String person(String id) {
+		if(id==null)return "미지정";
+		return users.findById(id).map(u->u.getDisplayName()+" ("+u.getUsername()+" · "+id+")").orElse(id);
 	}
 
 	static String markdown(Report report, Incident incident) {
