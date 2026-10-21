@@ -27,6 +27,9 @@ services:
   web:
     build: ../fab-context-web
     restart: unless-stopped
+    logging:             # 나머지 서비스는 fab-agent/compose.yaml의 x-logging(10MB × 3 회전)을 그대로 쓴다
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     ports: ["127.0.0.1:${DEPLOY_WEB_PORT:-8088}:80"]
     depends_on:
       backend: {condition: service_healthy}

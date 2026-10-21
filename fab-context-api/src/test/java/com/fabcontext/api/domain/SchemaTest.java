@@ -42,12 +42,12 @@ class SchemaTest extends ApiTestSupport {
 	@Test
 	void jsonColumnsAndRenamedColumn() {
 		assertThat(jdbc.queryForObject("select current_schema()", String.class)).isEqualTo(SCHEMA);
-		// @JdbcTypeCode(SqlTypes.JSON) 컬럼 25개가 전부 jsonb다(json · text가 아니다)
+		// @JdbcTypeCode(SqlTypes.JSON) 컬럼 26개가 전부 jsonb다(json · text가 아니다)
 		List<String> json = jdbc.queryForList("""
 			select table_name || '.' || column_name from information_schema.columns
 			where table_schema = current_schema() and data_type in ('json', 'jsonb')""", String.class);
-		assertThat(json).hasSize(25).contains("incident.wafer_ids", "incident.run_ids", "user_account.process_scopes",
-			"incident_action.related_source", "work_item.evidence_ids");
+		assertThat(json).hasSize(26).contains("incident.wafer_ids", "incident.run_ids", "user_account.process_scopes",
+			"incident_action.related_source", "work_item.evidence_ids", "job.metrics");
 		assertThat(jdbc.queryForObject("""
 			select count(*) from information_schema.columns where table_schema = current_schema() and data_type = 'json'""",
 			Integer.class)).isZero();

@@ -1,8 +1,11 @@
 package com.fabcontext.api.domain.job;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import com.fabcontext.api.common.Ref;
 import com.fabcontext.api.domain.incident.Incident;
@@ -66,6 +69,10 @@ public class Job {
 
 	@JdbcTypeCode(SqlTypes.JSON)
 	private Map<String, Object> input = new LinkedHashMap<>();
+
+	/** 외부 Agent가 보낸 작업 요약(agent-event의 metrics) — 모델 호출 · 토큰 · 실제 응답 모델 · 재시도 · Harness 거부 · 시간 */
+	@JdbcTypeCode(SqlTypes.JSON)
+	private Map<String, Object> metrics;
 
 	private String waitingRefType;
 
@@ -134,6 +141,26 @@ public class Job {
 
 	public void putInput(String key, Object value) {
 		input.put(key, value);
+	}
+
+	/** 최신 시도의 요약을 두고, 재시도 전 시도의 요약은 previousAttempts에 쌓는다(같은 시도가 다시 오면 덮는다) */
+	@SuppressWarnings("unchecked")
+	public void recordMetrics(Map<String, Object> latest) {
+		Map<String, Object> next = new LinkedHashMap<>(latest);
+		next.remove("previousAttempts");
+		List<Object> previous = new ArrayList<>();
+		if (metrics != null) {
+			previous.addAll((List<Object>) metrics.getOrDefault("previousAttempts", List.of()));
+			if (!Objects.equals(metrics.get("attempt"), next.get("attempt"))) {
+				Map<String, Object> old = new LinkedHashMap<>(metrics);
+				old.remove("previousAttempts");
+				previous.add(old);
+			}
+		}
+		if (!previous.isEmpty()) {
+			next.put("previousAttempts", previous);
+		}
+		metrics = next;
 	}
 
 	/** 외부 Agent가 재시도를 잡으면 같은 작업을 다시 대기열에 둔다 */

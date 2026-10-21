@@ -6,10 +6,16 @@ x-health: &health
   interval: 5s
   timeout: 3s
   retries: 30
+# 로그는 표준출력으로만 낸다(파일 · 볼륨 없음) — Docker가 받아 두고, 서비스마다 10MB × 3개에서 회전한다.
+# 보기: docker compose logs -f agent   (Agent trace는 JSON 한 줄씩, [job] 줄에 작업 요약)
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
 
 
 services:
   postgres:
+    logging: *logging
     image: pgvector/pgvector:pg16
     environment: { POSTGRES_USER: fab, POSTGRES_PASSWORD: fab, POSTGRES_DB: fab }
     ports: ["55432:5432"]   # backend · agent(체크포인트) · knowledge(벡터) 스키마가 한 DB에 있다
@@ -17,6 +23,7 @@ services:
     healthcheck: { <<: *health, test: ["CMD", "pg_isready", "-U", "fab"] }
 
   backend:               # Spring backend(fab-context-api) — 공개 API(/api/**) · 내부 API(/internal/**)
+    logging: *logging
     build: ../fab-context-api
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/fab?currentSchema=backend
@@ -36,6 +43,7 @@ services:
     depends_on: { postgres: { condition: service_healthy } }
 
   business-mcp:          # 업무 MCP — Spring의 /internal/** 만 부른다
+    logging: *logging
     build: { context: ., target: runtime }
     command: fab-business-mcp
     environment: { PORT: "9101", BACKEND_URL: "http://backend:8080", SERVICE_TOKEN: dev-service-token }
@@ -43,6 +51,7 @@ services:
     depends_on: { backend: { condition: service_healthy } }
 
   rag-mcp:               # 지식 MCP — 실제 원문 청크 · 팀 점검 문서 · 가상 사례
+    logging: *logging
     build: { context: ., target: runtime }
     command: fab-rag-mcp
     environment:
@@ -63,6 +72,7 @@ services:
     depends_on: { postgres: { condition: service_healthy } }
 
   agent:                 # Agent Worker — Spring의 QUEUED 작업을 가져가 처리하고 결과를 이벤트로 돌려준다
+    logging: *logging
     build: { context: ., target: runtime }
     command: fab-worker
     restart: unless-stopped
@@ -77,6 +87,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       FAB_MODEL: ${FAB_MODEL:-gpt-4.1-mini}
       FAB_FALLBACK_MODEL: ${FAB_FALLBACK_MODEL:-gpt-4o-mini}
+      FAB_TRACE_STDOUT: "true"      # Harness trace를 JSON 한 줄씩 표준출력으로(docker logs)
     depends_on:
       postgres: { condition: service_healthy }
       business-mcp: { condition: service_healthy }

@@ -1,5 +1,7 @@
 """Agent · Harness (Spring 하나에 붙어서) — 정답 · 승인 전 변경 0 · 거절 · 잘못된 재개 · 예외 · 중복 · 재시도 · DLQ · 한도 · 계약."""
 
+import json
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -159,6 +161,11 @@ async def test_events_and_jobs_follow_team_contract(display_id, spring_url, kb, 
     assert not [b for b in bad if b[1]], bad
     ctx = (await internal("GET", "/internal/jobs", spring_url))["data"]
     assert all(not list(job_v.iter_errors(x["job"])) for x in ctx)
+    # Observability — 작업을 끝내거나 멈추는 이벤트에만 trace 요약(metrics)이 실리고, 진행 이벤트에는 없다
+    stops = {"RESULT_READY", "REPORT_DRAFT_READY", "APPROVAL_REQUIRED", "WAITING_REPLY", "RETRY_SCHEDULED", "JOB_FAILED"}
+    assert all(("metrics" in e) == (e["type"] in stops) for e in r["events"]), [(e["type"], "metrics" in e) for e in r["events"]]
+    m = next(e["metrics"] for e in r["events"] if e["type"] in stops)
+    assert m["modelCalls"] >= 1 and m["toolCalls"] >= 1 and m["attempt"] >= 1 and m["traceId"].startswith("TRACE-")
 
 
 class SecondProposalModel:
@@ -338,6 +345,27 @@ async def test_basic_analysis_cites_segment_as_observation(spring_url, kb):
     assert any("시연 선택값" in x for x in out["result"]["limitations"])
     assert out["result"]["dataVersion"] == "causal-pack-v2-scenarios"  # 지식 검색 버전이 덮어쓰지 않는다
     await u.close()
+
+
+def test_trace_stdout_is_json_lines_with_secrets_masked(monkeypatch, capsys):
+    """컨테이너 경로 — FAB_TRACE_STDOUT=true면 기록마다 JSON 한 줄(docker logs). 키 · 토큰 모양은 가린다. 요약은 [job] 줄로."""
+    from fab.agent.harness.trace import Tracer, summary_line
+
+    monkeypatch.delenv("FAB_TRACE_FILE", raising=False)
+    monkeypatch.setenv("FAB_TRACE_STDOUT", "false")
+    Tracer("T", "J", "I").event("node", node="start")
+    assert capsys.readouterr().out == ""  # 끄면 아무것도 내지 않는다
+    monkeypatch.setenv("FAB_TRACE_STDOUT", "true")
+    t = Tracer("TRACE-J", "J", "I")
+    t.event("llm", model="primary", apiModel="gpt-4.1-mini-2025-04-14", inputTokens=100, outputTokens=20, tokens=120, ms=5.0)
+    t.event("brief", ok=False, errors=["숫자 103"])
+    t.event("unexpected_error", message="Incorrect API key provided: sk-proj-abcdefgh12345678 · Bearer abcdefghijk")
+    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    assert [x["kind"] for x in lines] == ["llm", "brief", "unexpected_error"] and lines[0]["traceId"] == "TRACE-J"
+    assert "sk-proj" not in lines[2]["message"] and "abcdefghijk" not in lines[2]["message"]
+    s = t.summary()
+    assert (s["modelCalls"], s["inputTokens"], s["outputTokens"], s["guardRejects"], s["fallbackCalls"]) == (1, 100, 20, 1, 0)
+    assert summary_line(s).startswith("llm=1 tok=100/20 model=gpt-4.1-mini-2025-04-14") and summary_line(None) == ""
 
 
 async def test_trace_records_api_snapshot_model_name():

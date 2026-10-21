@@ -50,6 +50,26 @@
       "type": "object",
       "additionalProperties": true,
       "description": "도구/분석 종류별 하위 schema는 tool-catalog.json의 계약을 적용한다."
+    },
+    "metrics": {
+      "type": "object",
+      "description": "선택. 작업을 끝내거나 멈추는 이벤트(RESULT_READY · REPORT_DRAFT_READY · APPROVAL_REQUIRED · WAITING_REPLY · RETRY_SCHEDULED · JOB_FAILED)에만 싣는 이번 시도의 trace 요약. backend는 job.metrics에 저장한다. 프롬프트 · 응답 원문 · 키는 넣지 않는다.",
+      "properties": {
+        "traceId": {"type": "string"},
+        "attempt": {"type": "integer", "minimum": 1},
+        "modelCalls": {"type": "integer", "minimum": 0},
+        "fallbackCalls": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "inputTokens": {"type": "integer", "minimum": 0},
+        "outputTokens": {"type": "integer", "minimum": 0},
+        "apiModels": {"type": "array", "items": {"type": "string"}},
+        "toolCalls": {"type": "integer", "minimum": 0},
+        "toolErrors": {"type": "integer", "minimum": 0},
+        "retries": {"type": "integer", "minimum": 0},
+        "guardRejects": {"type": "integer", "minimum": 0},
+        "ms": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": true
     }
   },
   "required": [

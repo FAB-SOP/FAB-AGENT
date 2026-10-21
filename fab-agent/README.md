@@ -145,7 +145,22 @@ uv run python evaluation/trace_stats.py evaluation/runs/…/eval_1.jsonl   # LLM
 | State · Memory | `agent/checkpoint.py` | thread = 사건. PG_DSN이면 Postgres `agent` 스키마 — Worker를 재시작해도 같은 interrupt로 재개 |
 | Guardrails | `harness/guard.py` · 그래프 · Spring | 제안 → interrupt → 사람 승인(Spring은 기록만) → 재개된 Agent가 승인 ID로 실행 → Spring이 저장본을 다시 검증해 한 번만 실행. 거절도 같은 thread로 재개해 결과를 정리한다. 결과: 근거 ID · 확률 표현 · 원인 ID(매트릭스 15개, `agent/causes.py`) · **nextStep과 1순위 원인 공정의 일치** 검증, 심층 조사에서 점검이 필요하면 요청 초안을 먼저 제안. 제안: 사건당 2개 · 한 번에 하나 · 같은 담당자 · 종류 반복 금지(Harness), 받는 사람이 그 공정 담당자 · 설비정비팀인지와 질문한 본인이 아닌지(Spring) |
 | Recovery | `harness/retry.py` · `worker.py` | 일시 오류 2회 재시도 → 대체 모델 → `RETRY_SCHEDULED`(attempt < 3) → `JOB_FAILED`. 같은 attempt 중복은 확보(claim)에서 409 → `SKIPPED` |
-| Observability | `harness/trace.py` | trace_id 하나로 node · tool · 지연 · 재시도 · 토큰. `FAB_TRACE_FILE` JSON 줄, `LANGSMITH_TRACING=true`면 LangSmith |
+| Observability | `harness/trace.py` · `worker/runner.py` · Spring `job.metrics` | trace_id 하나로 node · tool · 지연 · 재시도 · 토큰 · Harness 거부. 컨테이너는 `FAB_TRACE_STDOUT=true`(compose 기본) — 기록마다 JSON 한 줄을 표준출력으로(키 · 토큰 모양은 가림), `[job]` 줄에 작업 요약. 작업을 끝내거나 멈추는 이벤트의 `metrics`로 요약을 보내 Spring이 `job.metrics`(jsonb)에 저장. `FAB_TRACE_FILE`은 로컬 평가용 파일, `LANGSMITH_TRACING=true`면 LangSmith(compose는 넘기지 않는다) |
+
+trace 보기 — 로그는 Docker가 서비스마다 10MB × 3개에서 회전한다(`x-logging`):
+
+```bash
+docker compose logs -f agent | grep '\[job\]'        # [job] job_… DEEP → DONE llm=3 tok=31071/585 model=gpt-4.1-mini-… tools=10 reject=0 retry=0 ms=6655
+docker compose logs --no-log-prefix agent | grep '"jobId": "job_…"'   # 그 작업의 JSON trace 줄
+```
+
+```sql
+-- 작업별 요약 (DBeaver · Grafana의 Postgres 데이터 소스)
+select job_id, kind, status, metrics->>'modelCalls' as calls, (metrics->>'inputTokens')::int as tokens_in,
+       (metrics->>'outputTokens')::int as tokens_out, metrics->'apiModels'->>0 as model,
+       (metrics->>'guardRejects')::int as rejects, (metrics->>'ms')::numeric as ms
+from backend.job where metrics is not null order by created_at desc;
+```
 
 결과의 `nextStep`(`UPSTREAM_CHECK` · `CURRENT_CHECK` · `OBSERVE` · `INSUFFICIENT_EVIDENCE` · `NEEDS_DEEP_ANALYSIS`)과 `causeIds`(팩 원인 매트릭스 15개)는 계약 `AnalysisResult`가 추가 필드를 막아 Worker 반환값 `analysis`에만 둔다(`FAB_RESULT_EXTENSIONS=true`면 이벤트에 합친다).
 

@@ -277,14 +277,14 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 | `report` | `sections` · `evidence_ids` |
 | `check_request` · `check_reply` · `incident_action` · `action_verification` · `change_record` | `evidence_ids` |
 | `knowledge_document` | `sections` |
-| `job` | `input` |
+| `job` | `input` · `metrics`(외부 Agent의 작업 요약 — 모델 호출 · 토큰 · 실제 응답 모델 · 도구 · 재시도 · Harness 거부 · ms, 재시도 전 시도는 `previousAttempts`. agent-event의 선택 필드 `metrics`에서 받는다. 공개 API에는 내지 않는다) |
 | `user_account` | `process_scopes` |
 
 예전 변환기는 DB 값이 null이면 빈 목록 · 맵으로 읽었다. JSON 타입은 null을 그대로 돌려주므로, 생성자를 거치지 않고 Builder로 만드는 엔티티(분석 결과 · 회신 · 정비 이력 · 지식 문서 · 효과 확인)는 null이면 빈 값을 돌려주는 getter를 직접 두었다(나머지는 생성자가 이미 null을 빈 값으로 바꾼다).
 
 **컬럼 이름 — `metrology.cd_value` → `value_a`.** 옛 PHOTO 공정(CD 계측) 시절 이름이었고 지금은 위치 두께(Å)가 들어 있다. API의 JSON 필드 이름(`thicknessA` 등)은 계약을 따르므로 그대로다.
 
-`domain/SchemaTest`가 테스트 Postgres에서 외래 키 14개 · jsonb 컬럼 23개(json 0개) · jsonb 연산자 · `value_a`를 확인하고, 없는 run을 가리키는 계측 INSERT가 거절되는지 본다.
+`domain/SchemaTest`가 테스트 Postgres에서 외래 키 14개 · jsonb 컬럼 26개(json 0개) · jsonb 연산자 · `value_a`를 확인하고, 없는 run을 가리키는 계측 INSERT가 거절되는지 본다.
 
 ### 검토·점검·조치와 분석 항목 연결
 

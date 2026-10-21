@@ -49,6 +49,10 @@ public class AgentEventService {
 		if (job.getStatus() == JobStatus.SUCCEEDED || job.getStatus() == JobStatus.FAILED) {
 			return Map.of("jobId", jobId, "applied", false, "reason", "이미 끝난 작업입니다: " + job.getStatus());
 		}
+		// 선택 필드 — 작업을 끝내거나 멈추는 이벤트에 실린 이번 시도의 trace 요약(Observability)
+		if (event.get("metrics") instanceof Map<?, ?> metrics) {
+			job.recordMetrics((Map<String, Object>) metrics);
+		}
 		switch (type) {
 			case "JOB_STARTED", "ANALYSIS_PROGRESS" -> jobService.startExternal(job, incident);
 			case "APPROVAL_REQUIRED" -> {

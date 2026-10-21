@@ -53,7 +53,7 @@ class JobRunner:
         self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:6]}"
         self._seq: dict[str, int] = {}
 
-    async def _event(self, job: dict, etype: str, payload: dict) -> dict:
+    async def _event(self, job: dict, etype: str, payload: dict, metrics: dict | None = None) -> dict:
         # sequence는 thread 안에서 늘 증가해야 한다. Worker가 재시작해도 줄지 않도록 ms 시각과 비교해 키운다.
         key = job["threadId"]
         self._seq[key] = max(self._seq.get(key, 0) + 1, int(time.time() * 1000))
@@ -61,12 +61,15 @@ class JobRunner:
               "incidentId": job["incidentId"], "jobId": job["jobId"], "threadId": job["threadId"],
               "sequence": self._seq[key], "type": etype, "at": _now(), "traceId": job["traceId"],
               "payload": payload}
+        if metrics is not None:  # 작업을 끝내거나 멈추는 이벤트에만 — 이번 시도의 trace 요약(backend job.metrics)
+            ev["metrics"] = {**metrics, "attempt": job["attempt"]}
         await self.sink.emit(ev)
         return ev
 
     async def _fail(self, job: dict, code: str, message: str, tracer: Tracer) -> dict:
         ref = f"analysis.jobs.dlq/{job['jobId']}/A{job['attempt']}"
-        await self._event(job, "JOB_FAILED", {"errorCode": code, "message": message[:300], "dlqRef": ref})
+        await self._event(job, "JOB_FAILED", {"errorCode": code, "message": message[:300], "dlqRef": ref},
+                          tracer.summary())
         await self.sink.dead_letter(job, f"[{code}] {message}")
         return {"status": "FAILED", "errorCode": code, "error": message, "trace": tracer.summary()}
 
@@ -115,7 +118,7 @@ class JobRunner:
             return await self._fail(job, "RETRY_EXHAUSTED", f"[{code}] {message}", tracer)
         at = (datetime.now(KST) + timedelta(seconds=5 * job["attempt"])).isoformat(timespec="seconds")
         await self._event(job, "RETRY_SCHEDULED", {"nextAttempt": job["attempt"] + 1, "nextRetryAt": at,
-                                                   "errorCode": code})
+                                                   "errorCode": code}, tracer.summary())
         return {"status": "RETRY_SCHEDULED", "errorCode": code, "error": message, "trace": tracer.summary()}
 
     async def _input(self, job: dict, question: str | None, cfg: dict):
@@ -158,18 +161,19 @@ class JobRunner:
             if v["kind"] == "APPROVAL":
                 await self._event(job, "APPROVAL_REQUIRED", {"approvalId": v["approvalId"],
                                                               "approvalVersion": v["approvalVersion"],
-                                                              "interruptId": v["interruptId"]})
+                                                              "interruptId": v["interruptId"]}, trace)
                 return {"status": "WAITING_APPROVAL", "interrupt": v, "trace": trace}
-            await self._event(job, "WAITING_REPLY", {"requestId": v["requestId"], "interruptId": v["interruptId"]})
+            await self._event(job, "WAITING_REPLY", {"requestId": v["requestId"], "interruptId": v["interruptId"]}, trace)
             return {"status": "WAITING_REPLY", "interrupt": v, "trace": trace}
         st = snap.values
         if st.get("mode") == "REPORT":
-            await self._event(job, "REPORT_DRAFT_READY", {"report": st["report"]})
+            await self._event(job, "REPORT_DRAFT_READY", {"report": st["report"]}, trace)
             return {"status": "DONE", "report": st["report"], "trace": trace}
         result, analysis = st["result"], st.get("analysis") or {}
         # 계약(AnalysisResult)은 추가 필드를 허용하지 않는다. nextStep 등은 계약 개정 전까지 옵션으로만 싣는다.
         payload = {**result, **analysis} if os.getenv("FAB_RESULT_EXTENSIONS") == "true" else result
-        await self._event(job, "RESULT_READY", {"result": payload, "workSuggestions": analysis.get("workSuggestions", [])})
+        await self._event(job, "RESULT_READY", {"result": payload, "workSuggestions": analysis.get("workSuggestions", [])},
+                          trace)
         return {"status": "DONE", "result": result, "analysis": analysis, "trace": trace}
 
 

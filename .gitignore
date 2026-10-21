@@ -48,6 +48,8 @@ fab-agent/evaluation/runs/
 fab-flow-atlas/
 # 팀 계획 · 계약 원본(팀 내부). 테스트가 쓰는 계약 3개는 fab-agent/contracts/에 사본으로 둔다
 fab-team-plan_draft/
+# 보고서 · 그림 원본(팀 내부)
+reports/
 backend-handoff-v2/*
 !backend-handoff-v2/data/
 !backend-handoff-v2/examples/
