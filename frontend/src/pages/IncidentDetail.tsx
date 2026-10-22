@@ -239,7 +239,8 @@ function AnalysisTab(props:AnalysisTabProps){
   {questionJobs.some(query=>query.error)&&<ErrorMessage error={questionJobs.find(query=>query.error)?.error}/>}
   {answerResults.some(query=>query.error)&&<ErrorMessage error={answerResults.find(query=>query.error)?.error}/>}
   {proposal.error&&<ErrorMessage error={proposal.error}/>}
-  <ProposedWorkList incident={incident} canManage={props.canManage}/>
+  <ProposedWorkList incident={incident} canManage={props.canManage}
+   results={[...(latestAnalysis?[latestAnalysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])]}/>
   <QuestionComposer
    canManage={props.canManage}
    blocked={props.blocked}

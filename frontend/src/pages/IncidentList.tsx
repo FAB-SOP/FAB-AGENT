@@ -53,7 +53,7 @@ function IncidentRow({incident,onOpen}:{incident:Incident;onOpen:(incidentId:str
   </td>
  </tr>;
 }
-/** 서버 판정값만 표시한다. 사유는 마우스를 올리면 툴팁, 누르면 펼침(모바일). */
+/** 서버 판정값만 표시한다. 사유는 마우스를 올리면 툴팁, 누르면 배지 아래 말풍선(표 줄이 밀리지 않음), 다른 곳을 누르면 닫힘. */
 function PriorityBadge({incident}:{incident:Incident}){
  const [open,setOpen]=useState(false);
  const view=priorityView(incident.investigationPriority);
@@ -61,7 +61,7 @@ function PriorityBadge({incident}:{incident:Incident}){
   <button type="button" className={'priority-badge '+view.tone} title={view.reason||undefined} aria-expanded={open}
    aria-label={'우선순위 '+view.label+(view.reason?' · '+view.reason:'')}
    onClick={event=>{event.stopPropagation();setOpen(value=>!value);}}
-   onKeyDown={event=>event.stopPropagation()}>
+   onKeyDown={event=>event.stopPropagation()} onBlur={()=>setOpen(false)}>
    {view.bars>0&&<span className="priority-bars" aria-hidden="true">{'▮'.repeat(view.bars)}</span>}{view.label}
   </button>
   {open&&view.reason&&<span className="priority-reason">{view.reason}</span>}
