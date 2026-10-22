@@ -28,6 +28,26 @@ function RequestRow({request,onOpen}:{request:Obj;onOpen:()=>void}){
   <ArrowUpRight/>
  </button>;
 }
+/** 받은 요청에서 할 수 있는 일 — 서버의 allowedActions를 그대로 쓴다. 필드가 없던 이전 서버는 담당자·접수 상태면 회신만 */
+export function requestActions(request:Obj,userId?:string):string[]{
+ if(Array.isArray(request.allowedActions))return request.allowedActions;
+ return request.ownerUserId===userId&&request.status==='OPEN'?['REPLY']:[];
+}
+type DecisionForm={reason:string;onReasonChange:(reason:string)=>void;onDecide:(decision:string)=>void};
+/** 수락하면 회신을 쓸 수 있고, 거절은 사유가 필요하다 */
+function RequestDecision({form,pending}:{form:DecisionForm;pending:boolean}){
+ return <div className="request-decision">
+  <Notice>이 요청을 수락하면 확인 후 결과를 회신할 수 있습니다. 수락·거절만으로 조사가 진행되거나 종료되지 않습니다.</Notice>
+  <Field label="거절 사유 (거절 시 필수)">
+   <textarea value={form.reason} maxLength={2000} disabled={pending} onChange={event=>form.onReasonChange(event.target.value)}/>
+  </Field>
+  <div className="work-buttons">
+   <button type="button" className="button" disabled={pending} onClick={()=>form.onDecide('ACCEPT')}>요청 수락</button>
+   <button type="button" className="button secondary" disabled={pending||!form.reason.trim()} onClick={()=>form.onDecide('REJECT')}>요청 거절</button>
+  </div>
+  {!form.reason.trim()&&<p className="small muted">거절하려면 사유를 입력하세요.</p>}
+ </div>;
+}
 type ReplyForm={
  findings:string;
  confirmed:boolean;
@@ -35,9 +55,10 @@ type ReplyForm={
  onConfirmedChange:(confirmed:boolean)=>void;
  onSubmit:()=>void;
 };
-function RequestDetailModal({request,canReply,reply,command,onClose}:{
- request:Obj;canReply:boolean;reply:ReplyForm;command:ReturnType<typeof useCommand>;onClose:()=>void;
+function RequestDetailModal({request,actions,decision,reply,command,onClose}:{
+ request:Obj;actions:string[];decision:DecisionForm;reply:ReplyForm;command:ReturnType<typeof useCommand>;onClose:()=>void;
 }){
+ const canReply=actions.includes('REPLY');
  return <Modal title="확인·정비 요청 상세" onClose={onClose}>
   <Badge value={request.status}/>
   <h3>{request.question}</h3>
@@ -47,13 +68,18 @@ function RequestDetailModal({request,canReply,reply,command,onClose}:{
    <p>{item.findings}</p>
    <span className="small muted">{when(item.createdAt)} · {item.authorUserId}</span>
   </div>)}
+  {request.status==='REJECTED'&&request.decisionComment&&<div className="record">
+   <strong>거절 사유</strong><p>{request.decisionComment}</p>
+   {request.decisionAt&&<span className="small muted">{when(request.decisionAt)}</span>}
+  </div>}
+  {actions.includes('ACCEPT')&&<><RequestDecision form={decision} pending={command.isPending}/><ErrorMessageIfFailed command={command}/></>}
   {canReply&&<form onSubmit={event=>{event.preventDefault();reply.onSubmit()}}>
    <Field label="확인한 내용과 결과"><textarea required value={reply.findings} onChange={event=>reply.onFindingsChange(event.target.value)}/></Field>
    <label className="check">
     <input type="checkbox" required checked={reply.confirmed} onChange={event=>reply.onConfirmedChange(event.target.checked)}/>직접 확인한 내용입니다.
    </label>
    <ErrorMessageIfFailed command={command}/>
-   <button className="button full" disabled={command.isPending}>회신 등록 · 조사 재개</button>
+   <button className="button full" disabled={command.isPending}>회신 등록</button>
   </form>}
  </Modal>;
 }
@@ -76,13 +102,21 @@ export function Requests(){
  const setSelected=(value:string)=>setParams(value?{request:value}:{});
  const [findings,setFindings]=useState('');
  const [confirmed,setConfirmed]=useState(false);
+ const [reason,setReason]=useState('');
  const command=useCommand();
  const {requests,detail}=useRequestQueries(box,selected);
  const openRequest=(requestId:string)=>{
   setSelected(requestId);
   setFindings('');
   setConfirmed(false);
+  setReason('');
  };
+ /** 수락하면 창을 그대로 두어 바로 회신을 쓰게 하고, 거절하면 닫는다 */
+ const decide=(decision:string)=>command.exec(
+  ()=>write(`/api/check-requests/${selected}/decisions`,{decision,comment:decision==='REJECT'?reason:null,expectedVersion:detail.data!.version}),
+  decision==='REJECT'?()=>setSelected(''):undefined,
+  decision==='REJECT'?'요청을 거절했습니다.':'요청을 수락했습니다. 확인 후 결과를 회신하세요.',
+ );
  const submitReply=()=>command.exec(
   ()=>write(`/api/check-requests/${selected}/replies`,{findings,confirmedByUser:confirmed,expectedVersion:detail.data!.version,evidenceIds:[]}),
   ()=>setSelected(''),
@@ -100,7 +134,8 @@ export function Requests(){
   </Panel>
   {detail.data&&selected&&<RequestDetailModal
    request={detail.data}
-   canReply={detail.data.ownerUserId===session?.user.userId&&detail.data.status==='OPEN'}
+   actions={requestActions(detail.data,session?.user.userId)}
+   decision={{reason,onReasonChange:setReason,onDecide:decide}}
    reply={{findings,confirmed,onFindingsChange:setFindings,onConfirmedChange:setConfirmed,onSubmit:submitReply}}
    command={command}
    onClose={()=>setSelected('')}

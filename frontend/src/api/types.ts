@@ -69,7 +69,7 @@ export const labels:Record<string,string>={
  WAITING_APPROVAL:'제안 검토 대기',
  SUCCEEDED:'분석 완료',
  FAILED:'분석 실패',
- REPLIED:'회신 완료',
+ REPLIED:'회신 완료',ACCEPTED:'수락 · 회신 대기',
  DRAFT:'초안',
  CONFIRMED:'확정',
  NOT_VERIFIED:'효과 미확인',

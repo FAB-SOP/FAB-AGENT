@@ -93,3 +93,4 @@ textarea:disabled{background:#f1f4f5;color:#7c8d95;cursor:not-allowed;border-col
 .proposed-work{margin:6px 0 6px;padding-top:4px}.proposed-work>h3{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:17px;margin-bottom:12px}.proposed-work .work-card{margin-bottom:12px}
 .work-not-done{margin:8px 0 12px;padding:9px 12px;border-radius:8px;background:#fff5df;color:#8a5a12;font-size:14px}
 .work-card.muted{opacity:.6}.proposed-group{margin-bottom:14px}.proposed-group>p{margin-bottom:8px}
+.request-decision{margin:16px 0}.request-decision .work-buttons{margin-top:4px}
