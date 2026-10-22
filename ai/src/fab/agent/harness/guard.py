@@ -40,11 +40,9 @@ def validate_result(result: dict, known_evidence: set[str], incident_process: st
     fact_errors, cited = _fact_rules(facts)
     errors += fact_errors
     for cause in result.get("candidateCauses") or []:
-        support, counter = set(cause.get("supportingEvidenceIds") or []), set(cause.get("conflictingEvidenceIds") or [])
-        cited |= support | counter
-        if support & counter:
-            errors.append(f"같은 근거 {sorted(support & counter)}를 「{str(cause.get('hypothesis', ''))[:30]}」의 지지 · 반대 "
-                          "양쪽에 넣었습니다. 한쪽에만 두세요.")
+        # 반대 근거도 조회한 것만. 같은 ID가 지지 · 반대 양쪽에 있어도 받는다 — 센서 특징 결과 하나에 센서 여럿이 들어 있어
+        # 「이 센서는 벗어남(지지) · 저 센서는 정상(반대)」이 같은 ID를 가리킨다(10-22 실제 모델 비교에서 반려 4번 · 한도 멈춤 1번)
+        cited |= set(cause.get("supportingEvidenceIds") or []) | set(cause.get("conflictingEvidenceIds") or [])
     unknown = cited - known_evidence
     if unknown:
         errors.append(f"조회하지 않은 근거 ID를 인용했습니다: {sorted(unknown)}. 도구 결과의 evidenceId만 쓰세요.")

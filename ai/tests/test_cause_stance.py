@@ -30,10 +30,11 @@ def test_conflicting_evidence_must_be_looked_up():
     assert any("E-9" in e for e in errors)
 
 
-def test_same_evidence_cannot_support_and_conflict():
-    errors = guard.validate_result(_result({"causeIds": ["CMP_PRESSURE"], "supportingEvidenceIds": ["E-1", "E-2"],
-                                            "conflictingEvidenceIds": ["E-2"]}), KNOWN, "CMP")
-    assert any("E-2" in e and "양쪽" in e for e in errors)
+def test_same_evidence_on_both_sides_is_accepted_and_cancels_out():
+    """센서 특징 결과 하나(근거 ID 하나)에 벗어난 센서와 정상 센서가 함께 있다 — 반려하지 않고 판정에서 서로 상쇄된다"""
+    cause = {"causeIds": ["CMP_PRESSURE"], "supportingEvidenceIds": ["E-1", "E-2"], "conflictingEvidenceIds": ["E-2"]}
+    assert guard.validate_result(_result(cause), KNOWN, "CMP") == []
+    assert cause_stance(cause) == SUPPORTED
 
 
 def test_refuted_cause_cannot_be_first_for_a_check():
