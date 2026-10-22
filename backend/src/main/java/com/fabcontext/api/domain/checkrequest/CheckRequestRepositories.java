@@ -11,6 +11,8 @@ public final class CheckRequestRepositories {
 
 	public interface CheckRequestRepository extends JpaRepository<CheckRequest, String> {
 
+		boolean existsByIncidentIdAndStatusIn(String incidentId, java.util.Collection<CheckRequestStatus> statuses);
+
 		List<CheckRequest> findByOwnerUserIdOrderByCreatedAtDesc(String ownerUserId);
 
 		List<CheckRequest> findByRequesterUserIdOrderByCreatedAtDesc(String requesterUserId);

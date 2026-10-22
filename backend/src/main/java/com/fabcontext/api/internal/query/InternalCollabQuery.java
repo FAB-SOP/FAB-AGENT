@@ -32,6 +32,7 @@ public class InternalCollabQuery {
 	private final DemoFaults faults;
 	private final InternalViews views;
 	private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
+	private final com.fabcontext.api.domain.job.JobRepository jobs;
 
 	public Map<String, Object> owners(String processCode) {
 		faults.maybeFail("get_process_owner");
@@ -60,8 +61,9 @@ public class InternalCollabQuery {
 
 	public Map<String, Object> actions(String id) {
 		Incident i = incidents.resolve(id);
-		return views.env(Map.of("items", actionRepository.findByIncidentIdOrderByPerformedAtAsc(i.getIncidentId()).stream()
-			.map(views::actionView).toList()), List.of(), List.of());
+		var actions=actionRepository.findByIncidentIdOrderByPerformedAtAsc(i.getIncidentId());
+		return views.env(Map.of("items", actions.stream().map(views::actionView).toList()),
+			actions.stream().map(a->views.ref("E-ACT-"+a.getActionId(),"ACTION",a.getActionId())).toList(),List.of());
 	}
 
 	public Map<String, Object> reportContext(String id) {
@@ -82,7 +84,22 @@ public class InternalCollabQuery {
 	}
 
 	public Map<String, Object> checkRequest(String requestId) {
-		return views.requestView(checkRequestRepository.findById(requestId)
-			.orElseThrow(() -> InternalError.notFound("요청 " + requestId + "가 없습니다.", "")));
+		var request=checkRequestRepository.findById(requestId)
+			.orElseThrow(() -> InternalError.notFound("요청 " + requestId + "가 없습니다.", ""));
+		Map<String,Object> result=views.requestView(request);
+		// 기존 Worker의 reply_wait는 reply.memo를 읽는다. 명시적으로 선택한 입력을 그 경로에도 전달한다.
+		// 원본 회신 findings나 DB 회신을 수정하지 않으며, 거절을 가짜 회신으로 만들지 않는다.
+		if(result.get("reply") instanceof Map<?,?> raw) {
+			jobs.findByIncidentIdOrderByCreatedAtDesc(request.getIncidentId()).stream()
+				.filter(j->j.getKind()==com.fabcontext.api.domain.job.JobKind.RESUME && j.getStatus().isInProgress())
+				.filter(j->requestId.equals(j.getInput().get("requestId")) && j.getInput().containsKey("selectedInputs"))
+				.findFirst().ifPresent(job->{
+					Map<String,Object> reply=new LinkedHashMap<>(); raw.forEach((key,value)->reply.put(String.valueOf(key),value));
+					reply.put("memo",com.fabcontext.api.common.Json.write(Map.of("analysisRequestId",job.getInput().get("analysisRequestId"),
+						"question",job.getInput().get("followupQuestion"),"selectedInputs",job.getInput().get("selectedInputs"))));
+					result.put("reply",reply);
+				});
+		}
+		return result;
 	}
 }

@@ -22,10 +22,6 @@ import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
 import com.fabcontext.api.domain.incident.IncidentStatus;
 import com.fabcontext.api.common.stream.IncidentStreamHub;
-import com.fabcontext.api.domain.job.Job;
-import com.fabcontext.api.domain.job.JobRepository;
-import com.fabcontext.api.domain.job.JobService;
-import com.fabcontext.api.domain.job.JobStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,11 +34,17 @@ public class CheckRequestService {
 	private final CheckRequestRepository requestRepository;
 	private final ReplyRepository replyRepository;
 	private final IncidentRepository incidentRepository;
-	private final JobRepository jobRepository;
-	private final JobService jobService;
+	private final jakarta.persistence.EntityManager entityManager;
 	private final IncidentStreamHub streamHub;
 	private final Clock clock;
 	private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
+
+	@Transactional(readOnly=true)
+	public List<CheckRequestSummary> acceptedInbox(AuthUser user) {
+		return requestRepository.findByOwnerUserIdOrderByCreatedAtDesc(user.userId()).stream()
+			.filter(r->r.getStatus()==CheckRequestStatus.ACCEPTED)
+			.map(r->CheckRequestSummary.from(r,displayId(r.getIncidentId()),user.userId())).toList();
+	}
 
 	/** 승인된 CHECK_REQUEST · MAINTENANCE_REQUEST 제안의 저장된 payload로 요청을 발송한다. */
 	public CheckRequest createFromApproval(Incident incident, String approvalId, Map<String, Object> payload,
@@ -89,34 +91,40 @@ public class CheckRequestService {
 	public PageResponse<CheckRequestSummary> list(AuthUser user, String box, String status, String incidentId,
 			String cursor, Integer size) {
 		String mode = box == null ? "received" : box.toLowerCase();
+		java.util.Set<String> statuses = new java.util.HashSet<>();
+		if (status != null) for (String value : status.split(",", -1)) {
+			try { statuses.add(CheckRequestStatus.valueOf(value.trim().toUpperCase(java.util.Locale.ROOT)).name()); }
+			catch (IllegalArgumentException ex) { throw ApiException.badRequest("INVALID_STATUS", "요청 상태가 올바르지 않습니다."); }
+		}
 		List<CheckRequest> source = switch (mode) {
 			case "received" -> requestRepository.findByOwnerUserIdOrderByCreatedAtDesc(user.userId());
 			case "sent" -> requestRepository.findByRequesterUserIdOrderByCreatedAtDesc(user.userId());
 			default -> throw ApiException.badRequest("INVALID_BOX", "box는 received 또는 sent입니다.");
 		};
 		List<CheckRequest> filtered = source.stream()
-			.filter(r -> status == null || r.getStatus().name().equalsIgnoreCase(status))
+			.filter(r -> statuses.isEmpty() || statuses.contains(r.getStatus().name()))
 			.filter(r -> incidentId == null || incidentId.equals(r.getIncidentId()))
 			.toList();
-		return Cursors.page(filtered, cursor, size, r -> CheckRequestSummary.from(r, displayId(r.getIncidentId())));
+		return Cursors.page(filtered, cursor, size, r -> CheckRequestSummary.from(r, displayId(r.getIncidentId()), user.userId()));
 	}
 
 	@Transactional(readOnly = true)
 	public List<CheckRequestView> forIncident(String id, AuthUser user) {
 		Incident incident=incidentRepository.findById(id).orElseThrow(()->ApiException.notFound("incident",id));
 		if(!user.hasScope(incident.getProcessCode())) throw ApiException.forbidden("PROCESS_SCOPE_REQUIRED","사건 공정의 조회 권한이 필요합니다.");
-		return requestRepository.findByIncidentIdOrderByCreatedAtAsc(id).stream().map(this::view).toList();
+		return requestRepository.findByIncidentIdOrderByCreatedAtAsc(id).stream().map(r -> view(r,user.userId())).toList();
 	}
 
 	@Transactional(readOnly = true)
 	public CheckRequestView get(String requestId, AuthUser user) {
 		CheckRequest request = loadVisible(requestId, user);
-		return view(request);
+		return view(request,user.userId());
 	}
 
 	@Transactional
 	public ReplyResult reply(String requestId, AuthUser user, ReplyInput input) {
 		CheckRequest request = loadVisible(requestId, user);
+		entityManager.refresh(request, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		requireReplyable(request, user, input);
 		Instant now = Instant.now(clock);
 		request.markReplied(now);
@@ -124,26 +132,52 @@ public class CheckRequestService {
 			.orElseThrow(() -> ApiException.notFound("incident", request.getIncidentId()));
 		Reply reply = newReply(requestId, incident, user, input, now);
 
-		String resumeJobId = resumeWaitingJob(request, incident, user, reply.getReplyId());
-		if (resumeJobId == null) {
-			resumeJobId = startFollowupAnalysis(request, incident, input, reply.getReplyId());
-		}
-		reply.setResumeJobId(resumeJobId);
+		incident.requireNotClosed();
+		validateEvidence(request, input.evidenceIds());
+		String resumeJobId = null; // 회신 저장은 분석을 실행하지 않는다.
 		reply = replyRepository.save(reply);
 		String savedReplyId = reply.getReplyId();
 		workItems.findByRequestId(requestId).ifPresent(workItem -> workItem.completeFromReply(savedReplyId, now));
 		notificationEvents.checkRequestReplied(request, reply);
 
 		if (incident.getStatus() == IncidentStatus.WAITING_REPLY
-				&& !requestRepository.existsByIncidentIdAndStatus(incident.getIncidentId(), CheckRequestStatus.OPEN)) {
+				&& !hasPending(incident.getIncidentId())) {
 			incident.setStatus(IncidentStatus.INVESTIGATING);
 		}
 		incident.record(now, "REPLY_RECEIVED", user.userId(), "확인 요청 회신: " + input.findings(), "REPLY",
 			reply.getReplyId());
 		streamHub.publish(incident.getIncidentId(), "check-request.replied",
-			Map.of("requestId", requestId, "replyId", reply.getReplyId(), "resumeJobId", String.valueOf(resumeJobId)));
+			Map.of("requestId", requestId, "replyId", reply.getReplyId()));
 		return new ReplyResult(reply.getReplyId(), requestId, reply.getFindings(), reply.getEvidenceIds(),
 			user.userId(), now, resumeJobId, request.getStatus(), request.getVersion());
+	}
+
+	@Transactional
+	public CheckRequestView decide(String requestId, AuthUser user, CheckRequestDtos.DecisionInput input) {
+		CheckRequest request=loadVisible(requestId,user);
+		if (!user.userId().equals(request.getOwnerUserId())) throw ApiException.forbidden("NOT_REQUEST_OWNER","지정 수신자만 결정할 수 있습니다.");
+		entityManager.refresh(request, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		Incident incident=incidentRepository.findById(request.getIncidentId()).orElseThrow();
+		incident.requireNotClosed();
+		ApiException.checkVersion("checkRequest",input.expectedVersion(),request.getVersion());
+		Instant now=Instant.now(clock);
+		boolean accepted="ACCEPT".equals(input.decision());
+		request.decide(accepted,input.comment(),now);
+		if (!accepted) workItems.findByRequestId(requestId).ifPresent(w->w.rejectFromRequest(input.comment(),now));
+		if (!accepted && incident.getStatus()==IncidentStatus.WAITING_REPLY && !hasPending(incident.getIncidentId())) incident.setStatus(IncidentStatus.INVESTIGATING);
+		incident.record(now,accepted?"REQUEST_ACCEPTED":"REQUEST_REJECTED",user.userId(),accepted?"확인 요청 수락":"확인 요청 거절: "+input.comment(),"CHECK_REQUEST",requestId);
+		streamHub.publish(incident.getIncidentId(),"check-request.decided",Map.of("requestId",requestId,"status",request.getStatus()));
+		return view(request,user.userId());
+	}
+
+	private boolean hasPending(String incidentId) {
+		return requestRepository.existsByIncidentIdAndStatusIn(incidentId,List.of(CheckRequestStatus.OPEN,CheckRequestStatus.ACCEPTED));
+	}
+	private void validateEvidence(CheckRequest request, List<String> ids) {
+		if(ids==null || ids.isEmpty()) return;
+		java.util.Set<String> known=new java.util.HashSet<>(request.getEvidenceIds());
+		// 수신자가 넘겨받은 근거만 재첨부할 수 있다. 새 근거는 별도 등록 경로가 필요하다.
+		if(!known.containsAll(ids)) throw ApiException.unprocessable("INVALID_EVIDENCE","요청에 연결되어 전달된 근거만 첨부할 수 있습니다.");
 	}
 
 	/** 회신 전 검사 — 담당자 본인 → 직접 확인 표시 → 버전 순서 */
@@ -170,40 +204,6 @@ public class CheckRequestService {
 			.build();
 	}
 
-	/** 회신을 기다리던 Agent 작업이 있으면 재개한다 — 재개한 작업 ID, 없으면 null */
-	private String resumeWaitingJob(CheckRequest request, Incident incident, AuthUser user, String replyId) {
-		if (request.getWaitingJobId() == null) {
-			return null;
-		}
-		Job waiting = jobRepository.findById(request.getWaitingJobId()).orElse(null);
-		if (waiting == null || waiting.getStatus() != JobStatus.WAITING_REPLY) {
-			return null;
-		}
-		return jobService.resume(waiting, incident, user.userId(), resumeInput(waiting, request.getRequestId(), replyId))
-			.getJobId();
-	}
-
-	/**
-	 * 새 업무 요청은 중단된 Agent가 없으므로 회신을 반영하는 새 분석을 시작한다 — 시작한 작업 ID, 없으면 null.
-	 * 진행 중 분석이 있으면 회신 저장을 우선하고 그 분석의 조회 자료로 제공한다.
-	 */
-	private String startFollowupAnalysis(CheckRequest request, Incident incident, ReplyInput input, String replyId) {
-		String requestId = request.getRequestId();
-		var linkedWork = workItems.findByRequestId(requestId);
-		if (linkedWork.isEmpty()
-				|| incident.getStatus() == IncidentStatus.CLOSED
-				|| jobRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(),
-					java.util.EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING))) {
-			return null;
-		}
-		Job followup = jobService.enqueue(incident, com.fabcontext.api.domain.job.JobKind.DEEP,
-			request.getRequesterUserId(), "담당자 회신을 반영해 원인 후보와 후속 확인 사항을 다시 분석해 주세요. 요청: "
-				+ request.getQuestion() + " / 회신: " + input.findings(), "ALL",
-			Map.of("trigger", "WORK_REPLY", "requestId", requestId, "replyId", replyId,
-				"workItemId", linkedWork.get().getTaskId()), null, null);
-		return followup.getJobId();
-	}
-
 	/** 요청자 · 담당자 · 사건 공정 권한이 있는 사용자만 조회 가능 */
 	private CheckRequest loadVisible(String requestId, AuthUser user) {
 		CheckRequest request = requestRepository.findById(requestId)
@@ -216,14 +216,14 @@ public class CheckRequestService {
 		return request;
 	}
 
-	private CheckRequestView view(CheckRequest r) {
+	private CheckRequestView view(CheckRequest r, String userId) {
 		Incident incident = incidentRepository.findById(r.getIncidentId()).orElse(null);
 		return new CheckRequestView(r.getRequestId(), r.getIncidentId(), IncidentContext.from(incident),
 			r.getTargetProcessCode(), r.getApprovalId(), r.getRequestType(), r.getEquipmentId(), r.getQuestion(), r.getBrief(),
 			List.copyOf(r.getCauseIds()), List.copyOf(r.getEvidenceIds()),
 			r.getRequesterUserId(), r.getOwnerUserId(), r.getStatus(), r.getVersion(), r.getThreadId(),
 			r.getWaitingJobId(), r.getDueAt(), r.getCreatedAt(), r.getRepliedAt(),
-			replyRepository.findByRequestIdOrderByCreatedAtAsc(r.getRequestId()).stream().map(ReplyView::from).toList());
+			replyRepository.findByRequestIdOrderByCreatedAtAsc(r.getRequestId()).stream().map(ReplyView::from).toList(), r.getDecisionAt(), r.getDecisionComment(), CheckRequestDtos.allowed(r,userId));
 	}
 
 	@SuppressWarnings("unchecked")
@@ -235,15 +235,4 @@ public class CheckRequestService {
 		return incidentRepository.findById(incidentId).map(Incident::getDisplayId).orElse(null);
 	}
 
-	/** 외부 Agent가 재개 지점을 맞출 수 있게 job-message의 resume 값(reason · refId · interruptId)도 함께 둔다 */
-	private static Map<String, Object> resumeInput(Job waiting, String requestId, String replyId) {
-		Map<String, Object> input = new java.util.LinkedHashMap<>();
-		input.put("trigger", "REPLY");
-		input.put("requestId", requestId);
-		input.put("replyId", replyId);
-		input.put("reason", "REPLY_RECEIVED");
-		input.put("refId", requestId);
-		input.put("interruptId", waiting.getInput().get("interruptId"));
-		return input;
-	}
 }

@@ -103,8 +103,8 @@ public class AgentWorker {
 
 	private void completeDeep(Job job, Incident incident) {
 		AnalysisResult result = resultRepository.save(analysisFactory.deep(incident, job));
-		boolean hasOpenRequest = checkRequestRepository.existsByIncidentIdAndStatus(incident.getIncidentId(),
-			CheckRequestStatus.OPEN);
+		boolean hasOpenRequest = checkRequestRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(),
+			java.util.List.of(CheckRequestStatus.OPEN,CheckRequestStatus.ACCEPTED));
 		Optional<Map<String, Object>> payload = hasOpenRequest ? Optional.empty()
 			: analysisFactory.checkRequestPayload(incident, job);
 		if (payload.isPresent()) {
@@ -133,7 +133,7 @@ public class AgentWorker {
 			String refId = execution.id();
 			if ("CHECK_REQUEST".equals(refType)) {
 				CheckRequest request = checkRequestRepository.findById(refId).orElse(null);
-				if (request != null && request.getStatus() == CheckRequestStatus.OPEN) {
+				if (request != null && (request.getStatus() == CheckRequestStatus.OPEN || request.getStatus() == CheckRequestStatus.ACCEPTED)) {
 					// 회신 대기 체크포인트 저장 후 작업자 반환
 					request.setWaitingJobId(job.getJobId());
 					jobService.waitFor(job, incident, JobStatus.WAITING_REPLY, new Ref("CHECK_REQUEST", refId));
