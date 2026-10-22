@@ -127,10 +127,10 @@ public class SeedRunner implements ApplicationRunner {
 		resolvedWithReport(ev1021, cmp, manager, d21);
 
 		Instant d22 = now.minus(Duration.ofDays(2));
-		Incident ev1022 = incident(1022, "PAD_TEMP_DRIFT", "LOW", "CMP", d22);
+		Incident ev1022 = incident(1022, "PRESSURE_FLUCTUATION", "LOW", "CMP", d22);
 		at(d22.plus(Duration.ofHours(6)));
 		incidentService.transition(ev1022.getIncidentId(), manager, new IncidentTransition(IncidentStatus.ON_HOLD,
-			"합성 조사 사례의 압력 편차 원인을 구분할 추가 자료 대기", List.of(), ev1022.getVersion()));
+			"압력 편차의 원인을 구분할 센서 교정 이력·공급 및 제어 계통 점검·독립 측정 자료가 부족하여 추가 확인 대기", List.of(), ev1022.getVersion()));
 
 		Instant d23 = now.minus(Duration.ofDays(1));
 		Incident ev1023 = incident(1023, "DEP_RATE_DRIFT", "MEDIUM", "CVD", d23);
