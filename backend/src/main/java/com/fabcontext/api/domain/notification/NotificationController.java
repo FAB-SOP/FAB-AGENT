@@ -89,6 +89,7 @@ public class NotificationController {
 
 		재연결 복구: Last-Event-ID 헤더(EventSource 자동) 또는 lastEventId 쿼리(새 EventSource를 만들 때)를 주면 그 다음 seq부터
 		DB에서 다시 보낸 뒤 실시간 전달로 이어진다. seq는 수신자별로 커밋 순서대로 빈틈없이 증가하므로 재연결 경계에서 빠지지 않는다.
+		DB 조회·전달 처리 오류 시 서버는 연결을 닫는다. 클라이언트는 마지막으로 받은 event id를 유지해 재연결한다.
 		둘 다 없으면 지금을 기준점으로 삼는다. 숫자가 아닌 값은 없는 것으로 보고 resync를 보낸다.
 		권장 순서: SSE 연결(ready로 미읽음 수) → 목록 GET → 이후 SSE. 목록과 SSE가 같은 알림을 줄 수 있으니 notificationId로 중복 표시를 거른다.
 		오류: 401 UNAUTHENTICATED.""")

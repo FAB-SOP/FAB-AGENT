@@ -19,6 +19,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 @RequiredArgsConstructor
 public class JobService {
@@ -140,6 +141,13 @@ public class JobService {
 	}
 
 	private void publish(Job job) {
+		String requestId=org.slf4j.MDC.get("requestId"), jobId=job.getJobId(), incidentId=job.getIncidentId();
+		JobStatus status=job.getStatus();
+		JobKind kind=job.getKind();
+		com.fabcontext.api.common.AfterCommit.run(()->{
+			if(status==JobStatus.FAILED) log.error("event=job.status requestId={} incidentId={} jobId={} kind={} status={}",requestId,incidentId,jobId,kind,status);
+			else log.info("event=job.status requestId={} incidentId={} jobId={} kind={} status={}",requestId,incidentId,jobId,kind,status);
+		});
 		streamHub.publish(job.getIncidentId(), "job.status", JobEvent.from(job));
 	}
 }

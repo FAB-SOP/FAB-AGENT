@@ -1,0 +1,5 @@
+# 로그 수준만 변경한다. 데이터·인증·Agent 설정은 바꾸지 않는다.
+logging:
+  level:
+    root: ${ROOT_LOG_LEVEL:INFO}
+    com.fabcontext: ${APP_LOG_LEVEL:DEBUG}

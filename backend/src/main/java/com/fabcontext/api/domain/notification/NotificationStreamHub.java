@@ -66,23 +66,27 @@ public class NotificationStreamHub {
 		SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
 		Connection c = new Connection(userId, emitter);
 		synchronized (c) {
-			long latest = latestSeq(userId);
-			boolean resync = lastEventId != null && (lastEventId > latest || latest - lastEventId > REPLAY_MAX);
-			c.lastSent = lastEventId == null || resync ? latest : lastEventId;
-			Set<Connection> set = connections.computeIfAbsent(userId, k -> ConcurrentHashMap.newKeySet());
-			set.add(c);
-			Runnable remove = () -> set.remove(c);
-			emitter.onCompletion(remove);
-			emitter.onTimeout(remove);
-			emitter.onError(e -> remove.run());
-			Map<String, Object> ready = new LinkedHashMap<>();
-			ready.put("latestEventId", String.valueOf(c.lastSent));
-			ready.put("unreadCount", unread(userId));
-			send(c, "ready", String.valueOf(c.lastSent), ready);
-			if (resync) {
-				sendResync(c, latest);
-			}
-			pump(c);
+			try {
+				long latest = latestSeq(userId);
+				boolean resync = lastEventId != null && (lastEventId > latest || latest - lastEventId > REPLAY_MAX);
+				c.lastSent = lastEventId == null || resync ? latest : lastEventId;
+				Set<Connection> set = connections.computeIfAbsent(userId, k -> ConcurrentHashMap.newKeySet());
+				set.add(c);
+				Runnable remove = () -> { c.open=false; set.remove(c); log.debug("event=notification.stream.closed userId={} lastEventId={}",userId,c.lastSent); };
+				emitter.onCompletion(remove);
+				emitter.onTimeout(remove);
+				emitter.onError(e -> remove.run());
+				Map<String, Object> ready = new LinkedHashMap<>();
+				ready.put("latestEventId", String.valueOf(c.lastSent));
+				ready.put("unreadCount", unread(userId));
+				send(c, "ready", String.valueOf(c.lastSent), ready);
+				if (resync) {
+					sendResync(c, latest);
+				}
+				pump(c);
+				if(c.open && lastEventId!=null && !resync) log.info("event=notification.stream.replayed userId={} fromEventId={} throughEventId={} count={}",userId,lastEventId,c.lastSent,c.lastSent-lastEventId);
+				log.debug("event=notification.stream.connected userId={} lastEventId={}",userId,c.lastSent);
+			} catch(RuntimeException e) { deliveryFailed(c,e); }
 		}
 		return emitter;
 	}
@@ -130,7 +134,7 @@ public class NotificationStreamHub {
 					c.emitter.send(SseEmitter.event().comment("ping"));
 				}
 				catch (IOException | IllegalStateException e) {
-					set.remove(c);
+					close(c);
 				}
 			}
 		}));
@@ -158,6 +162,7 @@ public class NotificationStreamHub {
 					return;
 				}
 				c.lastSent = n.getSeq();
+				log.debug("event=notification.delivered userId={} notificationId={} eventId={}",c.userId,n.getNotificationId(),n.getSeq());
 			}
 			if (batch.size() < REPLAY_PAGE) {
 				return;
@@ -169,6 +174,7 @@ public class NotificationStreamHub {
 		Map<String, Object> data = new LinkedHashMap<>();
 		data.put("latestEventId", String.valueOf(latest));
 		data.put("unreadCount", unread(c.userId));
+		log.warn("event=notification.stream.resync userId={} lastEventId={} latestEventId={}",c.userId,c.lastSent,latest);
 		if (send(c, "notification.resync", String.valueOf(latest), data)) {
 			c.lastSent = latest;
 		}
@@ -188,7 +194,7 @@ public class NotificationStreamHub {
 				action.accept(c);
 			}
 			catch (RuntimeException e) {
-				log.warn("알림 SSE 전달 실패 user={}", userId, e);
+				synchronized(c) { deliveryFailed(c,e); }
 			}
 		}
 	}
@@ -203,14 +209,26 @@ public class NotificationStreamHub {
 			return true;
 		}
 		catch (IOException | IllegalStateException e) {
-			log.debug("알림 SSE 전송 실패 user={} type={}", c.userId, type);
-			c.open = false;
-			Set<Connection> set = connections.get(c.userId);
-			if (set != null) {
-				set.remove(c);
-			}
+			log.debug("event=notification.stream.disconnected userId={} eventType={} lastEventId={}", c.userId, type,c.lastSent);
+			close(c);
 			return false;
 		}
+	}
+
+	/** 전송 오류 뒤 열린 채로 남기지 않는다. EOF를 받은 EventSource는 마지막 id로 재연결한다.
+	 * DB 예외 자체를 emitter에 넘겨 SQL/입력 내용이 HTTP 응답이나 로그로 노출되지 않게 한다. */
+	private void deliveryFailed(Connection c, RuntimeException error) {
+		log.warn("event=notification.delivery.failed userId={} lastEventId={} errorType={} recovery=reconnect",
+			c.userId,c.lastSent,error.getClass().getSimpleName());
+		close(c);
+	}
+
+	private void close(Connection c) {
+		if(!c.open) return;
+		c.open=false;
+		Set<Connection> set=connections.get(c.userId);
+		if(set!=null) set.remove(c);
+		c.emitter.complete();
 	}
 
 	private static final class Connection {

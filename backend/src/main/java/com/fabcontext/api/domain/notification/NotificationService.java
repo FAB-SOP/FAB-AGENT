@@ -103,7 +103,11 @@ public class NotificationService {
 		Notification read = notifications.findById(notificationId).orElseThrow();
 		long unread = notifications.countByRecipientUserIdAndReadAtIsNull(user.userId());
 		if (changed) {
-			AfterCommit.run(() -> hub.readChanged(user.userId(), notificationId, read.getReadAt()));
+			String requestId=org.slf4j.MDC.get("requestId");
+			AfterCommit.run(() -> {
+				log.info("event=notification.read requestId={} notificationId={} userId={}",requestId,notificationId,user.userId());
+				hub.readChanged(user.userId(), notificationId, read.getReadAt());
+			});
 		}
 		return new ReadResult(notificationId, read.getReadAt(), unread);
 	}
@@ -130,9 +134,13 @@ public class NotificationService {
 			Set<String> seen = new HashSet<>();
 			for (NotificationDraft d : drafts) {
 				if (!seen.add(d.sourceKey()) || notifications.existsByRecipientUserIdAndSourceKey(recipient, d.sourceKey())) {
+					log.debug("event=notification.duplicate.skipped userId={} type={}",recipient,d.type());
 					continue;
 				}
-				notifications.save(new Notification(Ids.next("ntf"), recipient, cursor.next(), d, now));
+				Notification saved=notifications.save(new Notification(Ids.next("ntf"), recipient, cursor.next(), d, now));
+				String requestId=org.slf4j.MDC.get("requestId");
+				AfterCommit.run(()->log.info("event=notification.stored requestId={} notificationId={} incidentId={} userId={} type={} eventId={}",
+					requestId,saved.getNotificationId(),saved.getIncidentId(),recipient,saved.getType(),saved.getSeq()));
 				stored.add(recipient);
 			}
 		});
@@ -176,7 +184,11 @@ public class NotificationService {
 		@Override
 		public void beforeCommit(boolean readOnly) {
 			flushed = true;
-			stored.addAll(store(entries));
+			try { stored.addAll(store(entries)); }
+			catch(RuntimeException e) {
+				log.error("event=notification.store.failed requestId={} errorType={} transaction=rollback",org.slf4j.MDC.get("requestId"),e.getClass().getSimpleName());
+				throw e;
+			}
 		}
 
 		@Override
