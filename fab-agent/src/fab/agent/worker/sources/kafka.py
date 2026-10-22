@@ -23,7 +23,7 @@ async def ensure_topics(brokers: str) -> None:
         try:
             await admin.start()
             have = set(await admin.list_topics())
-            missing = [NewTopic(t, num_partitions=1, replication_factor=1) for t in TOPICS if t not in have]
+            missing = [NewTopic(topic, num_partitions=1, replication_factor=1) for topic in TOPICS if topic not in have]
             if missing:
                 await admin.create_topics(missing)
             return
@@ -50,8 +50,8 @@ async def run_kafka_worker() -> None:
     servers = {"business": os.getenv("BUSINESS_MCP_URL", "http://localhost:9101/mcp"),
                "knowledge": os.getenv("KNOWLEDGE_MCP_URL", "http://localhost:9102/mcp")}
     sink = KafkaSink(producer, "analysis.events", "analysis.jobs.dlq")
-    async with make_checkpointer() as cp:
-        runner = JobRunner(servers, HttpBackend(), cp, sink, worker_id=os.getenv("HOSTNAME"))
+    async with make_checkpointer() as checkpointer:
+        runner = JobRunner(servers, HttpBackend(), checkpointer, sink, worker_id=os.getenv("HOSTNAME"))
         try:
             async for msg in consumer:
                 try:

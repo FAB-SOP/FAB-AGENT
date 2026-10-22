@@ -26,17 +26,17 @@ class HttpBackend:
 
     async def _req(self, method: str, path: str, **kw) -> dict:
         async with httpx.AsyncClient(base_url=self.base, transport=self.transport, timeout=10,
-                                     headers={"Authorization": f"Bearer {self.token}"}) as c:
+                                     headers={"Authorization": f"Bearer {self.token}"}) as client:
             try:
-                r = await c.request(method, path, **kw)
+                response = await client.request(method, path, **kw)
             except httpx.TransportError as e:
                 raise BackendError("UNAVAILABLE", f"backend 연결 실패({type(e).__name__})", retryable=True) from e
-        body = r.json() if r.content else {}
-        if r.is_success:
+        body = response.json() if response.content else {}
+        if response.is_success:
             return body["data"]
         e = body.get("error", {})
-        raise BackendError(e.get("code", f"HTTP_{r.status_code}"), e.get("message", r.text[:200]),
-                           hint=e.get("hint", ""), retryable=bool(e.get("retryable")) or r.status_code in (429, 503))
+        raise BackendError(e.get("code", f"HTTP_{response.status_code}"), e.get("message", response.text[:200]),
+                           hint=e.get("hint", ""), retryable=bool(e.get("retryable")) or response.status_code in (429, 503))
 
     async def claim(self, job_id: str, attempt: int, worker_id: str) -> dict:
         return await self._req("POST", f"/internal/jobs/{job_id}/claims",

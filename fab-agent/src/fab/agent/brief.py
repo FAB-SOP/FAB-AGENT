@@ -43,46 +43,57 @@ def sensor_deviation(run: dict, item: dict) -> dict:
             "deviationFromSetpointPct": item.get("deviationFromSetpointPct")}
 
 
-def build(messages, args: dict, action_type: str) -> dict:
-    """제안 도구 인자(모델) + 이번 조사의 도구 결과(코드)로 브리프를 만든다"""
-    res = tool_results(messages)
-    runs = runs_by_id(res)
-    order = sorted(runs.values(), key=lambda r: PROCESS_ORDER.index(r["processCode"])
-                   if r.get("processCode") in PROCESS_ORDER else 9)
-    deviations = [amount_deviation(r) for r in order]
-    target_eq = args.get("equipmentId")
-    for env in res.get("get_run_features", []):
-        d = _data(env)
-        run = runs.get(d.get("runId"), {"runId": d.get("runId"), "equipmentId": d.get("equipmentId"),
-                                         "processCode": d.get("processCode")})
-        if run.get("equipmentId") != target_eq:
+def _deviations(results: dict, runs: dict, target_equipment: str | None) -> list[dict]:
+    """공정 순서대로 run별 증착 · 제거량 편차, 그리고 요청 대상 설비의 참고 범위 밖 센서"""
+    ordered = sorted(runs.values(), key=lambda run: PROCESS_ORDER.index(run["processCode"])
+                     if run.get("processCode") in PROCESS_ORDER else 9)
+    deviations = [amount_deviation(run) for run in ordered]
+    for envelope in results.get("get_run_features", []):
+        features = _data(envelope)
+        run = runs.get(features.get("runId"), {"runId": features.get("runId"), "equipmentId": features.get("equipmentId"),
+                                                "processCode": features.get("processCode")})
+        if run.get("equipmentId") != target_equipment:
             continue
-        deviations += [sensor_deviation(run, i) for i in d.get("items") or [] if i.get("outsideReferenceBand")]
+        deviations += [sensor_deviation(run, item) for item in features.get("items") or [] if item.get("outsideReferenceBand")]
+    return deviations
 
-    cause_ids = [c for c in args.get("causeIds") or [] if c in CAUSES]
-    suspected = [{"causeId": c, "candidate": CAUSES[c][1], "confirmed": False,
-                  "evidenceToCheck": CAUSE_DETAILS.get(c, {}).get("evidenceToCheck"),
-                  "limits": CAUSE_DETAILS.get(c, {}).get("limits")} for c in cause_ids]
 
+def _suspected_causes(cause_ids: list[str]) -> list[dict]:
+    return [{"causeId": cause_id, "candidate": CAUSES[cause_id][1], "confirmed": False,
+             "evidenceToCheck": CAUSE_DETAILS.get(cause_id, {}).get("evidenceToCheck"),
+             "limits": CAUSE_DETAILS.get(cause_id, {}).get("limits")} for cause_id in cause_ids]
+
+
+def _related_records(results: dict, target_equipment: str | None, cause_ids: list[str]) -> list[dict]:
+    """요청 대상 설비의 정비 · 변경 기록, 그리고 원인 후보의 팀 점검 문서(중복 없이)"""
     related: list[dict] = []
-    for env in res.get("get_change_events", []):
-        refs = env.get("evidenceRefs") or []
-        for item in _data(env).get("items") or []:
-            if target_eq and item.get("equipmentId") != target_eq:
+    for envelope in results.get("get_change_events", []):
+        refs = envelope.get("evidenceRefs") or []
+        for item in _data(envelope).get("items") or []:
+            if target_equipment and item.get("equipmentId") != target_equipment:
                 continue
             related.append({"evidenceId": refs[0]["evidenceId"] if refs else None,
                             "summary": f"{item.get('occurredAt')} {item.get('equipmentId')} {item.get('type')} "
                                        f"({item.get('changeId')}): {item.get('description')}",
                             "rootCauseConfirmed": bool(item.get("rootCauseConfirmed"))})
-    seen_pb = set()
-    for env in res.get("search_applicable_playbooks", []):
-        for item in _data(env).get("items") or []:
-            if item.get("causeId") in cause_ids and item.get("evidenceId") not in seen_pb:
-                seen_pb.add(item.get("evidenceId"))
+    seen_playbooks = set()
+    for envelope in results.get("search_applicable_playbooks", []):
+        for item in _data(envelope).get("items") or []:
+            if item.get("causeId") in cause_ids and item.get("evidenceId") not in seen_playbooks:
+                seen_playbooks.add(item.get("evidenceId"))
                 related.append({"evidenceId": item.get("evidenceId"),
                                 "summary": f"팀 점검 문서 {item.get('chunkId')} — {item.get('candidate')} (시연용, 승인 SOP 아님)"})
+    return related
 
-    ask = list(ASK_FOR.get(action_type, []))
-    ask += [CAUSE_DETAILS[c]["evidenceToCheck"] for c in cause_ids if c in CAUSE_DETAILS]
-    return {"reason": str(args.get("reason") or "").strip(), "deviations": deviations, "suspectedCauses": suspected,
-            "relatedRecords": related, "askFor": ask}
+
+def build(messages, args: dict, action_type: str) -> dict:
+    """제안 도구 인자(모델) + 이번 조사의 도구 결과(코드)로 브리프를 만든다"""
+    results = tool_results(messages)
+    target_equipment = args.get("equipmentId")
+    deviations = _deviations(results, runs_by_id(results), target_equipment)
+    cause_ids = [cause_id for cause_id in args.get("causeIds") or [] if cause_id in CAUSES]
+    ask_for = list(ASK_FOR.get(action_type, []))
+    ask_for += [CAUSE_DETAILS[cause_id]["evidenceToCheck"] for cause_id in cause_ids if cause_id in CAUSE_DETAILS]
+    return {"reason": str(args.get("reason") or "").strip(), "deviations": deviations,
+            "suspectedCauses": _suspected_causes(cause_ids),
+            "relatedRecords": _related_records(results, target_equipment, cause_ids), "askFor": ask_for}

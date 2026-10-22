@@ -18,15 +18,15 @@ def to_tool_text(result: dict) -> str:
 
 def fit_budget(messages: list[BaseMessage], budget: int = LIMITS.context_char_budget) -> list[BaseMessage]:
     """총 글자 수가 예산을 넘으면, 최근 4개를 뺀 오래된 ToolMessage 본문을 짧게 줄인다(메시지 순서 · 짝은 유지)."""
-    total = sum(len(str(m.content)) for m in messages)
+    total = sum(len(str(message.content)) for message in messages)
     if total <= budget:
         return messages
-    out = list(messages)
-    for i, m in enumerate(out[:-4]):
-        if isinstance(m, ToolMessage) and len(str(m.content)) > 300:
-            out[i] = ToolMessage(content=str(m.content)[:300] + "…[예산 초과로 요약됨]", tool_call_id=m.tool_call_id,
-                                 name=m.name)
-            total = sum(len(str(x.content)) for x in out)
+    trimmed = list(messages)
+    for i, message in enumerate(trimmed[:-4]):
+        if isinstance(message, ToolMessage) and len(str(message.content)) > 300:
+            trimmed[i] = ToolMessage(content=str(message.content)[:300] + "…[예산 초과로 요약됨]", tool_call_id=message.tool_call_id,
+                                     name=message.name)
+            total = sum(len(str(item.content)) for item in trimmed)
             if total <= budget:
                 break
-    return out
+    return trimmed

@@ -14,7 +14,7 @@ def route_agent(state: AgentState) -> str:
     last = state["messages"][-1]
     if isinstance(last, HumanMessage):  # nudge
         return "agent"
-    if any(tc["name"] in PROPOSALS for tc in getattr(last, "tool_calls", None) or []):
+    if any(tool_call["name"] in PROPOSALS for tool_call in getattr(last, "tool_calls", None) or []):
         return "request_brief"
     return "tools"
 

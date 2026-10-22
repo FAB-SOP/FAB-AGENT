@@ -49,66 +49,85 @@ class Chunk:
 
 
 def _lines(path: Path) -> list[dict]:
-    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def load_corpora(pack: Path | None = None, rag: Path | None = None) -> list[Chunk]:
     pack, rag = pack or pack_dir(), rag or rag_dir()
-    chunks: list[Chunk] = []
+    return [*_technical_chunks(rag), *_playbook_chunks(pack), *_case_chunks(pack)]
+
+
+def _technical_chunks(rag: Path) -> list[Chunk]:
+    """TECH — 실제 원문 조각"""
     source = rag / "rag" / "source-chunks.jsonl"
     if not source.exists():  # 공개 저장소에는 없다(출판자 저작물) — 팀 내부로 받아 이 경로에 둔다
-        import sys
-
         print(f"[지식 MCP] 실제 원문 조각이 없어 기술 문서 검색은 비어 있습니다: {source}", file=sys.stderr)
-    for r in _lines(source) if source.exists() else []:
-        chunks.append(Chunk(r["chunkId"], "TECH", r["documentId"], r["text"], {
-            "title": r["title"], "publisher": r.get("publisher"), "sourceUrl": r.get("sourceUrl"),
-            "originalPdfPage": r.get("originalPdfPage"), "sectionScope": r.get("sectionScope"),
-            "retrievalTier": r.get("retrievalTier"), "process": r.get("process") or [],
-            "applicabilityLimits": r.get("applicabilityLimits"),
-            "figuresEquationsTablesRequireSourceCheck": r.get("figuresEquationsTablesRequireSourceCheck", False),
-            "approvedForProductionAction": False, "synthetic": False, "origin": "REAL_SOURCE_EXCERPT",
-            "documentId": r["documentId"], "version": r.get("version"), "contentHash": r.get("contentHash")}))
-    causes = {c["causeId"]: c for c in json.loads((pack / "knowledge" / "cause-matrix.json").read_text(encoding="utf-8"))}
-    for r in _lines(pack / "knowledge" / "rag-chunks.jsonl"):
-        if r.get("origin") != "TEAM_SYNTHETIC":
+        return []
+    return [Chunk(row["chunkId"], "TECH", row["documentId"], row["text"], {
+        "title": row["title"], "publisher": row.get("publisher"), "sourceUrl": row.get("sourceUrl"),
+        "originalPdfPage": row.get("originalPdfPage"), "sectionScope": row.get("sectionScope"),
+        "retrievalTier": row.get("retrievalTier"), "process": row.get("process") or [],
+        "applicabilityLimits": row.get("applicabilityLimits"),
+        "figuresEquationsTablesRequireSourceCheck": row.get("figuresEquationsTablesRequireSourceCheck", False),
+        "approvedForProductionAction": False, "synthetic": False, "origin": "REAL_SOURCE_EXCERPT",
+        "documentId": row["documentId"], "version": row.get("version"), "contentHash": row.get("contentHash")})
+        for row in _lines(source)]
+
+
+def _playbook_chunks(pack: Path) -> list[Chunk]:
+    """PLAYBOOK — 팀 시연 점검 문서(TEAM_SYNTHETIC만)"""
+    causes = {cause["causeId"]: cause
+              for cause in json.loads((pack / "knowledge" / "cause-matrix.json").read_text(encoding="utf-8"))}
+    chunks: list[Chunk] = []
+    for row in _lines(pack / "knowledge" / "rag-chunks.jsonl"):
+        if row.get("origin") != "TEAM_SYNTHETIC":
             continue
-        cid = r["chunkId"].removeprefix("DEMO-")
-        c = causes.get(cid, {})
-        proc = r.get("process") or c.get("process") or "ALL"
+        cause_id = row["chunkId"].removeprefix("DEMO-")
+        cause = causes.get(cause_id, {})
+        process = row.get("process") or cause.get("process") or "ALL"
         # 본문에 센서 ID가 없어(「헤드 압력」처럼 한국어만) 원인 매트릭스의 ID · 후보명 · 센서를 머리줄로 붙여 색인한다
-        head = f"[{cid} · {c.get('candidate', '')} · 센서 {', '.join(c.get('sensorIds') or []) or '직접 태그 없음'}] " if c else ""
-        chunks.append(Chunk(r["chunkId"], "PLAYBOOK", r["chunkId"], head + r["text"], {
-            "causeId": cid if c else None, "candidate": c.get("candidate"), "sensorIds": c.get("sensorIds", []),
-            "process": [proc] if proc != "ALL" else ["CVD", "ETCH", "CMP"], "sourceIds": r.get("sourceIds", []),
+        sensors = ', '.join(cause.get('sensorIds') or []) or '직접 태그 없음'
+        head = f"[{cause_id} · {cause.get('candidate', '')} · 센서 {sensors}] " if cause else ""
+        chunks.append(Chunk(row["chunkId"], "PLAYBOOK", row["chunkId"], head + row["text"], {
+            "causeId": cause_id if cause else None, "candidate": cause.get("candidate"), "sensorIds": cause.get("sensorIds", []),
+            "process": [process] if process != "ALL" else ["CVD", "ETCH", "CMP"], "sourceIds": row.get("sourceIds", []),
             "approvedForProductionAction": False, "synthetic": True, "origin": "TEAM_SYNTHETIC",
-            "documentType": r.get("documentType"), "version": r.get("version")}))
-    for r in _lines(pack / "knowledge" / "synthetic-cases.jsonl"):
-        text = " / ".join([r["title"], "증상: " + r["symptom"], "근거: " + "; ".join(r.get("evidence", [])),
-                           "대안 확인: " + "; ".join(r.get("alternativeChecks", [])), "조치(가상): " + r["action"],
-                           "결과(가상): " + r["outcome"], "남은 불확실성: " + r["remainingUncertainty"]])
-        proc = r.get("process") or "ALL"
-        chunks.append(Chunk(r["caseId"], "CASE", r["caseId"], text, {
-            "title": r["title"], "causeIds": r.get("causeIds", []),
-            "process": [proc] if proc != "ALL" else ["CVD", "ETCH", "CMP"],
-            "resolutionStatus": r.get("resolutionStatus"), "caseDate": r.get("caseDate"),
-            "availableAt": r.get("availableAt"), "approvedForProductionAction": False, "synthetic": True,
-            "origin": r.get("origin", "TEAM_SYNTHETIC"), "version": r.get("version")}))
+            "documentType": row.get("documentType"), "version": row.get("version")}))
     return chunks
 
 
-def index_text(c: Chunk) -> str:
+def _case_text(row: dict) -> str:
+    return " / ".join([row["title"], "증상: " + row["symptom"], "근거: " + "; ".join(row.get("evidence", [])),
+                       "대안 확인: " + "; ".join(row.get("alternativeChecks", [])), "조치(가상): " + row["action"],
+                       "결과(가상): " + row["outcome"], "남은 불확실성: " + row["remainingUncertainty"]])
+
+
+def _case_chunks(pack: Path) -> list[Chunk]:
+    """CASE — 가상 과거 사례"""
+    chunks: list[Chunk] = []
+    for row in _lines(pack / "knowledge" / "synthetic-cases.jsonl"):
+        process = row.get("process") or "ALL"
+        chunks.append(Chunk(row["caseId"], "CASE", row["caseId"], _case_text(row), {
+            "title": row["title"], "causeIds": row.get("causeIds", []),
+            "process": [process] if process != "ALL" else ["CVD", "ETCH", "CMP"],
+            "resolutionStatus": row.get("resolutionStatus"), "caseDate": row.get("caseDate"),
+            "availableAt": row.get("availableAt"), "approvedForProductionAction": False, "synthetic": True,
+            "origin": row.get("origin", "TEAM_SYNTHETIC"), "version": row.get("version")}))
+    return chunks
+
+
+def index_text(chunk: Chunk) -> str:
     """임베딩에 넣는 글 — 조각 본문 그대로(팀 점검 문서는 load_corpora가 붙인 [원인ID · 후보명 · 센서] 머리줄 포함).
 
     원문 조각 앞에 제목 · 절 범위를 붙여 보았지만(2026-10-20 검색 평가) Hit@3이 오르지 않고 MRR이 내려 붙이지 않는다.
     """
-    return c.text
+    return chunk.text
 
 
-def index_hash(c: Chunk) -> str:
+def index_hash(chunk: Chunk) -> str:
     """증분 색인 키 — 임베딩에 넣는 글이 본문과 같으면 contentHash 그대로, 다르면 그 글의 sha256"""
-    t = index_text(c)
-    return c.contentHash if t == c.text else "sha256:" + hashlib.sha256(t.encode()).hexdigest()
+    embedded_text = index_text(chunk)
+    return chunk.contentHash if embedded_text == chunk.text else "sha256:" + hashlib.sha256(embedded_text.encode()).hexdigest()
 
 
 def analysis_as_of(pack: Path | None = None) -> str:
@@ -127,21 +146,21 @@ class HashEmbedder:
         self.dim = dim
 
     def _vec(self, text: str) -> np.ndarray:
-        v = np.zeros(self.dim, dtype=np.float32)
-        t = re.sub(r"\s+", " ", text.lower())
-        grams = [t[i : i + n] for n in (2, 3) for i in range(len(t) - n + 1)]
-        grams += re.findall(r"[a-z0-9_.]+", t)
-        for g in grams:
-            h = int(hashlib.md5(g.encode()).hexdigest(), 16)
-            v[h % self.dim] += 1.0 if (h >> 8) % 2 else -1.0
-        n = np.linalg.norm(v)
-        return v / n if n else v
+        vector = np.zeros(self.dim, dtype=np.float32)
+        normalized = re.sub(r"\s+", " ", text.lower())
+        grams = [normalized[i : i + size] for size in (2, 3) for i in range(len(normalized) - size + 1)]
+        grams += re.findall(r"[a-z0-9_.]+", normalized)
+        for gram in grams:
+            digest = int(hashlib.md5(gram.encode()).hexdigest(), 16)
+            vector[digest % self.dim] += 1.0 if (digest >> 8) % 2 else -1.0
+        norm = np.linalg.norm(vector)
+        return vector / norm if norm else vector
 
     def check(self) -> None:
         return None
 
     def embed_documents(self, texts: list[str]) -> np.ndarray:
-        return np.stack([self._vec(t) for t in texts]) if texts else np.zeros((0, self.dim), dtype=np.float32)
+        return np.stack([self._vec(text) for text in texts]) if texts else np.zeros((0, self.dim), dtype=np.float32)
 
     def embed_query(self, text: str) -> np.ndarray:
         return self._vec(text)
@@ -174,9 +193,10 @@ class OpenAIEmbedder:
 
         for attempt in range(self.RETRIES + 1):
             try:
-                res = self._client.embeddings.create(model=self.name, input=texts)
-                arr = np.array([d.embedding for d in sorted(res.data, key=lambda d: d.index)], dtype=np.float32)
-                return arr / np.linalg.norm(arr, axis=1, keepdims=True)
+                response = self._client.embeddings.create(model=self.name, input=texts)
+                ordered = sorted(response.data, key=lambda item: item.index)
+                vectors = np.array([item.embedding for item in ordered], dtype=np.float32)
+                return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
             except openai.AuthenticationError:
                 raise EmbedderError("OpenAI 인증 실패(401) — OPENAI_API_KEY가 틀렸거나 만료됐습니다.") from None
             except openai.PermissionDeniedError:
@@ -206,9 +226,9 @@ class OpenAIEmbedder:
         if not texts:
             return np.zeros((0, self.dim or 0), dtype=np.float32)
         parts = [self._call(texts[i : i + self.BATCH]) for i in range(0, len(texts), self.BATCH)]
-        arr = np.concatenate(parts)
-        self.dim = int(arr.shape[1])
-        return arr
+        vectors = np.concatenate(parts)
+        self.dim = int(vectors.shape[1])
+        return vectors
 
     def embed_query(self, text: str) -> np.ndarray:
         return self._call([text])[0]
@@ -218,27 +238,27 @@ def make_embedder():
     """EMBEDDER=openai | hash. 비어 있으면 hash(알림 한 줄). openai인데 쓸 수 없으면 EmbedderError — 해시로 바꾸지 않는다"""
     kind = (os.getenv("EMBEDDER") or "").strip().lower()
     if kind == "openai":
-        e = OpenAIEmbedder()
+        embedder = OpenAIEmbedder()
     elif kind in ("hash", ""):
         if not kind:
             print("[지식 MCP] EMBEDDER가 없어 시험용 해시 임베딩(hash-ngram-v1)을 씁니다. 의미 검색은 EMBEDDER=openai.",
                   file=sys.stderr)
-        e = HashEmbedder()
+        embedder = HashEmbedder()
     else:
         raise EmbedderError(f"EMBEDDER={kind}는 지원하지 않습니다 — openai 또는 hash.")
-    e.check()
-    return e
+    embedder.check()
+    return embedder
 
 
 # ------------------------------------------------------------------ 저장소
-def matches(c: Chunk, corpus: str, filters: dict) -> bool:
+def matches(chunk: Chunk, corpus: str, filters: dict) -> bool:
     """corpus와 메타데이터 필터 — process는 목록 포함, 나머지는 같은 값 또는 목록 포함"""
-    if c.corpus != corpus:
+    if chunk.corpus != corpus:
         return False
     for k, want in filters.items():
         if want is None:
             continue
-        have = c.meta.get(k)
+        have = chunk.meta.get(k)
         if isinstance(have, list):
             if want not in have:
                 return False
@@ -255,20 +275,20 @@ class InMemoryStore:
 
     def index(self, chunks: list[Chunk]) -> dict:
         self.chunks = chunks
-        self.mat = self.embedder.embed_documents([index_text(c) for c in chunks])
+        self.mat = self.embedder.embed_documents([index_text(chunk) for chunk in chunks])
         return {"chunks": len(chunks), "embedded": len(chunks), "embedModel": self.embedder.name, "dim": int(self.mat.shape[1])}
 
     def search(self, query: str, corpus: str, filters: dict, top_k: int) -> list[tuple[Chunk, float]]:
-        q = self.embedder.embed_query(query)
-        scores = self.mat @ q
-        out = []
+        query_vector = self.embedder.embed_query(query)
+        scores = self.mat @ query_vector
+        results = []
         for i in np.argsort(-scores):
-            c = self.chunks[i]
-            if matches(c, corpus, filters):
-                out.append((c, float(scores[i])))
-                if len(out) >= top_k:
+            chunk = self.chunks[i]
+            if matches(chunk, corpus, filters):
+                results.append((chunk, float(scores[i])))
+                if len(results) >= top_k:
                     break
-        return out
+        return results
 
 
 class PgVectorStore:
@@ -295,22 +315,24 @@ class PgVectorStore:
                 meta jsonb, embed_model text, embedding vector({dim}))""")
             con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS corpus text")
             con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS content_hash text")
-            have = {cid: (h, m) for cid, h, m in con.execute(f"SELECT chunk_id, content_hash, embed_model FROM {table}")}
-            todo = [c for c in chunks if have.get(c.chunkId) != (index_hash(c), self.embedder.name)]
-            vecs = self.embedder.embed_documents([index_text(c) for c in todo]) if todo else []
-            for c, v in zip(todo, vecs):
+            stored = con.execute(f"SELECT chunk_id, content_hash, embed_model FROM {table}")
+            have = {chunk_id: (content_hash, embed_model) for chunk_id, content_hash, embed_model in stored}
+            todo = [chunk for chunk in chunks if have.get(chunk.chunkId) != (index_hash(chunk), self.embedder.name)]
+            vectors = self.embedder.embed_documents([index_text(chunk) for chunk in todo]) if todo else []
+            for chunk, vector in zip(todo, vectors):
                 con.execute(
                     f"""INSERT INTO {table} (chunk_id, corpus, doc_id, text, meta, embed_model, embedding, content_hash)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (chunk_id) DO UPDATE SET corpus=EXCLUDED.corpus, doc_id=EXCLUDED.doc_id,
                        text=EXCLUDED.text, meta=EXCLUDED.meta, embed_model=EXCLUDED.embed_model,
                        embedding=EXCLUDED.embedding, content_hash=EXCLUDED.content_hash""",
-                    (c.chunkId, c.corpus, c.docId, c.text, json.dumps(c.meta, ensure_ascii=False), self.embedder.name,
-                     "[" + ",".join(f"{x:.6f}" for x in v) + "]", index_hash(c)))
-            ids = [c.chunkId for c in chunks]  # 빠진 조각(옛 문서 등)은 남기지 않는다
+                    (chunk.chunkId, chunk.corpus, chunk.docId, chunk.text, json.dumps(chunk.meta, ensure_ascii=False),
+                     self.embedder.name,
+                     "[" + ",".join(f"{value:.6f}" for value in vector) + "]", index_hash(chunk)))
+            ids = [chunk.chunkId for chunk in chunks]  # 빠진 조각(옛 문서 등)은 남기지 않는다
             con.execute(f"DELETE FROM {table} WHERE NOT (chunk_id = ANY(%s)) OR corpus IS NULL", (ids,))
-            others = [t for t in knowledge_tables(con) if t != table]
-        self.by_id = {c.chunkId: c for c in chunks}
+            others = [table_name for table_name in knowledge_tables(con) if table_name != table]
+        self.by_id = {chunk.chunkId: chunk for chunk in chunks}
         return {"chunks": len(chunks), "embedded": len(todo), "embedModel": self.embedder.name, "dim": dim, "table": table,
                 "otherTables": others}
 
@@ -319,20 +341,20 @@ class PgVectorStore:
         return getattr(self.embedder, "dim", None) or int(self.embedder.embed_query(index_text(chunks[0])).shape[0])
 
     def search(self, query, corpus, filters, top_k):
-        q = self.embedder.embed_query(query)
-        qs = "[" + ",".join(f"{x:.6f}" for x in q) + "]"
-        sql = f"""SELECT chunk_id, 1 - (embedding <=> %s::vector) AS score FROM knowledge.chunks_d{len(q)}
+        query_vector = self.embedder.embed_query(query)
+        query_literal = "[" + ",".join(f"{value:.6f}" for value in query_vector) + "]"
+        sql = f"""SELECT chunk_id, 1 - (embedding <=> %s::vector) AS score FROM knowledge.chunks_d{len(query_vector)}
                  WHERE embed_model = %s AND corpus = %s ORDER BY embedding <=> %s::vector LIMIT %s"""
         with self.psycopg.connect(self.dsn) as con:
-            rows = con.execute(sql, [qs, self.embedder.name, corpus, qs, max(top_k * 10, 50)]).fetchall()
-        out = []
-        for cid, score in rows:
-            c = self.by_id.get(cid)
-            if c and matches(c, corpus, filters):
-                out.append((c, float(score)))
-                if len(out) >= top_k:
+            rows = con.execute(sql, [query_literal, self.embedder.name, corpus, query_literal, max(top_k * 10, 50)]).fetchall()
+        results = []
+        for chunk_id, score in rows:
+            chunk = self.by_id.get(chunk_id)
+            if chunk and matches(chunk, corpus, filters):
+                results.append((chunk, float(score)))
+                if len(results) >= top_k:
                     break
-        return out
+        return results
 
 
 def make_store(embedder):
@@ -343,7 +365,7 @@ def make_store(embedder):
 def knowledge_tables(con) -> list[str]:
     rows = con.execute("""SELECT table_name FROM information_schema.tables
                           WHERE table_schema = 'knowledge' AND table_name LIKE 'chunks\\_d%' ORDER BY table_name""")
-    return [f"knowledge.{r[0]}" for r in rows]
+    return [f"knowledge.{row[0]}" for row in rows]
 
 
 def admin_main(argv: list[str] | None = None) -> None:
@@ -358,28 +380,28 @@ def admin_main(argv: list[str] | None = None) -> None:
     from fab.common.env import load_env
 
     load_env()
-    ap = argparse.ArgumentParser(prog="fab-rag-index")
-    ap.add_argument("command", choices=["status", "prune"])
-    ap.add_argument("--yes", action="store_true", help="prune에서 확인 없이 지운다")
-    args = ap.parse_args(argv)
+    parser = argparse.ArgumentParser(prog="fab-rag-index")
+    parser.add_argument("command", choices=["status", "prune"])
+    parser.add_argument("--yes", action="store_true", help="prune에서 확인 없이 지운다")
+    args = parser.parse_args(argv)
     dsn = os.getenv("PG_DSN") or "postgresql://fab:fab@localhost:55432/fab"
     kind = (os.getenv("EMBEDDER") or "hash").lower()
     model = (os.getenv("EMBED_MODEL") or "text-embedding-3-small") if kind == "openai" else HashEmbedder.name
     with psycopg.connect(dsn, autocommit=True) as con:
-        tables = {t: dict(con.execute(f"SELECT embed_model, count(*) FROM {t} GROUP BY 1").fetchall())
-                  for t in knowledge_tables(con)}
-        for t, models in tables.items():
+        tables = {table: dict(con.execute(f"SELECT embed_model, count(*) FROM {table} GROUP BY 1").fetchall())
+                  for table in knowledge_tables(con)}
+        for table, models in tables.items():
             mark = "사용 중" if model in models else "쓰지 않음"
-            print(f"{t:28} {mark:6} " + ", ".join(f"{m} {n}행" for m, n in models.items()))
+            print(f"{table:28} {mark:6} " + ", ".join(f"{row_model} {row_count}행" for row_model, row_count in models.items()))
         if args.command == "status":
             return
-        drop = [t for t, models in tables.items() if model not in models]
+        drop = [table for table, models in tables.items() if model not in models]
         if not drop:
             print(f"지울 표가 없습니다(현재 모델 {model}).")
             return
         if not args.yes and input(f"{', '.join(drop)}를 지웁니다(현재 모델 {model}). 계속할까요? [y/N] ").strip().lower() != "y":
             print("취소했습니다.")
             return
-        for t in drop:
-            con.execute(f"DROP TABLE {t}")
-            print(f"지움: {t}")
+        for table in drop:
+            con.execute(f"DROP TABLE {table}")
+            print(f"지움: {table}")

@@ -34,22 +34,22 @@ class Tracer:
         self.stdout = _on("FAB_TRACE_STDOUT")
 
     def event(self, kind: str, **fields) -> None:
-        rec = {"traceId": self.trace_id, "jobId": self.job_id, "incidentId": self.incident_id,
-               "at": round(time.time(), 3), "kind": kind, **fields}
-        self.records.append(rec)
+        record = {"traceId": self.trace_id, "jobId": self.job_id, "incidentId": self.incident_id,
+                  "at": round(time.time(), 3), "kind": kind, **fields}
+        self.records.append(record)
         if not (self.path or self.stdout):
             return
-        line = _redact(json.dumps(rec, ensure_ascii=False, default=str))
+        line = _redact(json.dumps(record, ensure_ascii=False, default=str))
         if self.stdout:
             print(line, file=sys.stdout, flush=True)
         if self.path:
-            with open(self.path, "a", encoding="utf-8") as f:
-                f.write(line + "\n")
+            with open(self.path, "a", encoding="utf-8") as trace_file:
+                trace_file.write(line + "\n")
 
     @contextmanager
     def span(self, kind: str, **fields):
         """with 블록 안에서 받은 dict에 값을 채우면(토큰 등) 그 값까지 함께 기록한다."""
-        t0 = time.perf_counter()
+        started = time.perf_counter()
         status = "ok"
         extra: dict = {}
         try:
@@ -58,26 +58,26 @@ class Tracer:
             status = type(e).__name__
             raise
         finally:
-            self.event(kind, ms=round((time.perf_counter() - t0) * 1000, 1), status=status, **fields, **extra)
+            self.event(kind, ms=round((time.perf_counter() - started) * 1000, 1), status=status, **fields, **extra)
 
     def summary(self) -> dict:
-        tools = [r for r in self.records if r["kind"] == "tool"]
-        llm = [r for r in self.records if r["kind"] == "llm"]
+        tools = [record for record in self.records if record["kind"] == "tool"]
+        llm = [record for record in self.records if record["kind"] == "llm"]
         return {
             "traceId": self.trace_id,
             "toolCalls": len(tools),
-            "toolErrors": sum(1 for r in tools if r.get("status") != "ok"),
+            "toolErrors": sum(1 for record in tools if record.get("status") != "ok"),
             "modelCalls": len(llm),
-            "tokens": sum(r.get("tokens", 0) or 0 for r in llm),
-            "inputTokens": sum(r.get("inputTokens", 0) or 0 for r in llm),
-            "outputTokens": sum(r.get("outputTokens", 0) or 0 for r in llm),
-            "apiModels": sorted({r["apiModel"] for r in llm if r.get("apiModel")}),
-            "fallbackCalls": sum(1 for r in llm if r.get("model") == "fallback"),
-            "retries": sum(1 for r in self.records if r["kind"] in ("llm_error", "tool_retry")),
+            "tokens": sum(record.get("tokens", 0) or 0 for record in llm),
+            "inputTokens": sum(record.get("inputTokens", 0) or 0 for record in llm),
+            "outputTokens": sum(record.get("outputTokens", 0) or 0 for record in llm),
+            "apiModels": sorted({record["apiModel"] for record in llm if record.get("apiModel")}),
+            "fallbackCalls": sum(1 for record in llm if record.get("model") == "fallback"),
+            "retries": sum(1 for record in self.records if record["kind"] in ("llm_error", "tool_retry")),
             # Harness가 거부한 횟수 — 근거 없는 브리프 · 정합성 검사에 걸린 제안
-            "guardRejects": sum(1 for r in self.records
-                                if r["kind"] == "guard_reject" or (r["kind"] == "brief" and r.get("ok") is False)),
-            "ms": round(sum(r.get("ms", 0) for r in self.records if r["kind"] in ("tool", "llm")), 1),
+            "guardRejects": sum(1 for record in self.records
+                                if record["kind"] == "guard_reject" or (record["kind"] == "brief" and record.get("ok") is False)),
+            "ms": round(sum(record.get("ms", 0) for record in self.records if record["kind"] in ("tool", "llm")), 1),
         }
 
 

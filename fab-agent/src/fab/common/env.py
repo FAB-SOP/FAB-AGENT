@@ -15,8 +15,8 @@ def _required_dir(var: str, what: str, example: str) -> Path:
     value = os.getenv(var)
     if not value:
         raise RuntimeError(f"{var}({what})가 없습니다 — compose는 넣어 준다. 직접 실행할 때는 fab-agent/.env에 {var}={example}")
-    p = Path(value)
-    return p if p.is_absolute() else (PROJECT_ROOT / p).resolve()
+    path = Path(value)
+    return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
 
 
 def pack_dir() -> Path:
