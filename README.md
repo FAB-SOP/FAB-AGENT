@@ -22,27 +22,26 @@ CMP 두께 관리한계 이탈 같은 공정 이상을 **Agent가 데이터 · �
 
 ![MCP 구조](docs/images/mcp-structure.png)
 
-Write 도구는 모델에게 보이지 않고, 사람이 승인한 뒤 Harness만 승인 ID와 멱등 키를 붙여 부른다. 자세한 것은 [fab-agent/README](fab-agent/README.md).
+Write 도구는 모델에게 보이지 않고, 사람이 승인한 뒤 Harness만 승인 ID와 멱등 키를 붙여 부른다. 자세한 것은 [ai/README](ai/README.md).
 
 ## 저장소 구성
 
 | 폴더 | 무엇 | 문서 |
 |---|---|---|
-| `fab-context-web/` | React 프론트 | — |
-| `fab-context-api/` | Spring 백엔드 — 공개 API · Agent 전용 내부 API · 시뮬레이터 | [README](fab-context-api/README.md) |
-| `fab-agent/` | 업무 MCP · 지식 MCP · 조사 Agent · Harness, compose, 평가 | [README](fab-agent/README.md) |
-| `data/` | 데이터 팩 `fab-causal-pack-v2/`와 조립 스크립트 | [README](data/fab-causal-pack-v2/README.md) |
-| `FAB-실제문서-선별RAG-센서데이터-통합/` | 데이터 팩 v1, 실제 원문 RAG 출처 목록 | 폴더 안 README |
-| `backend-handoff-v2/` | 프론트 계약 OpenAPI · 응답 예시 · 데이터 v2 | — |
-| `scripts/deploy.sh` · `compose.web.yaml` | 프론트까지 포함한 로컬 배포 | — |
+| `frontend/` | React 프론트 | — |
+| `backend/` | Spring 백엔드 — 공개 API · Agent 전용 내부 API · 시뮬레이터 | [README](backend/README.md) |
+| `ai/` | 업무 MCP · 지식 MCP · 조사 Agent · Harness, 개발용 compose, 평가 | [README](ai/README.md) |
+| `data/` | 데이터 — 조립본 `fab-causal-pack-v2/`(실행에 쓰는 것) · 원본 팩 `fab-causal-pack-v1/` · 실제 원문 RAG `fab-rag-real-documents-v1/` · 프론트 전달 묶음 `backend-handoff-v2/`(OpenAPI · 응답 예시 · 데이터 v2) · 조립 스크립트 `build_pack_v2.py` | [README](data/README.md) |
+| `ops/` | 배포 · 도구 — `deploy/`(프론트까지 포함한 로컬 배포: `deploy.sh` · `compose.web.yaml` · `.env.example`) · `tools/`(공개 API 대조 `openapi_diff.py` · Java 패키지 의존 검사 `java_pkgdeps.py`) | — |
+| `docs/` | 문서 — `images/`(README 그림) | — |
 
 **공개 저장소에 없는 것**
 
 | 무엇 | 경로 | 없으면 |
 |---|---|---|
-| API 키 | `fab-agent/.env` (`.env.example`을 복사) | 키 없이 실행한다 — 아래 「API 키」 |
-| 실제 원문 발췌 100조각 | `FAB-실제문서-…/fab-rag-real-documents-v1/rag/source-chunks.jsonl` | 원문 문서 검색이 비어 있고, 원문 테스트는 건너뛴다 |
-| 정답(평가자 전용) | `fab-agent/evaluation/ground_truth.json` 등 | `fab-eval`과 정답표 테스트만 건너뛴다 |
+| API 키 | `ai/.env` (`ai/.env.example`을 복사) | 키 없이 실행한다 — 아래 「API 키」 |
+| 실제 원문 발췌 100조각 | `data/fab-rag-real-documents-v1/rag/source-chunks.jsonl` | 원문 문서 검색이 비어 있고, 원문 테스트는 건너뛴다 |
+| 정답(평가자 전용) | `ai/evaluation/ground_truth.json` · `data/fab-causal-pack-v1/evaluation/` 등 | `fab-eval`과 정답표 테스트만 건너뛴다 |
 
 ## 실행 방법
 
@@ -59,22 +58,22 @@ Write 도구는 모델에게 보이지 않고, 사람이 승인한 뒤 Harness�
 
 | 구성 | 키 없이 | 실제 API를 쓸 때 |
 |---|---|---|
-| 배포 구성(`scripts/deploy.sh`) | 기본값 — 규칙 모델 + 해시 임베딩 | `deploy/.env`에 `DEPLOY_LLM=openai` · `DEPLOY_EMBEDDER=openai` · `DEPLOY_OPENAI_API_KEY` |
-| 개발 구성(`fab-agent/compose.yaml`) | `EMBEDDER=hash FAB_LLM=rule`을 앞에 붙인다 | `fab-agent/.env`에 `OPENAI_API_KEY`, `FAB_LLM=openai` |
+| 배포 구성(`ops/deploy/deploy.sh`) | 기본값 — 규칙 모델 + 해시 임베딩 | `ops/deploy/.env`에 `DEPLOY_LLM=openai` · `DEPLOY_EMBEDDER=openai` · `DEPLOY_OPENAI_API_KEY` |
+| 개발 구성(`ai/compose.yaml`) | `EMBEDDER=hash FAB_LLM=rule`을 앞에 붙인다 | `ai/.env`에 `OPENAI_API_KEY`, `FAB_LLM=openai` |
 
 ### 1) Docker로 실행 (권장)
 
 ```bash
-./scripts/deploy.sh up -d --build --wait
+./ops/deploy/deploy.sh up -d --build --wait
 # http://127.0.0.1:8088
-./scripts/deploy.sh --profile tools run --rm --build --no-deps smoke   # 전체 흐름 점검
-./scripts/deploy.sh down                                               # 끄기 (DB 볼륨 보존)
+./ops/deploy/deploy.sh --profile tools run --rm --build --no-deps smoke   # 전체 흐름 점검
+./ops/deploy/deploy.sh down                                               # 끄기 (DB 볼륨 보존)
 ```
 
 ### 2) 개발용 구성 — 프론트 없이 백엔드 · MCP · Agent만
 
 ```bash
-cd fab-agent
+cd ai
 EMBEDDER=hash FAB_LLM=rule docker compose up -d --build   # http://localhost:8090/swagger-ui.html
 docker compose --profile tools run --rm --no-deps smoke   # 마지막에 「실패 0건」이 나오면 정상
 ```
@@ -84,12 +83,12 @@ docker compose --profile tools run --rm --no-deps smoke   # 마지막에 「실�
 백엔드가 `http://127.0.0.1:8090`에서 실행 중이어야 한다.
 
 ```bash
-cd fab-context-web
+cd frontend
 npm ci
 npm run dev -- --port 8771             # http://127.0.0.1:8771
 ```
 
-Spring만 직접 띄우는 방법은 [fab-context-api/README](fab-context-api/README.md#실행), Agent를 Docker 없이 돌리는 방법은 [fab-agent/README](fab-agent/README.md#docker-없이-개발--평가).
+Spring만 직접 띄우는 방법은 [backend/README](backend/README.md#실행), Agent를 Docker 없이 돌리는 방법은 [ai/README](ai/README.md#docker-없이-개발--평가).
 
 ## 로그인 계정 (비밀번호 모두 `fab1234!`)
 

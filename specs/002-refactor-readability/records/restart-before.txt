@@ -1,6 +1,0 @@
-  File "/app/evaluation/restart_smoke.py", line 19, in before
-    await cs.ask_until_approval(cmp)
-  File "/app/evaluation/compose_smoke.py", line 62, in ask_until_approval
-    a = page["data"]["items"][0]
-        ~~~~~~~~~~~~~~~~~~~~~^^^
-IndexError: list index out of range

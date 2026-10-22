@@ -3,8 +3,8 @@
   "revisionPackage": "fab-scenarios-v2",
   "basePackage": "fab-causal-pack-v1",
   "sources": {
-    "v1": "FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1",
-    "v2": "backend-handoff-v2/data"
+    "v1": "data/fab-causal-pack-v1",
+    "v2": "data/backend-handoff-v2/data"
   },
   "revisedRuns": [
     "RUN-W-CURRENT-006-3-CMP"

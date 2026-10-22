@@ -1,2 +1,0 @@
-  ✔ 질문 접수 (202)
-  ✘ job job_asvg21zpm6f7 → SUCCEEDED — 기대 ('WAITING_APPROVAL',)

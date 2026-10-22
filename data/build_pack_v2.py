@@ -3,8 +3,8 @@
   python3 data/build_pack_v2.py          # data/fab-causal-pack-v2/ 를 다시 만들고 검사한다(같은 입력이면 같은 결과)
 
 입력(읽기만 한다 — 원본은 고치지 않는다)
-  V1_PACK = FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/   BASELINE 900 · CURRENT 90 · FOLLOWUP 27 run
-  V2_DATA = backend-handoff-v2/data/                                CURRENT 90 run만(BASELINE · FOLLOWUP은 전달에서 뺀 것)
+  V1_PACK = data/fab-causal-pack-v1/   BASELINE 900 · CURRENT 90 · FOLLOWUP 27 run
+  V2_DATA = data/backend-handoff-v2/data/                                CURRENT 90 run만(BASELINE · FOLLOWUP은 전달에서 뺀 것)
 규칙
   - phase가 있는 파일(process-runs · site-metrology · run-sensor-features · sensor-traces)은 v1 순서를 지키고 CURRENT 행만 v2로 바꾼다
   - 두 곳에 같은 파일(quality-limits · feature-reference-bands · sensor-catalog · change-events)은 해시가 같아야 한다
@@ -24,8 +24,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-V1_PACK = ROOT / "FAB-실제문서-선별RAG-센서데이터-통합" / "fab-causal-pack-v1"
-V2_DATA = ROOT / "backend-handoff-v2" / "data"
+V1_PACK = ROOT / "data" / "fab-causal-pack-v1"
+V2_DATA = ROOT / "data" / "backend-handoff-v2" / "data"
 OUT = ROOT / "data" / "fab-causal-pack-v2"
 DATA_VERSION = "causal-pack-v2-scenarios"
 REVISED_RUN = "RUN-W-CURRENT-006-3-CMP"
@@ -138,7 +138,7 @@ def build() -> None:
 def write_readme() -> None:
     (OUT / "README.md").write_text(f"""# fab-causal-pack-v2 — dataVersion `{DATA_VERSION}`
 
-**전부 시연용 합성 데이터다.** `data/build_pack_v2.py`가 두 원본을 합쳐 만든다(원본은 고치지 않는다). 다시 돌리면 같은 바이트가 나온다.
+**전부 시연용 합성 데이터다.** `data/build_pack_v2.py`가 두 원본을 합쳐 만든다(원본은 고치지 않는다). 다시 돌리면 같은 바이트가 나오고, 조립이 끝나면 v1 · v2 원본과 행 · 개수를 대조하는 검사를 함께 돌린다(`python3 data/build_pack_v2.py`).
 
 | 출처 | 쓴 것 |
 |---|---|
