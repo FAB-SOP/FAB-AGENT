@@ -64,6 +64,10 @@ public class Approval {
 	@JdbcTypeCode(SqlTypes.JSON)
 	private List<String> evidenceIds = new ArrayList<>();
 
+	/** 승인자가 승인할 때 입력한 값(예: 보고서 확정의 원인 분류) — 해시 밖의 승인자 결정이며, 실행은 이 저장값만 쓴다 */
+	@JdbcTypeCode(SqlTypes.JSON)
+	private Map<String, Object> decisionInput;
+
 	/** payload 무결성 해시 (sha256 of canonical {actionType, incidentId, payload}) */
 	private String actionHash;
 
@@ -181,6 +185,12 @@ public class Approval {
 		}
 		this.resumeJobId = resumeJobId;
 		version++;
+	}
+
+	/** 승인 전에 승인자 입력을 남긴다 — 수동 승인은 바로 실행되고, Agent 대기 승인은 재개 뒤 이 값으로 실행된다 */
+	void recordDecisionInput(Map<String, Object> input) {
+		requirePending();
+		decisionInput = input == null ? null : new LinkedHashMap<>(input);
 	}
 
 	void reject(String userId, String comment, Instant at) {

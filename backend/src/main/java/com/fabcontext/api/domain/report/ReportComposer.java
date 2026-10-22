@@ -179,6 +179,9 @@ class ReportComposer {
 			md.append(" · 확정 ").append(TIME.format(report.getConfirmedAt())).append(" by ").append(report.getConfirmedBy());
 		}
 		md.append("\n\n");
+		if (report.getClassification() != null && report.getClassification().getCauseCategory() != null) {
+			md.append("> 원인 분류: ").append(describe(report.getClassification())).append("\n\n");
+		}
 		for (Map<String, Object> s : report.getSections()) {
 			Object body = s.get("body");
 			md.append("## ").append(s.get("title")).append("\n\n").append(body == null ? "" : body).append("\n\n");
@@ -188,6 +191,13 @@ class ReportComposer {
 			report.getEvidenceIds().forEach(e -> md.append("- `").append(e).append("`\n"));
 		}
 		return md.toString();
+	}
+
+	/** 「Machine (설비) — head_pressure, slurry_flow」 — 센서는 팩에 한국어 이름이 없어 ID를 그대로 쓴다 */
+	static String describe(ReportCauseClassification classification) {
+		String label = classification.getCauseCategory().label();
+		List<String> parameters = classification.getCauseEquipmentParameters();
+		return parameters.isEmpty() ? label : label + " — " + String.join(", ", parameters);
 	}
 
 	@SuppressWarnings("unchecked")

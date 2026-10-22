@@ -100,6 +100,8 @@ public class ApprovalService {
 			return reject(approval, incident, user, body, now, agentWaiting ? waitingJob : null);
 		}
 		incident.requireNotClosed();
+		approval.recordDecisionInput(
+			handlers.of(approval.getActionType()).normalizeDecisionInput(body.classification(), incident));
 		if (agentWaiting) {
 			return approveForAgent(approval, incident, user, body, now, waitingJob);
 		}

@@ -86,7 +86,8 @@ class ReportApiTest extends ApiTestSupport {
 			.andExpect(jsonPath("$.error.code").value("REVIEW_CONFIRMATION_REQUIRED"));
 		postAs(etch, "/api/reports/{id}/confirmations", "{\"expectedContentRevision\":1,\"reviewConfirmed\":true}", reportId)
 			.andExpect(status().isConflict());
-		postAs(etch, "/api/reports/{id}/confirmations", "{\"expectedContentRevision\":2,\"reviewConfirmed\":true}", reportId)
+		postAs(etch, "/api/reports/{id}/confirmations",
+				"{\"expectedContentRevision\":2,\"reviewConfirmed\":true,\"classification\":{\"category\":\"METHOD\"}}", reportId)
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("CONFIRMED"))
 			.andExpect(jsonPath("$.data.confirmedBy").value("USR-CMP-01"))
@@ -119,7 +120,8 @@ class ReportApiTest extends ApiTestSupport {
 		String approvalId = json(postAs(etch, "/api/incidents/{id}/proposals", """
 			{"actionType":"CONFIRM_REPORT","payload":{"reportId":"%s","expectedContentRevision":1},"rationale":"검토 완료","expectedIncidentVersion":%d}
 			""".formatted(reportId, incidentVersion(etch, id)), id).andExpect(status().isCreated()), "$.data.approvalId");
-		postAs(etch, "/api/approvals/{id}/decisions", "{\"decision\":\"APPROVE\",\"expectedVersion\":1}", approvalId)
+		postAs(etch, "/api/approvals/{id}/decisions",
+				"{\"decision\":\"APPROVE\",\"expectedVersion\":1,\"classification\":{\"category\":\"METHOD\"}}", approvalId)
 			.andExpect(jsonPath("$.data.executionRef.type").value("REPORT"));
 		getAs(etch, "/api/reports/{id}", reportId).andExpect(jsonPath("$.data.status").value("CONFIRMED"));
 	}

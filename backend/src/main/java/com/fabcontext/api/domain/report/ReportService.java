@@ -37,6 +37,7 @@ public class ReportService {
 	private final IncidentRepository incidentRepository;
 	private final JobService jobService;
 	private final ReportComposer composer;
+	private final CauseClassificationPolicy classificationPolicy;
 	private final IncidentStreamHub streamHub;
 	private final Clock clock;
 
@@ -156,15 +157,17 @@ public class ReportService {
 			throw ApiException.unprocessable("REVIEW_CONFIRMATION_REQUIRED", "검토를 마쳤음을 reviewConfirmed=true로 확인해야 합니다.");
 		}
 		Incident incident = incidentRepository.findById(report.getIncidentId()).orElseThrow();
-		doConfirm(report, incident, body.expectedContentRevision(), user.userId());
+		doConfirm(report, incident, body.expectedContentRevision(), user.userId(), body.classification());
 		return ReportView.from(report);
 	}
 
-	/** 승인된 CONFIRM_REPORT 제안 실행 */
-	public Report confirmFromApproval(Incident incident, Map<String, Object> payload, String approverId) {
+	/** 승인된 CONFIRM_REPORT 제안 실행 — 분류는 승인자가 승인할 때 고른 값(승인 기록에 저장된 값)이다 */
+	public Report confirmFromApproval(Incident incident, Map<String, Object> payload, String approverId,
+			CauseClassificationInput classification) {
 		String reportId = String.valueOf(payload.get("reportId"));
 		Report report = repository.findById(reportId).orElseThrow(() -> ApiException.notFound("report", reportId));
-		doConfirm(report, incident, ((Number) payload.get("expectedContentRevision")).longValue(), approverId);
+		doConfirm(report, incident, ((Number) payload.get("expectedContentRevision")).longValue(), approverId,
+			classification);
 		return report;
 	}
 
@@ -190,14 +193,19 @@ public class ReportService {
 		return new Export(incident.getDisplayId() + "-report-v" + report.getVersion() + ".md", markdown);
 	}
 
-	private void doConfirm(Report report, Incident incident, Long expectedRevision, String userId) {
+	/** 검사 순서: 초안 여부 → 판본 → 원인 분류(기존 실패 응답을 그대로 두려고 분류를 맨 뒤에 검사한다) */
+	private void doConfirm(Report report, Incident incident, Long expectedRevision, String userId,
+			CauseClassificationInput classificationInput) {
 		report.requireDraft();
 		report.checkRevision(expectedRevision);
 		Instant now = Instant.now(clock);
-		report.confirm(userId, now);
+		ReportCauseClassification classification = classificationPolicy.validate(classificationInput,
+			incident.getProcessCode(), userId, now);
+		report.confirm(userId, now, classification);
 		// 확정 시점 내용을 스냅샷으로 보존한다. 이후 export는 이 스냅샷을 내려준다.
 		report.attachSnapshot(ReportComposer.markdown(report, incident));
-		incident.record(now, "REPORT_CONFIRMED", userId, "보고서 v" + report.getVersion() + " 확정", "REPORT",
+		incident.record(now, "REPORT_CONFIRMED", userId,
+			"보고서 v" + report.getVersion() + " 확정 · 원인 분류: " + ReportComposer.describe(classification), "REPORT",
 			report.getReportId());
 		streamHub.publish(incident.getIncidentId(), "report.confirmed",
 			Map.of("reportId", report.getReportId(), "version", report.getVersion()));

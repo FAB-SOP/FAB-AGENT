@@ -12,6 +12,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -93,6 +94,10 @@ public class Report {
 
 	private Instant confirmedAt;
 
+	/** 확정할 때 사람이 고른 원인 분류 — 초안 · 분류 기능 도입 전 확정본은 null */
+	@Embedded
+	private ReportCauseClassification classification;
+
 	@jakarta.persistence.Version
 	private long rowVersion;
 
@@ -128,9 +133,15 @@ public class Report {
 		updatedAt = at;
 	}
 
+	/** 분류 없이 확정 — 분류 기능 도입 전 동작. 서비스는 분류를 받는 아래 메서드를 쓴다 */
 	void confirm(String userId, Instant at) {
+		confirm(userId, at, null);
+	}
+
+	void confirm(String userId, Instant at, ReportCauseClassification causeClassification) {
 		requireDraft();
 		status = ReportStatus.CONFIRMED;
+		classification = causeClassification;
 		snapshotRef = "snapshot://reports/" + reportId + "/v" + version + "/r" + contentRevision;
 		confirmedBy = userId;
 		confirmedAt = at;

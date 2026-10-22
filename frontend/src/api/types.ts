@@ -106,3 +106,11 @@ const seoulDateTime=new Intl.DateTimeFormat('ko-KR',{
  hour12:false,
 });
 export const when=(value?:string)=>value?seoulDateTime.format(new Date(value)):'—';
+/** 보고서 원인 분류 — 4M과 보류(사건 상태 ON_HOLD와 별개) */
+export type CauseCategory='MATERIAL'|'MAN'|'METHOD'|'MACHINE'|'HOLD';
+export interface ReportClassification {
+ category:CauseCategory;
+ equipmentParameters:string[];
+ classifiedBy:string;
+ classifiedAt:string;
+}
