@@ -73,4 +73,9 @@ fab:
 
 logging:
   level:
-    com.fabcontext: INFO
+    root: ${ROOT_LOG_LEVEL:INFO}
+    com.fabcontext: ${APP_LOG_LEVEL:INFO}
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: "OFF"
+  pattern:
+    level: "%5p [requestId=%X{requestId:-}]"

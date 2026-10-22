@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 @RequiredArgsConstructor
 public class WorkService {
@@ -30,6 +31,8 @@ public class WorkService {
 	private final jakarta.persistence.EntityManager entityManager;
 	private final com.fabcontext.api.domain.checkrequest.CheckRequestRepositories.CheckRequestRepository requests;
 	private final com.fabcontext.api.domain.processdata.ProcessDataRepositories.RouteRunRepository routes;
+	private final com.fabcontext.api.domain.notification.NotificationEvents notificationEvents;
+	private final WorkRequestBrief requestBrief;
 	private static final Pattern CHANGE = Pattern.compile("조정|수정|재가동|재시작|수리|분해|(?:교체|변경)(?!\\s*(?:이력|기록|여부|시점))|\\b(?:adjust|modify|replace|restart|repair)\\b", Pattern.CASE_INSENSITIVE);
 
 	@Transactional(readOnly=true)
@@ -105,13 +108,20 @@ public class WorkService {
 	public WorkDtos.View adopt(String id,AuthUser user,WorkDtos.Adoption body) {
 		WorkItem w=loadWrite(id,user,body.expectedVersion());require(w,WorkItem.Status.PROPOSED);
 		Incident i=incidents.loadForWrite(w.getIncidentId(),user);i.requireNotClosed();
+		AnalysisResult source=null;
+		if(w.getRoute()!=WorkOperation.Route.SELF_CHECK) {
+			source=results.findById(w.getSourceResultId()).filter(r->i.getIncidentId().equals(r.getIncidentId()))
+				.orElseThrow(()->ApiException.unprocessable("WORK_SOURCE_INVALID","같은 사건의 원본 분석 결과를 찾을 수 없습니다."));
+		}
 		String manager=null;
 		if(w.getRoute()==WorkOperation.Route.MANAGER_APPROVAL) {
 			manager=users.findAll().stream().filter(u -> u.getRole()==Role.MANAGER&&u.getProcessScopes().contains(w.getProcessCode())&&!u.getUserId().equals(user.userId()))
 				.sorted(Comparator.comparingInt((UserAccount u)->u.getProcessScopes().size()).thenComparing(UserAccount::getUserId))
 				.findFirst().orElseThrow(() -> ApiException.unprocessable("APPROVER_UNAVAILABLE","요청자와 다른 담당 공정 관리자를 지정해야 합니다.")).getUserId();
 		}
+		if(w.getRoute()==WorkOperation.Route.MANAGER_APPROVAL) w.captureBrief(requestBrief.forDelivery(w,source,i,i.getProcessCode(),i.getEquipmentId()));
 		w.accept(user.userId(),manager,Instant.now(clock));
+		notificationEvents.workApprovalRequested(w);
 		if(w.getRoute()==WorkOperation.Route.TEAM_REQUEST) {
 			UserAccount owner=users.findById(body.ownerUserId()==null?"":body.ownerUserId()).orElseThrow(() -> ApiException.unprocessable("WORK_OWNER_INVALID","등록된 수신 담당자를 선택하세요."));
 			String target=body.targetProcessCode();boolean maintenance=w.getOperationCode()!=WorkOperation.UPSTREAM_CHECK;
@@ -122,8 +132,9 @@ public class WorkService {
 			if(!maintenance) equipment=routes.findByWaferIdInOrderByWaferIdAscSequenceNoAsc(i.getWaferIds()).stream()
 				.filter(r->target.equals(r.getProcessCode())&&r.getSequenceNo()<switch(i.getProcessCode()){case "CMP"->3;case "ETCH"->2;default->1;})
 				.findFirst().orElseThrow(()->ApiException.unprocessable("WORK_ROUTE_INVALID","이 웨이퍼의 실제 앞 공정을 선택하세요.")).getEquipmentId();
+			w.captureBrief(requestBrief.forDelivery(w,source,i,target,equipment));
 			var proposal=approvals.createProposal(i.getIncidentId(),user,new ApprovalDtos.Proposal(maintenance?ApprovalActionType.MAINTENANCE_REQUEST:ApprovalActionType.CHECK_REQUEST,
-				Map.of("ownerUserId",owner.getUserId(),"targetProcessCode",target,"question",w.getTitle(),"equipmentId",equipment),w.getReason(),w.getEvidenceIds(),null,i.getVersion()));
+				Map.of("ownerUserId",owner.getUserId(),"targetProcessCode",target,"question",w.getTitle(),"equipmentId",equipment,"brief",w.getBrief()),w.getReason(),w.getEvidenceIds(),null,i.getVersion()));
 			var decision=approvals.decide(proposal.approvalId(),user,new ApprovalDtos.ApprovalDecision("APPROVE","담당자가 업무 이관 발송을 확인함",proposal.version(),proposal.actionHash()));
 			w.requested(owner.getUserId(),target,proposal.approvalId(),decision.executionRef().id(),Instant.now(clock));
 		}
@@ -140,6 +151,7 @@ public class WorkService {
 			if(!user.isManager()||!user.userId().equals(w.getApproverUserId())||user.userId().equals(w.getRequestedBy())) throw ApiException.forbidden("WORK_APPROVER_REQUIRED","지정된 관리자만 승인·반려할 수 있고 자기 승인은 허용되지 않습니다.");
 			if("REJECT".equals(body.decision())&&(body.comment()==null||body.comment().isBlank())) throw ApiException.unprocessable("REJECT_REASON_REQUIRED","반려 사유를 입력하세요.");
 			w.decide("APPROVE".equals(body.decision()),body.comment(),Instant.now(clock));
+			notificationEvents.workDecided(w,user.userId());
 		}
 		i.record(Instant.now(clock),"WORK_DECIDED",user.userId(),"업무 결정 "+body.decision()+": "+w.getTitle(),"WORK_ITEM",id);return changed(w);
 	}
@@ -157,5 +169,10 @@ public class WorkService {
 	}
 	private static void require(WorkItem w,WorkItem.Status status) {if(w.getStatus()!=status) throw ApiException.conflict("WORK_STATE_CONFLICT","현재 상태에서 할 수 없는 작업입니다: "+w.getStatus(),Map.of("status",w.getStatus().name()));}
 	private WorkDtos.View changed(WorkItem w) {repository.flush();publish(w);return WorkDtos.View.from(w);}
-	private void publish(WorkItem w) {stream.publish(w.getIncidentId(),"work-item.updated",Map.of("taskId",w.getTaskId(),"status",w.getStatus().name()));}
+	private void publish(WorkItem w) {
+		String requestId=org.slf4j.MDC.get("requestId"),incidentId=w.getIncidentId(),taskId=w.getTaskId();
+		WorkItem.Status status=w.getStatus();
+		com.fabcontext.api.common.AfterCommit.run(()->log.info("event=work.status requestId={} incidentId={} taskId={} status={}",requestId,incidentId,taskId,status));
+		stream.publish(w.getIncidentId(),"work-item.updated",Map.of("taskId",taskId,"status",status.name()));
+	}
 }

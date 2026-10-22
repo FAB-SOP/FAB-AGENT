@@ -19,12 +19,14 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 @RequiredArgsConstructor
 public class JobService {
 
 	private static final EnumSet<JobStatus> IN_PROGRESS = EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING);
 
+	private final com.fabcontext.api.domain.notification.NotificationEvents notificationEvents;
 	private final JobRepository jobRepository;
 	private final IncidentService incidentService;
 	private final IncidentStreamHub streamHub;
@@ -110,11 +112,13 @@ public class JobService {
 			incident.setActiveJobId(null);
 		}
 		sync(job, incident);
+		notificationEvents.analysisFinished(job, incident);
 	}
 
 	public void fail(Job job, Incident incident, String code, String message) {
 		job.fail(code, message, Instant.now(clock));
 		sync(job, incident);
+		notificationEvents.analysisFinished(job, incident);
 	}
 
 	public void waitFor(Job job, Incident incident, JobStatus waitingStatus, Ref ref) {
@@ -128,7 +132,9 @@ public class JobService {
 		Map<String,Object> merged=new java.util.LinkedHashMap<>(input);
 		for(String key:java.util.List.of("analysisRequestId","selectedInputs","followupQuestion"))
 			if(!merged.containsKey(key) && waitingJob.getInput().containsKey(key)) merged.put(key,waitingJob.getInput().get(key));
-		String requester=waitingJob.getInput().containsKey("analysisRequestId")?waitingJob.getRequestedBy():requestedBy;
+		// 승인 결정자는 재개 실행의 요청자가 아니다. 직접 추가 분석을 누른 경우만 새 요청자로 삼는다.
+		boolean keepRequester=waitingJob.getInput().containsKey("analysisRequestId") || "APPROVAL_DECIDED".equals(input.get("reason"));
+		String requester=keepRequester?waitingJob.getRequestedBy():requestedBy;
 		Job resume = enqueue(incident, JobKind.RESUME, requester, waitingJob.getQuestion(), waitingJob.getScope(),
 			merged, waitingJob.getThreadId(), waitingJob.getJobId());
 		waitingJob.succeed(new Ref("RESUME_JOB", resume.getJobId()), Instant.now(clock));
@@ -145,6 +151,13 @@ public class JobService {
 	}
 
 	private void publish(Job job) {
+		String requestId=org.slf4j.MDC.get("requestId"), jobId=job.getJobId(), incidentId=job.getIncidentId();
+		JobStatus status=job.getStatus();
+		JobKind kind=job.getKind();
+		com.fabcontext.api.common.AfterCommit.run(()->{
+			if(status==JobStatus.FAILED) log.error("event=job.status requestId={} incidentId={} jobId={} kind={} status={}",requestId,incidentId,jobId,kind,status);
+			else log.info("event=job.status requestId={} incidentId={} jobId={} kind={} status={}",requestId,incidentId,jobId,kind,status);
+		});
 		streamHub.publish(job.getIncidentId(), "job.status", JobEvent.from(job));
 	}
 }
