@@ -22,5 +22,6 @@ async def reply_wait(state: AgentState, config) -> dict:
                                 + guard.untrusted("check-request-reply", body))
     runtime(config).tracer.event("reply", requestId=pending["requestId"])
     return {"messages": [note], "pending": None, "counters": limits.new_window(), "result": None,
+            "previousResult": state.get("result") or state.get("previousResult"),
             "evidence": {eid: {"evidenceId": eid, "sourceType": "REPLY", "sourceId": pending["requestId"],
                                "dataVersion": state.get("dataVersion"), "synthetic": True}}}

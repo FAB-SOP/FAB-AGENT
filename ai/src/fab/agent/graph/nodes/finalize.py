@@ -75,6 +75,9 @@ async def finalize(state: AgentState, config) -> dict:
         return await _finalize_report(state, job_runtime)
     submitted = state.get("result")
     limitations = []
+    if submitted is None and state.get("previousResult"):  # 재개 뒤 다시 정리하기 전에 멈춤 — 그 전에 접수된 답을 쓴다
+        submitted = state["previousResult"]
+        limitations.append(f"승인 · 회신 뒤 다시 정리하기 전에 멈춰, 그 전에 낸 답을 그대로 둡니다: {state.get('stopReason')}")
     if submitted is None:  # 한도 초과 등으로 제출 없이 끝남 — 지금까지의 근거로 부분 결과
         submitted = {"nextStep": "INSUFFICIENT_EVIDENCE", "observedFacts": [], "candidateCauses": [], "limitations": []}
         limitations.append(f"조사가 끝나기 전에 멈췄습니다: {state.get('stopReason')}")
@@ -94,7 +97,7 @@ async def finalize(state: AgentState, config) -> dict:
     }
     # 계약 AnalysisResult.candidateCauses는 추가 필드를 막는다 — 원인 매트릭스 ID는 계약 밖 analysis에 둔다
     analysis = {"nextStep": submitted.get("nextStep"), "stopReason": state.get("stopReason"),
-                "promptVersion": state.get("promptVersion"),
+                "promptVersion": state.get("promptVersion"), "conclusion": state.get("conclusion"),
                 "causeIds": [[str(cause_id) for cause_id in cause.get("causeIds") or []]
                              for cause in submitted.get("candidateCauses", [])]}
     return {"result": result, "analysis": analysis}

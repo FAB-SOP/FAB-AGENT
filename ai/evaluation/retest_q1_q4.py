@@ -1,7 +1,7 @@
 """10/21 화면 질문 시험(Q1–Q4) 재현 — C 파트(Agent · HITL) 고치기 전후를 같은 조건으로 비교한다.
 
-  uv run python evaluation/retest_q1_q4.py --llm rule --embedder hash --label before   # 비용 없이 하네스만
-  uv run python evaluation/retest_q1_q4.py --label before                              # gpt-4.1-mini · 약 $0.15
+  uv run python evaluation/retest_q1_q4.py --label before                                   # 규칙 모델 · 해시 임베딩 — 비용 없음
+  uv run python evaluation/retest_q1_q4.py --llm openai --embedder openai --label before   # gpt-4.1-mini · 약 $0.2
 
 10/21 기록(runs/20261021-090046-real-e2e/questions_test.md)과 같은 순서로 돈다.
   1. 사전 흐름 — EV-1009: 확인 요청 승인 → 회신 → 다음 제안은 거절 / EV-1006: 정비 요청 승인 → 정비 담당 회신
@@ -205,15 +205,15 @@ def main() -> None:
     parser.add_argument("--label", required=True, help="before · after 같은 이름")
     parser.add_argument("--model", default="gpt-4.1-mini")
     parser.add_argument("--fallback", default="gpt-4o-mini")
-    parser.add_argument("--embedder", default="openai", choices=["openai", "hash"])
-    parser.add_argument("--llm", default="openai", choices=["openai", "rule"])
+    parser.add_argument("--embedder", default="hash", choices=["openai", "hash"])
+    parser.add_argument("--llm", default="rule", choices=["openai", "rule"], help="openai는 비용이 난다(약 $0.2)")
     options = parser.parse_args()
     eval_env.client_env(options.model, options.fallback, options.embedder, options.llm)
     from fab.common.env import load_env
 
     load_env()
     if options.llm == "openai":
-        print("실제 모델 — 예상 비용 약 $0.15(10/21 같은 흐름 $0.12 + 사전 흐름)", flush=True)
+        print("실제 모델 — 예상 비용 약 $0.2(10/22 기준선 $0.21)", flush=True)
     run_dir = eval_env.RUNS / (time.strftime("%Y%m%d-%H%M%S-") + f"retest-{options.label}-{options.llm}")
     run_dir.mkdir(parents=True, exist_ok=True)
     with eval_env.environment(run_dir) as spring:

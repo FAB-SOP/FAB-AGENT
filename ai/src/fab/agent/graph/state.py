@@ -21,6 +21,8 @@ class AgentState(TypedDict, total=False):
     mode: str  # BASIC | DEEP | REPORT
     purpose: str  # BASIC | REPLY | QUESTION | REQUEST | REPORT — 작업 종류(fab.agent.purpose)
     pendingApproval: dict | None  # 이 사건에서 승인을 기다리는 요청서 — 있으면 질문은 질문 전용(사건 기록 조회가 채운다)
+    baseline: dict | None  # 사건의 가장 최근 원인 분석 — 결론 변경 검사의 기준(사건 기록 조회가 채운다)
+    conclusion: dict | None  # 결론 변경 검사 결과 — changed · fields · reason · newEvidenceIds · adjusted
     question: str
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: Annotated[dict, _merge]  # evidenceId -> ref
@@ -29,6 +31,8 @@ class AgentState(TypedDict, total=False):
     pending: dict | None  # {"kind": APPROVAL|REPLY, "approvalId"|"requestId", "interruptId"}
     proposals: Annotated[list, operator.add]
     result: dict | None
+    previousResult: dict | None  # 승인 · 회신으로 재개하기 전에 접수된 답 — 다시 정리하기 전에 멈추면 이것을 쓴다
+    retryProposal: bool  # 요청서가 고칠 수 있는 이유로 반려돼 모델에게 한 번 돌려보낼지
     analysis: dict | None  # 계약 밖 정보(nextStep 등) — 계약 개정 전까지 따로 둔다
     report: dict | None
     stopReason: str | None

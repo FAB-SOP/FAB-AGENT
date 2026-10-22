@@ -83,6 +83,23 @@ async def internal(method: str, path: str, base: str | None = None, **kw) -> dic
         return response.json()
 
 
+SIMULATOR_TOKEN = os.getenv("SIMULATOR_TOKEN", "dev-simulator-token")
+
+
+async def fresh_incident(display_id: str, base: str | None = None) -> str:
+    """같은 웨이퍼 · run으로 새 사건을 접수해 표시 ID를 돌려준다 — 요청 · 승인 기록이 없는 사건에서 시작해야 하는 시험용.
+    요청 상한 · 중복은 사건 단위라, 같은 서버를 쓰는 앞 시험의 요청이 남은 사건에서는 새 제안이 막힌다."""
+    source = (await internal("GET", f"/internal/incidents/{display_id}", base))["data"]["data"]
+    event = {"eventId": f"EVT-TEST-{uuid.uuid4().hex[:8]}", "source": "test", "anomalyType": source["anomalyType"],
+             "processCode": source["processCode"], "equipmentId": source["equipmentId"], "lotId": source.get("lotId"),
+             "waferIds": source.get("waferIds") or [], "runIds": source.get("runIds") or [], "sensorIds": [],
+             "detectedAt": source["detectedAt"], "title": f"{source['title']} (시험용 복사)"}
+    async with httpx.AsyncClient(base_url=base or spring_url(), timeout=20) as client:
+        response = await client.post("/api/events/anomalies", json=event, headers={"X-Service-Token": SIMULATOR_TOKEN})
+        response.raise_for_status()
+        return response.json()["data"]["displayId"]
+
+
 async def _ask_question(engineer: User, display_id: str, question: str) -> None:
     incident = await engineer.incident(display_id)
     status, accepted = await engineer.post(f"/api/incidents/{incident['incidentId']}/questions",

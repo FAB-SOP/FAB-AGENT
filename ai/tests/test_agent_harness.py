@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from fab.agent.harness.guard import validate_result
 from fab.agent.worker import poll_once
 from fab.devtools.demo import evaluate
-from fab.devtools.spring import User, drive, internal, make_runner
+from fab.devtools.spring import User, drive, fresh_incident, internal, make_runner
 
 
 async def _ask(spring_url, display_id, question="원인 분석해줘", user="cmp.park"):
@@ -29,12 +29,13 @@ async def test_eval_all_incidents_pass(spring_url, kb):
 
 async def test_no_change_before_approval_and_reject_path(spring_url, kb):
     runner, backend = make_runner(kb, base=spring_url)
+    display = await fresh_incident("EV-1009", spring_url)  # 요청 기록이 없는 사건에서 — 상한 · 중복은 사건 단위
     await poll_once(runner, backend)
-    u, job = await _ask(spring_url, "EV-1009")
+    u, job = await _ask(spring_url, display)
     out = (await poll_once(runner, backend))[-1]
     assert out["status"] == "WAITING_APPROVAL"
     assert out["trace"]["apiModels"] == ["rule-policy-v2"]  # 규칙 모델은 API를 부르지 않는다 — 고른 이름 그대로
-    inc = await u.incident("EV-1009")
+    inc = await u.incident(display)
     _, reqs = await u.get(f"/api/check-requests?box=sent&incidentId={inc['incidentId']}")
     before = len(reqs["data"]["items"])
     _, a = await u.get(f"/api/approvals/{out['interrupt']['approvalId']}")
@@ -47,12 +48,12 @@ async def test_no_change_before_approval_and_reject_path(spring_url, kb):
     assert len(reqs["data"]["items"]) == before, "거절 후 변경 0건"
     # 거절도 같은 thread로 재개된다 — Agent가 거절 사유를 읽고 결과를 정리하고, 다음 질문을 받을 수 있다
     assert out and out[-1]["job"]["kind"] == "RESUME" and out[-1]["status"] == "DONE", out
-    u2, _ = await _ask(spring_url, "EV-1009", "그럼 지금 근거로 다시 정리해줘")
+    u2, _ = await _ask(spring_url, display, "그럼 지금 근거로 다시 정리해줘")
     assert (await poll_once(runner, backend))[-1]["status"] in ("DONE", "WAITING_APPROVAL")
 
 
 async def test_full_flow_records_request_only_after_approval(spring_url, kb):
-    r = await drive("EV-1009", "이전 공정 영향도 확인해줘", kb=kb, verbose=False, base=spring_url)
+    r = await drive(await fresh_incident("EV-1009", spring_url), "이전 공정 영향도 확인해줘", kb=kb, verbose=False, base=spring_url)
     assert r["analysis"]["nextStep"] == "UPSTREAM_CHECK"
     assert [p["actionType"] for p in r["proposals"]] == ["CREATE_CHECK_REQUEST"]
     assert r["report"] and set(r["report"]["sections"]) == {"overview", "investigation", "requestsAndReplies",
@@ -175,7 +176,8 @@ def test_guard_rejects_unknown_evidence_and_probabilities():
 @pytest.mark.parametrize("display_id", ["EV-1006", "EV-1009"])
 async def test_events_and_jobs_follow_team_contract(display_id, spring_url, kb, contract_validators):
     ev_v, job_v = contract_validators
-    r = await drive(display_id, "원인 분석과 필요한 요청을 제안해줘", kb=kb, verbose=False, base=spring_url)
+    r = await drive(await fresh_incident(display_id, spring_url), "원인 분석과 필요한 요청을 제안해줘", kb=kb, verbose=False,
+                    base=spring_url)
     bad = [(e["type"], [x.message[:120] for x in ev_v.iter_errors(e)]) for e in r["events"]]
     assert not [b for b in bad if b[1]], bad
     ctx = (await internal("GET", "/internal/jobs", spring_url))["data"]
@@ -213,7 +215,7 @@ class SecondProposalModel:
 
 
 async def test_second_proposal_after_reply_attaches_to_resume_job(spring_url, kb):
-    r = await drive("EV-1009", "이전 공정 영향도 확인해줘", kb=kb, models=(SecondProposalModel(), None), report=False,
+    r = await drive(await fresh_incident("EV-1009", spring_url), "이전 공정 영향도 확인해줘", kb=kb, models=(SecondProposalModel(), None), report=False,
                     verbose=False, base=spring_url)
     kinds = [p["actionType"] for p in r["proposals"]]
     assert kinds == ["CREATE_CHECK_REQUEST", "CREATE_MAINTENANCE_REQUEST"]
@@ -275,13 +277,14 @@ class ProposeEveryTurnModel(SecondProposalModel):
 
 
 async def test_proposals_are_capped_and_not_repeated(spring_url, kb):
-    r = await drive("EV-1009", "이전 공정 영향도 확인해줘", kb=kb, models=(ProposeEveryTurnModel(), None), report=False,
+    r = await drive(await fresh_incident("EV-1009", spring_url), "이전 공정 영향도 확인해줘", kb=kb, models=(ProposeEveryTurnModel(), None), report=False,
                     verbose=False, base=spring_url)
     kinds = [p["actionType"] for p in r["proposals"]]
-    assert kinds == ["CREATE_CHECK_REQUEST", "CREATE_MAINTENANCE_REQUEST"], kinds  # 상한 2 — 세 번째 · 같은 반복은 반려
+    assert kinds == ["CREATE_CHECK_REQUEST", "CREATE_MAINTENANCE_REQUEST"], kinds  # 같은 담당자 · 종류의 반복은 반려
 
 
 async def _first_proposal(spring_url, kb, display_id, question):
+    display_id = await fresh_incident(display_id, spring_url)  # 요청 기록이 없는 사건에서 — 상한 · 중복은 사건 단위
     runner, backend = make_runner(kb, base=spring_url)
     await poll_once(runner, backend)
     u, _ = await _ask(spring_url, display_id, question)
@@ -499,7 +502,9 @@ async def test_answer_and_proposal_in_same_turn_propose_first(spring_url, kb):
     """규칙 모델은 [제안, 답] 순서로 한 응답에 낸다 — Harness가 답을 먼저 접수해 제안을 받고, 답은 상태에 남는다"""
     runner, backend = make_runner(kb, base=spring_url)
     await poll_once(runner, backend)
-    await _ask(spring_url, "EV-1009", "앞 공정 확인이 필요해?")
+    display = await fresh_incident("EV-1009", spring_url)
+    await poll_once(runner, backend)  # 새 사건의 기본 조사
+    await _ask(spring_url, display, "앞 공정 확인이 필요해?")
     out = (await poll_once(runner, backend))[-1]
     assert out["status"] == "WAITING_APPROVAL", out
     snap = await runner.graph.aget_state({"configurable": {"thread_id": out["job"]["threadId"]}})
@@ -544,3 +549,119 @@ def test_proposal_allowed_only_for_question_and_request(purpose, pending, forbid
     reason = _proposal_rejection(turn, "propose_maintenance_request", {"processCode": "CMP", "evidenceIds": ["E-9"]},
                                  "c1", "CREATE_MAINTENANCE_REQUEST", {"brief": {}})
     assert (reason or "").startswith("[FORBIDDEN]") is forbidden, reason
+
+
+async def test_replied_request_is_not_proposed_again_by_next_question(spring_url, kb):
+    """10/21 문제 2 — 회신받은 ETCH 확인 요청을 다음 질문(새 thread)이 다시 제안하지 않는다(사건 단위 중복 검사)"""
+    display = await fresh_incident("EV-1009", spring_url)
+    first = await drive(display, "앞 공정 확인해줘", kb=kb, report=False, verbose=False, base=spring_url)
+    assert [p["actionType"] for p in first["proposals"]] == ["CREATE_CHECK_REQUEST"]
+    runner, backend = make_runner(kb, base=spring_url)
+    await _ask(spring_url, display, "앞 공정 문제 맞아? 다시 확인해줘")
+    out = (await poll_once(runner, backend))[-1]
+    assert out["status"] == "DONE", out  # 같은 요청을 다시 내지 않고 답으로 끝난다
+    assert out["result"]["candidateCauses"], out["result"]
+
+
+# ---- 결론 변경 검사 연결(확정 16) — 기준 결과는 사건 기록 조회가 채운다(여기서는 상태에 직접 넣는다)
+
+_BASE = {"resultId": "RESULT-job_a", "nextStep": "CURRENT_CHECK", "topCauseIds": ["CMP_PRESSURE"], "targetProcess": "CMP",
+         "evidenceIds": ["E-1"], "candidateCauses": [{"priority": 1, "hypothesis": "CMP 헤드 압력 공급 저하",
+                                                       "causeIds": ["CMP_PRESSURE"], "supportingEvidenceIds": ["E-1"]}]}
+_CHANGED = {"nextStep": "CURRENT_CHECK", "observedFacts": [{"text": "패드 사용 시간 김", "evidenceIds": ["E-1"]}],
+            "limitations": [], "candidateCauses": [{"priority": 1, "hypothesis": "CMP 패드 마모", "causeIds": ["CMP_PAD"],
+                                                    "supportingEvidenceIds": ["E-1"]}]}
+
+
+def test_changed_conclusion_without_new_evidence_is_rejected_then_kept_on_second():
+    """질문에 끌려 결론을 바꾸려 하면 한 번 반려하고, 두 번째에는 기준 1순위를 지키고 새 가능성을 2순위로 받는다(한도 안에 끝남)"""
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    turn = _turn({"baseline": _BASE})
+    handle_submit(turn, "submit_result", _CHANGED, "c1")
+    assert "changeReason" in str(turn.out[-1].content) and "result" not in turn.update
+    assert turn.counters["conclusionRejects"] == 1
+    second = _turn({"baseline": _BASE, "counters": turn.counters})
+    handle_submit(second, "submit_result", _CHANGED, "c2")
+    assert str(second.out[-1].content).startswith("[ACCEPTED]")
+    causes = second.update["result"]["candidateCauses"]
+    assert causes[0]["causeIds"] == ["CMP_PRESSURE"] and causes[1]["causeIds"] == ["CMP_PAD"] and causes[1]["priority"] == 2
+    assert second.update["conclusion"]["adjusted"] is True
+
+
+def test_changed_conclusion_with_new_evidence_is_accepted():
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    turn = _turn({"baseline": _BASE, "evidence": {"E-1": {}, "E-PAD": {}}})
+    handle_submit(turn, "submit_result", _CHANGED | {"changeReason": "패드 사용 시간이 교체 주기를 넘음",
+                                                     "changeEvidenceIds": ["E-PAD"]}, "c1")
+    assert str(turn.out[-1].content).startswith("[ACCEPTED]")
+    assert turn.update["result"]["candidateCauses"][0]["causeIds"] == ["CMP_PAD"]
+    assert turn.update["conclusion"]["changed"] and turn.update["conclusion"]["newEvidenceIds"] == ["E-PAD"]
+
+
+# ---- 검토 지적(10-22) 고정
+
+def test_call_order_reads_then_submit_then_proposals():
+    from fab.agent.graph.nodes.tools import _call_order
+
+    calls = [{"id": "p", "name": "propose_cross_process_check"}, {"id": "s", "name": "submit_result"},
+             {"id": "r1", "name": "get_run_features"}, {"id": "r2", "name": "get_change_events"}]
+    assert [c["id"] for c in _call_order(calls)] == ["r1", "r2", "s", "p"]
+
+
+def test_change_against_baseline_without_causes_does_not_crash():
+    """기준이 OBSERVE(원인 후보 없음)인데 답이 원인을 내면 — 두 번째 제출에서 조정할 기준 1순위가 없어도 작업이 죽지 않는다"""
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    base = _BASE | {"nextStep": "OBSERVE", "topCauseIds": [], "targetProcess": None, "candidateCauses": []}
+    turn = _turn({"baseline": base})
+    handle_submit(turn, "submit_result", _CHANGED, "c1")
+    second = _turn({"baseline": base, "counters": turn.counters})
+    handle_submit(second, "submit_result", _CHANGED, "c2")
+    assert str(second.out[-1].content).startswith("[ACCEPTED]"), second.out[-1].content
+    assert second.update["conclusion"].get("unverifiedChange") is True
+
+
+async def test_finalize_keeps_answer_from_before_resume():
+    """승인 · 회신으로 재개한 뒤 다시 정리하기 전에 한도로 멈추면, 재개 전에 접수된 답을 버리지 않는다"""
+    from fab.agent.graph.nodes.finalize import finalize
+
+    class _Runtime:
+        job_id = "job_x"
+    state = {"mode": "DEEP", "incidentId": "inc_1", "jobId": "job_x", "result": None, "stopReason": "모델 판단 한도",
+             "previousResult": _CHANGED, "evidence": {"E-1": {"evidenceId": "E-1", "sourceType": "METROLOGY"}}}
+    out = await finalize(state, {"configurable": {"runtime": _Runtime()}})
+    assert out["result"]["candidateCauses"][0]["hypothesis"] == "CMP 패드 마모"
+    assert any("다시 정리하기 전에 멈춰" in line for line in out["result"]["limitations"])
+
+
+class FixProposalOnceModel:
+    """첫 제안에 조회하지 않은 근거 ID를 넣어 반려되게 하고, 다시 기회가 오면 올바른 제안만 낸다(답은 이미 접수됨)"""
+
+    def __init__(self):
+        from fab.agent.models.rule import RuleModel
+
+        self.rule, self.saved, self.name = RuleModel(), None, "fix-once"
+
+    async def ainvoke(self, messages, tools):
+        if self.saved and any("조회하지 않은 근거 ID" in str(getattr(m, "content", "")) for m in messages[-3:]):
+            good, self.saved = self.saved, None
+            return AIMessage(content="", tool_calls=[{**good, "id": "c-fixed"}])
+        r = await self.rule.ainvoke(messages, tools)
+        proposal = next((c for c in r.tool_calls if c["name"].startswith("propose_")), None)
+        if proposal and self.saved is None and not any("c-fixed" == getattr(m, "tool_call_id", "") for m in messages):
+            self.saved = proposal
+            broken = {**proposal, "args": {**proposal["args"], "evidenceIds": ["E-NOT-FETCHED"]}}
+            return AIMessage(content="", tool_calls=[broken if c is proposal else c for c in r.tool_calls])
+        return r
+
+
+async def test_fixable_proposal_rejection_gets_one_retry(spring_url, kb):
+    """답은 접수됐는데 요청서가 고칠 수 있는 이유로 반려되면, 끝내지 않고 한 번 다시 낼 기회를 준다"""
+    runner, backend = make_runner(kb, models=(FixProposalOnceModel(), None), base=spring_url)
+    display = await fresh_incident("EV-1009", spring_url)
+    await poll_once(runner, backend)
+    await _ask(spring_url, display, "앞 공정 확인이 필요해?")
+    out = (await poll_once(runner, backend))[-1]
+    assert out["status"] == "WAITING_APPROVAL", out
