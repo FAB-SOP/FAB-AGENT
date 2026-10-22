@@ -2,6 +2,7 @@ package com.fabcontext.api.domain.work;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -26,6 +27,8 @@ public class WorkItem {
 	private String sourceResultId;
 	private String sourceCauseId;
 	@JdbcTypeCode(SqlTypes.JSON) private List<String> evidenceIds;
+	/** 채택·발송 시 보존한 조사 맥락. 기존 업무와 직접 확인 업무는 null일 수 있다. */
+	@JdbcTypeCode(SqlTypes.JSON) private Map<String,Object> brief;
 	private String createdBy;
 	private String requestedBy;
 	private String assigneeUserId;
@@ -48,6 +51,7 @@ public class WorkItem {
 		this.sourceResultId=resultId; this.sourceCauseId=causeId; this.evidenceIds=List.copyOf(evidence);
 		this.createdBy=creator; this.status=Status.PROPOSED; this.createdAt=now; this.updatedAt=now; this.version=1;
 	}
+	void captureBrief(Map<String,Object> value) { if(brief==null) brief=new java.util.LinkedHashMap<>(value); }
 	void decline(String user, String comment, Instant now) { requestedBy=user; status=Status.DECLINED; decisionComment=comment; updatedAt=now; }
 	void accept(String user, String manager, Instant now) {
 		requestedBy=user; assigneeUserId=user; approverUserId=manager; updatedAt=now;

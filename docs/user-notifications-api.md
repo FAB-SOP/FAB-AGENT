@@ -77,3 +77,6 @@
 - 통합 대상 테스트 35건 통과.
 - `./gradlew test --offline`: 총 210건 중 208건 통과, 실패/오류 0건, 기존 Knowledge 테스트 2건 건너뜀.
 - `git diff --check` 통과. Testcontainers DB 사용. 실제 Python Agent·프론트/브라우저·배포 nginx 검증 및 서버 재배포는 하지 않았다.
+
+
+업무 채택으로 보내는 승인/팀 확인 요청의 brief 보완은 [work-request-brief-frontend.md](work-request-brief-frontend.md) 참고. 알림에는 해당 내용을 넣지 않고 대상 요청/업무의 상세 조회로 확인한다.

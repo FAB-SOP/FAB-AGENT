@@ -21,6 +21,7 @@ class FollowupOpenApiTest extends ApiTestSupport {
 		assertThat(root.at("/paths/~1api~1check-requests~1{requestId}~1decisions/post/responses/200/content/application~1json/schema/$ref").asText())
 			.endsWith("/DecisionEnvelope");
 		assertThat(root.at("/components/schemas/WorkInbox/properties/incomingRequests/type").asText()).isEqualTo("array");
+		assertThat(root.at("/components/schemas/WorkItemView/properties/brief/type").asText()).isEqualTo("object");
 		String export=System.getenv("FAB_OPENAPI_EXPORT");
 		if(export!=null) {
 			var path=java.nio.file.Path.of(export);

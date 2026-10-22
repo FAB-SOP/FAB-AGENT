@@ -32,6 +32,7 @@ public class WorkService {
 	private final com.fabcontext.api.domain.checkrequest.CheckRequestRepositories.CheckRequestRepository requests;
 	private final com.fabcontext.api.domain.processdata.ProcessDataRepositories.RouteRunRepository routes;
 	private final com.fabcontext.api.domain.notification.NotificationEvents notificationEvents;
+	private final WorkRequestBrief requestBrief;
 	private static final Pattern CHANGE = Pattern.compile("조정|수정|재가동|재시작|수리|분해|(?:교체|변경)(?!\\s*(?:이력|기록|여부|시점))|\\b(?:adjust|modify|replace|restart|repair)\\b", Pattern.CASE_INSENSITIVE);
 
 	@Transactional(readOnly=true)
@@ -107,12 +108,18 @@ public class WorkService {
 	public WorkDtos.View adopt(String id,AuthUser user,WorkDtos.Adoption body) {
 		WorkItem w=loadWrite(id,user,body.expectedVersion());require(w,WorkItem.Status.PROPOSED);
 		Incident i=incidents.loadForWrite(w.getIncidentId(),user);i.requireNotClosed();
+		AnalysisResult source=null;
+		if(w.getRoute()!=WorkOperation.Route.SELF_CHECK) {
+			source=results.findById(w.getSourceResultId()).filter(r->i.getIncidentId().equals(r.getIncidentId()))
+				.orElseThrow(()->ApiException.unprocessable("WORK_SOURCE_INVALID","같은 사건의 원본 분석 결과를 찾을 수 없습니다."));
+		}
 		String manager=null;
 		if(w.getRoute()==WorkOperation.Route.MANAGER_APPROVAL) {
 			manager=users.findAll().stream().filter(u -> u.getRole()==Role.MANAGER&&u.getProcessScopes().contains(w.getProcessCode())&&!u.getUserId().equals(user.userId()))
 				.sorted(Comparator.comparingInt((UserAccount u)->u.getProcessScopes().size()).thenComparing(UserAccount::getUserId))
 				.findFirst().orElseThrow(() -> ApiException.unprocessable("APPROVER_UNAVAILABLE","요청자와 다른 담당 공정 관리자를 지정해야 합니다.")).getUserId();
 		}
+		if(w.getRoute()==WorkOperation.Route.MANAGER_APPROVAL) w.captureBrief(requestBrief.forDelivery(w,source,i,i.getProcessCode(),i.getEquipmentId()));
 		w.accept(user.userId(),manager,Instant.now(clock));
 		notificationEvents.workApprovalRequested(w);
 		if(w.getRoute()==WorkOperation.Route.TEAM_REQUEST) {
@@ -125,8 +132,9 @@ public class WorkService {
 			if(!maintenance) equipment=routes.findByWaferIdInOrderByWaferIdAscSequenceNoAsc(i.getWaferIds()).stream()
 				.filter(r->target.equals(r.getProcessCode())&&r.getSequenceNo()<switch(i.getProcessCode()){case "CMP"->3;case "ETCH"->2;default->1;})
 				.findFirst().orElseThrow(()->ApiException.unprocessable("WORK_ROUTE_INVALID","이 웨이퍼의 실제 앞 공정을 선택하세요.")).getEquipmentId();
+			w.captureBrief(requestBrief.forDelivery(w,source,i,target,equipment));
 			var proposal=approvals.createProposal(i.getIncidentId(),user,new ApprovalDtos.Proposal(maintenance?ApprovalActionType.MAINTENANCE_REQUEST:ApprovalActionType.CHECK_REQUEST,
-				Map.of("ownerUserId",owner.getUserId(),"targetProcessCode",target,"question",w.getTitle(),"equipmentId",equipment),w.getReason(),w.getEvidenceIds(),null,i.getVersion()));
+				Map.of("ownerUserId",owner.getUserId(),"targetProcessCode",target,"question",w.getTitle(),"equipmentId",equipment,"brief",w.getBrief()),w.getReason(),w.getEvidenceIds(),null,i.getVersion()));
 			var decision=approvals.decide(proposal.approvalId(),user,new ApprovalDtos.ApprovalDecision("APPROVE","담당자가 업무 이관 발송을 확인함",proposal.version(),proposal.actionHash()));
 			w.requested(owner.getUserId(),target,proposal.approvalId(),decision.executionRef().id(),Instant.now(clock));
 		}
