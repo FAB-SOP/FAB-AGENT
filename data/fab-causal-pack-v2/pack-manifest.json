@@ -1,10 +1,11 @@
 {
-  "dataVersion": "causal-pack-v2-scenarios",
+  "dataVersion": "causal-pack-v2.1-scenarios",
   "revisionPackage": "fab-scenarios-v2",
   "basePackage": "fab-causal-pack-v1",
   "sources": {
     "v1": "data/fab-causal-pack-v1",
-    "v2": "data/backend-handoff-v2/data"
+    "v2": "data/backend-handoff-v2/data",
+    "addon": "data/priority-addon-l011-l012-v1"
   },
   "revisedRuns": [
     "RUN-W-CURRENT-006-3-CMP"
@@ -12,6 +13,11 @@
   "addedFiles": [
     "data/sensor-envelopes.json"
   ],
+  "appendedLots": [
+    "CURRENT-L011",
+    "CURRENT-L012"
+  ],
+  "appendedFrom": "priority-addon-l011-l012-v1",
   "recomputedFiles": [
     "data/current-wafer-summary.json",
     "data/trace-manifest.json"
@@ -21,7 +27,8 @@
     "generate.py",
     "prepare_knowledge.py",
     "validate.py",
-    "*.csv"
+    "*.csv",
+    "addon: data/sensor-deviation-observations.json · event-candidates/ · policy/ · reference/ · evaluation/"
   ],
   "allSynthetic": true
 }

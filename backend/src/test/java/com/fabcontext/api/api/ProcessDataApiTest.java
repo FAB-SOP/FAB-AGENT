@@ -39,7 +39,7 @@ class ProcessDataApiTest extends ApiTestSupport {
 			.andExpect(jsonPath("$.data.qualitySummary.GOOD_SYNTHETIC").value(7365))
 			.andExpect(jsonPath("$.data.baseline").doesNotExist())
 			.andExpect(jsonPath("$.data.rawRef").value(startsWith("raw://sensor-traces/")))
-			.andExpect(jsonPath("$.data.dataVersion").value("causal-pack-v2-scenarios"));
+			.andExpect(jsonPath("$.data.dataVersion").value("causal-pack-v2.1-scenarios"));
 	}
 
 	@Test

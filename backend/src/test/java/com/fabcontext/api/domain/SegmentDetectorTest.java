@@ -21,7 +21,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 지속 편차 구간(DEMO-SEGMENT-V2) — 전달 묶음 sensor-segment-validation.json의 숫자와 같아야 한다:
- * CURRENT 600 시리즈 가운데 L006 head_pressure 101.1–210.9초 LOW · L007 slurry_flow 14–309초 LOW 둘뿐(정상 LOT 오탐 0)
+ * CURRENT 600 시리즈 가운데 L006 head_pressure 101.1–210.9초 LOW · L007 slurry_flow 14–309초 LOW 둘뿐(정상 LOT 오탐 0).
+ * 추가 묶음의 L011 · L012(120 시리즈)는 CMP-PM3 run에 3초 미만의 짧은 편차만 있어 이 검출기(2초 · 5초)로는 구간이 생기지 않는다 —
+ * 그 편차는 묶음의 새 검출 규칙(DEMO-PRIORITY-SEGMENT-V1) 몫이다
  */
 @DisplayName("센서 지속 편차 구간 (DEMO-SEGMENT-V2)")
 class SegmentDetectorTest extends ApiTestSupport {
@@ -33,7 +35,7 @@ class SegmentDetectorTest extends ApiTestSupport {
 	RouteRunRepository runs;
 
 	@Test
-	void onlyTheTwoScenarioSegmentsAcross600Series() {
+	void onlyTheTwoScenarioSegmentsAcross720Series() {
 		List<String> found = new ArrayList<>();
 		int series = 0;
 		for (RouteRun r : runs.findByPhase("CURRENT")) {
@@ -52,7 +54,7 @@ class SegmentDetectorTest extends ApiTestSupport {
 				}
 			}
 		}
-		assertThat(series).isEqualTo(600);
+		assertThat(series).isEqualTo(720);
 		assertThat(found).containsExactlyInAnyOrder("RUN-W-CURRENT-006-3-CMP/head_pressure 101.1-210.9 LOW",
 			"RUN-W-CURRENT-007-3-CMP/slurry_flow 14.0-309.0 LOW");
 	}

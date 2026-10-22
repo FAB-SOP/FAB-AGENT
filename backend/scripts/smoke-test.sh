@@ -170,7 +170,7 @@ req etch GET "/api/monitoring/lots?processCode=CVD" ""; expect 403 "monitoring l
 req etch GET "/api/monitoring/lots?processCode=PHOTO" ""; expect 422 "monitoring lots invalid processCode"
 req etch GET "/api/monitoring/lots/CURRENT-L006/summary?processCode=CMP" ""; expect 200 "getMonitoringSummary L006"
 check "L006 CMP-PM3 v2 출고 평균 · 사건 연결" "$(j '.data.runs[2].outputMeanA')/$(j '.data.runs[2].incidentId != null')/$(j '.data.runs[0].incidentId')" "10281.392216/true/null"
-check "sensorEnvelopes · references 별도 (5 · 5)" "$(j '.data.sensorEnvelopes|length')/$(j '.data.references|length')/$(j .data.dataVersion)" "5/5/causal-pack-v2-scenarios"
+check "sensorEnvelopes · references 별도 (5 · 5)" "$(j '.data.sensorEnvelopes|length')/$(j '.data.references|length')/$(j .data.dataVersion)" "5/5/causal-pack-v2.1-scenarios"
 req etch GET "/api/monitoring/runs/RUN-W-CURRENT-006-3-CMP/sensor-data?sensorId=head_pressure" ""; expect 200 "getRunSensorData"
 check "L006 head_pressure 전체 3201점 · baseline null" "$(j .data.totalCount)/$(j .data.truncated)/$(j .data.baseline)" "3201/false/null"
 req etch GET "/api/monitoring/runs/RUN-W-CURRENT-006-3-CMP/sensor-data?sensorId=head_pressure&limit=0" ""; expect 422 "monitoring sensor-data invalid limit"

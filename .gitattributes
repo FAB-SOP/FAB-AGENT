@@ -2,6 +2,7 @@
 data/fab-causal-pack-v1/** -text
 data/fab-rag-real-documents-v1/** -text
 data/backend-handoff-v2/** -text
+data/priority-addon-l011-l012-v1/** -text
 data/fab-causal-pack-v2/** -text
 # Windows 배치 파일은 CRLF 유지
 *.bat text eol=crlf

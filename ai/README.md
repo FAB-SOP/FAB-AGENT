@@ -1,7 +1,7 @@
 # ai — 업무 MCP · 지식 MCP · 조사 Agent · Harness
 
 팀 역할 5번(지식 MCP · 데이터 · 인프라)과 6번(Agent · Harness), 그리고 업무 MCP 어댑터.
-backend는 **Spring 하나**(`../backend`)이고, 데이터 팩은 **v2 조립본 `../data/fab-causal-pack-v2/`**(dataVersion `causal-pack-v2-scenarios`, `../data/build_pack_v2.py`가 v1 전체와 `../data/backend-handoff-v2/data`의 CURRENT를 합친다), 실제 원문 RAG는 동료 묶음 `../FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1`이다.
+backend는 **Spring 하나**(`../backend`)이고, 데이터 팩은 **v2 조립본 `../data/fab-causal-pack-v2/`**(dataVersion `causal-pack-v2.1-scenarios`, `../data/build_pack_v2.py`가 v1 전체와 `../data/backend-handoff-v2/data`의 CURRENT를 합치고 `../data/priority-addon-l011-l012-v1`의 L011 · L012를 덧붙인다), 실제 원문 RAG는 동료 묶음 `../FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1`이다.
 계약 기준은 팀 계약(원본은 팀 내부, 테스트가 쓰는 사본 3개는 [contracts/](contracts/README.md)), 바꿔야 할 점은 [docs/contract-changes.md](docs/contract-changes.md)에 모았다.
 
 ## 한 번에 띄우기 (Docker)

@@ -1,0 +1,58 @@
+[
+  {
+    "eventId": "EVT-PRIORITY-DEMO-L011",
+    "source": "priority-addon-demo-detector",
+    "anomalyType": "SENSOR_DEVIATION",
+    "processCode": "CMP",
+    "equipmentId": "CMP-PM3",
+    "chamberId": null,
+    "lotId": "CURRENT-L011",
+    "waferIds": [
+      "W-CURRENT-011-3"
+    ],
+    "runIds": [
+      "RUN-W-CURRENT-011-3-CMP"
+    ],
+    "sensorIds": [
+      "head_pressure"
+    ],
+    "detectedAt": "2026-10-18T20:16:01.100000+00:00",
+    "title": "CMP 센서 편차 확인",
+    "summary": "합성 센서 편차 관측. 원인·고장·정비 완료는 미확정.",
+    "metrics": {
+      "detectorVersion": "DEMO-PRIORITY-SEGMENT-V1",
+      "observationEvidenceIds": [
+        "E-PRSEG-RUN-W-CURRENT-011-3-CMP-head_pressure"
+      ]
+    }
+  },
+  {
+    "eventId": "EVT-PRIORITY-DEMO-L012",
+    "source": "priority-addon-demo-detector",
+    "anomalyType": "SENSOR_DEVIATION",
+    "processCode": "CMP",
+    "equipmentId": "CMP-PM3",
+    "chamberId": null,
+    "lotId": "CURRENT-L012",
+    "waferIds": [
+      "W-CURRENT-012-3"
+    ],
+    "runIds": [
+      "RUN-W-CURRENT-012-3-CMP"
+    ],
+    "sensorIds": [
+      "platen_speed",
+      "head_speed"
+    ],
+    "detectedAt": "2026-10-18T22:16:01+00:00",
+    "title": "CMP 센서 편차 확인",
+    "summary": "합성 센서 편차 관측. 원인·고장·정비 완료는 미확정.",
+    "metrics": {
+      "detectorVersion": "DEMO-PRIORITY-SEGMENT-V1",
+      "observationEvidenceIds": [
+        "E-PRSEG-RUN-W-CURRENT-012-3-CMP-platen_speed",
+        "E-PRSEG-RUN-W-CURRENT-012-3-CMP-head_speed"
+      ]
+    }
+  }
+]

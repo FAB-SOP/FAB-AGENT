@@ -56,7 +56,7 @@ class AnalysisShapeApiTest extends ApiTestSupport {
 			Thread.sleep(50);
 		}
 		getAs(cmp, "/api/incidents/{id}/analysis-results", ev1009).andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.dataVersion").value("causal-pack-v2-scenarios"))
+			.andExpect(jsonPath("$.data.dataVersion").value("causal-pack-v2.1-scenarios"))
 			.andExpect(jsonPath("$.data.threadId").isNotEmpty())
 			// 시뮬레이터 대역은 원인을 판정하지 않는다 — 「판정하지 않음」 자리 하나가 화면 키를 모두 갖는다(판정 확인은 fab-agent 테스트)
 			.andExpect(jsonPath("$.data.limitations[0]").value(AnalysisFactory.NOT_ANALYSIS))

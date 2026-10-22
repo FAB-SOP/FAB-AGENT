@@ -20,7 +20,7 @@ def _required_dir(var: str, what: str, example: str) -> Path:
 
 
 def pack_dir() -> Path:
-    """데이터 팩 v2 조립본(causal-pack-v2-scenarios, ../data/build_pack_v2.py가 조립) — FAB_PACK_DIR"""
+    """데이터 팩 v2 조립본(causal-pack-v2.1-scenarios, ../data/build_pack_v2.py가 조립) — FAB_PACK_DIR"""
     return _required_dir("FAB_PACK_DIR", "데이터 팩 경로", "../data/fab-causal-pack-v2")
 
 

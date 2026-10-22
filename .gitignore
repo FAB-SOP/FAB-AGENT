@@ -3,6 +3,10 @@
 **/.env
 !.env.example
 !**/.env.example
+# 개인 메모 · 실행 가이드(예: RUNBOOK.local.md)
+*.local.md
+# 개인 작업 · 조사 디렉터리
+local/
 
 # ── 생성물
 **/.venv/
@@ -40,6 +44,12 @@ data/fab-causal-pack-v1/generate.py
 data/fab-causal-pack-v1/validate.py
 data/fab-causal-pack-v1/README.md
 data/backend-handoff-v2/시나리오-문제-원인-조치.md
+# L011 · L012 추가 묶음 — 기대 우선순위(정답) · 그것을 만들고 검증하는 스크립트 · 정답을 적은 설명서
+data/priority-addon-l011-l012-v1/evaluation/
+data/priority-addon-l011-l012-v1/build_addon.py
+data/priority-addon-l011-l012-v1/validate_addon.py
+data/priority-addon-l011-l012-v1/finalize_bundle.py
+data/priority-addon-l011-l012-v1/README.md
 ai/evaluation/ground_truth.json
 # 실제 모델 평가 산출물(trace · 결과 원문 · Spring 로그) — 시험 문항 · 모델 답변이 들어 있다
 ai/evaluation/runs/

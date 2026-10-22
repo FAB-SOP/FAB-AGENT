@@ -54,7 +54,7 @@ fab:
     enabled: true
   # 데이터 팩은 조립본(../data/fab-causal-pack-v2)을, 실제 원문 RAG는 동료 묶음(../data/fab-rag-real-documents-v1)을 그대로 읽는다. evaluation/은 어디에도 없다
   # 데이터 팩: run · 계측 · 센서 · 관리한계 · 정비 이력 · 가상 사례 · 팀 점검 문서
-  # v2(causal-pack-v2-scenarios) = v1 + L006 CMP-PM3 수정 + sensorEnvelopes. data/build_pack_v2.py가 v1 · v2 원본에서 조립한다
+  # v2(causal-pack-v2.1-scenarios) = v1 + L006 CMP-PM3 수정 + sensorEnvelopes + L011 · L012 추가. data/build_pack_v2.py가 v1 · v2 · 추가 묶음에서 조립한다
   # 경로 기본값은 없다(없으면 시작 실패) — 원본은 compose 환경 변수. 직접 띄울 때: FAB_PACK_DIR=../data/fab-causal-pack-v2
   pack-dir: ${FAB_PACK_DIR:}
   # 실제 원문 선별 RAG: rag/source-chunks.jsonl만 색인한다(originals · selected는 열람용)

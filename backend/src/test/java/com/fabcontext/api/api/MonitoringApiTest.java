@@ -27,7 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 모니터링 GET 3개를 프론트 전달 묶음의 응답 예시(data/backend-handoff-v2/examples)와 필드 · 값 단위로 대조한다(L006은 v2 값).
- * 의도한 차이는 넷뿐이다 — {@link #ALLOWED}.
+ * 의도한 차이는 다섯뿐이다 — {@link #ALLOWED}. 예시 뒤에 덧붙인 L011 · L012(추가 묶음)는 예시에 없어 따로 본다.
  */
 @DisplayName("모니터링 API (프론트 예시 대조)")
 class MonitoringApiTest extends ApiTestSupport {
@@ -43,9 +43,15 @@ class MonitoringApiTest extends ApiTestSupport {
 	 * <li>samples[].sensorName — 팩에 센서 한국어 이름 목록이 없어 서버는 sensorId를 그대로 낸다(이름을 지어내지 않는다)</li>
 	 * <li>samples[].quality — 원본 trace의 GOOD_SYNTHETIC을 그대로 낸다. 예시는 GOOD. 명세: 둘 다 정상 취득</li>
 	 * <li>samples[].measuredAt — 서버는 UTC(Z), 예시는 +09:00. 같은 시각이면 같다</li>
+	 * <li>dataVersion — 예시는 전달 당시 팩 버전, 서버는 L011 · L012를 덧붙인 지금 팩 버전({@link #DATA_VERSION})</li>
 	 * </ul>
 	 */
-	static final Set<String> ALLOWED = Set.of("incidentId", "sensorName", "quality", "measuredAt");
+	static final Set<String> ALLOWED = Set.of("incidentId", "sensorName", "quality", "measuredAt", "dataVersion");
+
+	static final String DATA_VERSION = "causal-pack-v2.1-scenarios";
+
+	/** 전달 예시 뒤에 덧붙인 LOT(data/priority-addon-l011-l012-v1) */
+	static final List<String> ADDED_LOTS = List.of("CURRENT-L011", "CURRENT-L012");
 
 	private JsonNode example(String name) throws Exception {
 		Path p = EXAMPLES.resolve(name);
@@ -115,9 +121,12 @@ class MonitoringApiTest extends ApiTestSupport {
 
 	@Test
 	void lotListMatchesExample() throws Exception {
-		List<String> diffs = new ArrayList<>();
-		compare(example("lot-list.json").get("data"), actual(cmp(), "/api/monitoring/lots?processCode=CMP").get("data"), "data", diffs);
-		assertThat(diffs).isEmpty();
+		List<String> expected = new ArrayList<>();
+		example("lot-list.json").get("data").get("items").forEach(item -> expected.add(item.asString()));
+		expected.addAll(ADDED_LOTS);
+		List<String> got = new ArrayList<>();
+		actual(cmp(), "/api/monitoring/lots?processCode=CMP").get("data").get("items").forEach(item -> got.add(item.asString()));
+		assertThat(got).containsExactlyElementsOf(expected);
 	}
 
 	@ParameterizedTest
@@ -127,7 +136,19 @@ class MonitoringApiTest extends ApiTestSupport {
 		JsonNode got = actual(cmp(), "/api/monitoring/lots/{lot}/summary?processCode=CMP", lot).get("data");
 		compare(example(lot + "-CMP-summary.json").get("data"), got, "data", diffs);
 		assertThat(diffs).isEmpty();
-		assertThat(got.get("dataVersion").asString()).isEqualTo("causal-pack-v2-scenarios");
+		assertThat(got.get("dataVersion").asString()).isEqualTo(DATA_VERSION);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"CURRENT-L011", "CURRENT-L012"})
+	void addedLotsHaveRunsButNoIncidents(String lot) throws Exception {
+		// 두께가 모든 공정에서 관리한계 안이라 시드가 사건으로 올리지 않는다 — 짧은 센서 편차는 3번 wafer의 CMP-PM3 run에 있다
+		getAs(cmp(), "/api/monitoring/lots/{lot}/summary?processCode=CMP", lot)
+			.andExpect(jsonPath("$.data.dataVersion").value(DATA_VERSION))
+			.andExpect(jsonPath("$.data.runs", hasSize(3)))
+			.andExpect(jsonPath("$.data.runs[2].equipmentId").value("CMP-PM3"))
+			.andExpect(jsonPath("$.data.runs[*].incidentId", everyItem(nullValue())))
+			.andExpect(jsonPath("$.data.runs[2].sites", hasSize(5)));
 	}
 
 	@Test

@@ -5,7 +5,7 @@
 operationId · HTTP 메서드 · 경로는 프론트 계약과 1:1로 일치한다(`/v3/api-docs`, 대조 도구 `../ops/tools/openapi_diff.py`).
 
 - Java 21 · Spring Boot 4.1 · Gradle · Spring Security(세션 + CSRF) · JPA + **PostgreSQL**(실행 · 테스트 모두 — 테스트는 Testcontainers)
-- 데이터 팩은 **v2 조립본 `../data/fab-causal-pack-v2/`**(dataVersion `causal-pack-v2-scenarios`)를 읽는다 — `../data/build_pack_v2.py`가 v1 전체(`../data/fab-causal-pack-v1`)와 v2 CURRENT(`../data/backend-handoff-v2/data`, L006 CMP-PM3 한 run 수정 + sensorEnvelopes)를 합친다. 실제 원문 RAG는 동료 묶음의 `fab-rag-real-documents-v1/rag/source-chunks.jsonl`을 그대로 읽는다. `evaluation/`(정답) · 생성기는 어디에도 없다
+- 데이터 팩은 **v2 조립본 `../data/fab-causal-pack-v2/`**(dataVersion `causal-pack-v2.1-scenarios`)를 읽는다 — `../data/build_pack_v2.py`가 v1 전체(`../data/fab-causal-pack-v1`)와 v2 CURRENT(`../data/backend-handoff-v2/data`, L006 CMP-PM3 한 run 수정 + sensorEnvelopes)를 합치고, 추가 묶음(`../data/priority-addon-l011-l012-v1`)의 CURRENT-L011 · L012를 덧붙인다. 실제 원문 RAG는 동료 묶음의 `fab-rag-real-documents-v1/rag/source-chunks.jsonl`을 그대로 읽는다. `evaluation/`(정답) · 생성기는 어디에도 없다
 - 공정 **CVD → ETCH → CMP**, 공정마다 PM 셋. run · 5위치 계측 · run 특징 · 동결 관리한계(I-chart, R1) · 센서 참고 범위 · 정비 이력 · 원인 매트릭스 · 원시 시계열(gz, DB에 넣지 않고 파일에서 읽음)
 - Agent 자리는 `AGENT_MODE`로 고른다 — `simulator`(기본, 서버 안 **대역** — 화면 개발 · 흐름 테스트용, 원인을 판정하지 않는다) / `external`(`ai/`의 Agent Worker가 `/internal/jobs`로 가져간다). Kafka는 아직 없다
 
@@ -194,7 +194,7 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 | 분석 결과 | 아래 「분석 결과의 화면용 키」 | 이벤트 계약(candidateCauses additionalProperties=false)은 그대로 | 둘 다 저장 |
 
 - 팀 계약 `public-openapi.json`(원본은 팀 내부, 사본 `ai/contracts/`)의 공개 actionType도 같은 네 값으로 고쳤다 — 공개 API 계약 문서가 둘이던 것을 하나로 맞췄다
-- **dataVersion** — 결과 · 근거 · 화면 응답은 팩 `pack-manifest.json`의 `causal-pack-v2-scenarios`를 쓴다(예전 `dv-N` 카운터는 없앴다 — 이벤트 접수는 팩을 바꾸지 않는다)
+- **dataVersion** — 결과 · 근거 · 화면 응답은 팩 `pack-manifest.json`의 `causal-pack-v2.1-scenarios`를 쓴다(예전 `dv-N` 카운터는 없앴다 — 이벤트 접수는 팩을 바꾸지 않는다)
 - OpenAPI 대조(`../ops/tools/openapi_diff.py`) 결과 41개 operation이 모두 같고(2026-10-20 기준 — 지금은 업무 · 회신 · 시연 API가 더해져 51개), 차이는 `MAINTENANCE_REQUEST` 추가(승인 목록 · 상세 · 제안 요청 · 응답)와 위 comparisons뿐이다. 모니터링 3개의 문서 스키마는 프론트 계약을 그대로 붙였다(`resources/openapi/monitoring-contract.json`, `OpenApiConfig`) — 응답이 팩 JSON을 그대로 내리는 Map이라서다
 
 ### 모니터링 API 3개 (정상 LOT · PM)

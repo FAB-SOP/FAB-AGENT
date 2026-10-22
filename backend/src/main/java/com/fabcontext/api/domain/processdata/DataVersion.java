@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 원본 데이터 버전 — 데이터 팩의 pack-manifest.json `dataVersion`(예: causal-pack-v2-scenarios).
+ * 원본 데이터 버전 — 데이터 팩의 pack-manifest.json `dataVersion`(예: causal-pack-v2.1-scenarios).
  * 결과 · 근거 · 화면 응답이 어느 팩 기준인지 밝힌다. 이벤트 접수는 사건을 만들 뿐 팩을 바꾸지 않으므로 버전도 그대로다.
  */
 @Component

@@ -362,7 +362,7 @@ async def test_basic_analysis_cites_segment_as_observation(spring_url, kb):
     seg = next(f for f in facts if "E-SEG-RUN-W-CURRENT-006-3-CMP-head_pressure" in f["evidenceIds"])
     assert "101.1–210.9초" in seg["text"] and "원인 확정이 아닙니다" in seg["text"]
     assert any("시연 선택값" in x for x in out["result"]["limitations"])
-    assert out["result"]["dataVersion"] == "causal-pack-v2-scenarios"  # 지식 검색 버전이 덮어쓰지 않는다
+    assert out["result"]["dataVersion"] == "causal-pack-v2.1-scenarios"  # 지식 검색 버전이 덮어쓰지 않는다
     await u.close()
 
 
