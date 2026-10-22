@@ -10,6 +10,7 @@ import com.fabcontext.api.common.ApiException;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -47,6 +48,11 @@ public class Incident {
 	private String anomalyType;
 
 	private String severity;
+
+	/** 기존 행은 null이며 조회 시 NOT_EVALUATED로 표현한다. 조회 중 계산하거나 DB를 채우지 않는다. */
+	@Embedded
+	@Getter(AccessLevel.NONE)
+	private InvestigationPriority investigationPriority;
 
 	@Column(nullable = false)
 	private String processCode;
@@ -134,6 +140,20 @@ public class Incident {
 		this.version = 1;
 		this.createdAt = createdAt;
 		this.updatedAt = createdAt;
+	}
+
+	/** 저장값만 읽는다. 미평가 기본 객체를 엔티티 필드에 대입하지 않는다. */
+	public InvestigationPriority getInvestigationPriority() {
+		return investigationPriority == null ? InvestigationPriority.notEvaluated() : investigationPriority;
+	}
+
+	/** 검증된 저장값 반영. Agent 이벤트 수신·권한·중복 검사는 연결할 서비스의 책임이다. */
+	public void updateInvestigationPriority(InvestigationPriority priority, Instant at) {
+		java.util.Objects.requireNonNull(priority, "조사 우선순위가 필요합니다.");
+		java.util.Objects.requireNonNull(at, "변경 시각이 필요합니다.");
+		investigationPriority = priority;
+		version++;
+		updatedAt = at;
 	}
 
 	/** 타임라인에 기록하고 사건 버전을 올린다. */

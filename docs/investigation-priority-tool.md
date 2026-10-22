@@ -128,3 +128,34 @@ HTTP 응답의 최상위 `data` 안에 기존 업무 도구 공통 envelope가 �
 ```
 
 Testcontainers의 격리 Postgres를 사용한다. 현재 서비스 DB는 초기화하지 않는다.
+
+## 후속 변경: 프론트용 기존 목록·상세 응답
+
+`feat/incident-priority-api`에서 기존 `GET /api/incidents`의 각 items 항목과
+`GET /api/incidents/{incidentId}`의 data에 같은 `investigationPriority` 객체를 추가한다.
+기존 필드·필터·페이지·권한은 유지한다. 조회 시 계산 도구나 Agent를 호출하지 않고 저장값만 반환한다.
+
+```json
+{
+  "investigationPriority": {
+    "status": "COMPLETED",
+    "level": "MEDIUM",
+    "provisional": true,
+    "reason": "계측 결과 대기로 중으로 임시 분류했습니다."
+  }
+}
+```
+
+| status | level | provisional | reason |
+|---|---|---|---|
+| NOT_EVALUATED | null | false | null |
+| PENDING | null | false | null |
+| COMPLETED | HIGH / MEDIUM / LOW | 잠정 중일 때만 true | 판정 사유 |
+| FAILED | null | false | 실패 안내 |
+
+- 프론트 배지는 HIGH→상, MEDIUM→중, LOW→하. provisional=true도 배지는 중이며 상세에 부족한 사유를 표시한다.
+- 미평가·진행 중·실패는 처리 상태이며 추가 등급이 아니다. 기존 severity·jobStatus로 등급을 추정하지 않는다.
+- 기존 DB 행의 판정 컬럼이 null이면 NOT_EVALUATED를 반환하며 조회로 DB를 채우지 않는다.
+- 저장용 nullable 컬럼 4개를 Incident에 추가했다. 현재 ddl-auto=update 환경에서 서버 재시작 시 추가되며, 기존 DB 초기화는 필요하지 않다.
+- C 이벤트 수신·자동 판정 저장·상태 전이 연결은 별도 작업이다. 그 연결 전에는 기본 분석이 완료되어도 저장된 우선순위가 없으면 NOT_EVALUATED다.
+- 저장값 반영을 위한 도메인 메서드는 사건 version·updatedAt만 갱신하며, 조사 상태·activeJobId·latestJobStatus·타임라인을 변경하지 않는다. 호출하는 후속 서비스에서 권한·이벤트 중복·이전 판정 덮어쓰기를 검사해야 한다.
