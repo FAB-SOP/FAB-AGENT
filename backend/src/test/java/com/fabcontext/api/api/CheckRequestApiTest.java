@@ -47,13 +47,14 @@ class CheckRequestApiTest extends ApiTestSupport {
 			.andExpect(jsonPath("$.data.incident.equipmentId").value("CMP-PM3"))
 			.andExpect(jsonPath("$.data.replies", hasSize(0)));
 
-		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"영향 없음\",\"evidenceIds\":[\"ev:photo:1\"],\"confirmedByUser\":true,\"expectedVersion\":1}", ids[1])
+		acceptRequest(photo, ids[1]);
+		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"영향 없음\",\"evidenceIds\":[],\"confirmedByUser\":true,\"expectedVersion\":2}", ids[1])
 			.andExpect(status().isCreated())
 			.andExpect(header().string("Location", "/api/check-requests/" + ids[1]))
 			.andExpect(jsonPath("$.data.authorUserId").value("USR-CVD-01"))
 			.andExpect(jsonPath("$.data.resumeJobId").doesNotExist())
 			.andExpect(jsonPath("$.data.requestStatus").value("REPLIED"))
-			.andExpect(jsonPath("$.data.requestVersion").value(2));
+			.andExpect(jsonPath("$.data.requestVersion").value(3));
 		getAs(etch, "/api/check-requests/{id}", ids[1]).andExpect(jsonPath("$.data.replies[0].findings").value("영향 없음"))
 			.andExpect(jsonPath("$.data.repliedAt").exists());
 		getAs(etch, "/api/incidents/{id}", ids[0]).andExpect(jsonPath("$.data.status").value("INVESTIGATING"))
@@ -65,18 +66,19 @@ class CheckRequestApiTest extends ApiTestSupport {
 		Session etch = cmp();
 		Session photo = cvd();
 		String requestId = openManualRequest(etch)[1];
-		String ok = "{\"findings\":\"f\",\"confirmedByUser\":true,\"expectedVersion\":1}";
+		acceptRequest(photo,requestId);
+		String ok = "{\"findings\":\"f\",\"confirmedByUser\":true,\"expectedVersion\":2}";
 		postAs(etch, "/api/check-requests/{id}/replies", ok, requestId).andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.error.code").value("NOT_REQUEST_OWNER"));
-		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"f\",\"confirmedByUser\":false,\"expectedVersion\":1}", requestId)
+		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"f\",\"confirmedByUser\":false,\"expectedVersion\":2}", requestId)
 			.andExpect(jsonPath("$.error.code").value("USER_CONFIRMATION_REQUIRED"));
-		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"\",\"confirmedByUser\":true,\"expectedVersion\":1}", requestId)
+		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"\",\"confirmedByUser\":true,\"expectedVersion\":2}", requestId)
 			.andExpect(status().isUnprocessableEntity());
-		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"f\",\"confirmedByUser\":true,\"expectedVersion\":3}", requestId)
+		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"f\",\"confirmedByUser\":true,\"expectedVersion\":99}", requestId)
 			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("VERSION_CONFLICT"));
 		postAs(photo, "/api/check-requests/{id}/replies", ok, requestId).andExpect(status().isCreated());
-		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"f\",\"confirmedByUser\":true,\"expectedVersion\":2}", requestId)
-			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("REQUEST_NOT_OPEN"));
+		postAs(photo, "/api/check-requests/{id}/replies", "{\"findings\":\"f\",\"confirmedByUser\":true,\"expectedVersion\":3}", requestId)
+			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("REQUEST_NOT_ACCEPTED"));
 	}
 
 	@Test
@@ -89,4 +91,76 @@ class CheckRequestApiTest extends ApiTestSupport {
 			.andExpect(jsonPath("$.error.code").value("INVALID_BOX"));
 		getAs(etch, "/api/check-requests").andExpect(jsonPath("$.data.items[*].ownerUserId", everyItem(is("USR-CMP-01"))));
 	}
+	@org.springframework.beans.factory.annotation.Autowired
+	com.fabcontext.api.domain.job.JobRepository jobs;
+	@org.springframework.beans.factory.annotation.Autowired
+	com.fabcontext.api.domain.investigation.AnalysisRequestRepository analysisRequests;
+
+	@Test
+	void acceptanceGateAndAcceptedInbox() throws Exception {
+		Session sender=cmp(), recipient=cvd();
+		String[] ids=openManualRequest(sender);
+		postAs(recipient,"/api/check-requests/{id}/replies",
+			"{\"findings\":\"확인\",\"confirmedByUser\":true,\"expectedVersion\":1}",ids[1])
+			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("REQUEST_NOT_ACCEPTED"));
+		postAs(sender,"/api/check-requests/{id}/decisions","{\"decision\":\"ACCEPT\",\"expectedVersion\":1}",ids[1])
+			.andExpect(status().isForbidden());
+		acceptRequest(recipient,ids[1]);
+		getAs(recipient,"/api/work-items?box=mine").andExpect(jsonPath("$.data.incomingRequests[*].requestId",hasItem(ids[1])));
+		getAs(recipient,"/api/check-requests/{id}",ids[1]).andExpect(jsonPath("$.data.allowedActions",contains("REPLY")));
+		assertThat(jobs.findByIncidentIdOrderByCreatedAtDesc(ids[0])).hasSize(1);
+	}
+
+	@Test
+	void rejectionRequiresReasonAndIsSelectableWithoutAutoAnalysis() throws Exception {
+		Session sender=cmp(), recipient=cvd();
+		String[] ids=openManualRequest(sender);
+		postAs(recipient,"/api/check-requests/{id}/decisions","{\"decision\":\"REJECT\",\"comment\":\"  \",\"expectedVersion\":1}",ids[1])
+			.andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.error.code").value("REJECT_REASON_REQUIRED"));
+		postAs(recipient,"/api/check-requests/{id}/decisions","{\"decision\":\"REJECT\",\"comment\":\"해당 장비 담당 아님\",\"expectedVersion\":1}",ids[1])
+			.andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REJECTED"));
+		getAs(sender,"/api/incidents/{id}/investigation-results",ids[0])
+			.andExpect(jsonPath("$.data.items[0].sourceRef.type").value("REQUEST_DECISION"))
+			.andExpect(jsonPath("$.data.items[0].content").value("해당 장비 담당 아님"));
+		assertThat(jobs.findByIncidentIdOrderByCreatedAtDesc(ids[0])).hasSize(1);
+		getAs(recipient,"/api/check-requests?status=BOGUS").andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void explicitFollowupSnapshotsSelectedReplyAndReplaysIdempotently() throws Exception {
+		Session sender=cmp(), recipient=cvd();
+		String[] ids=openManualRequest(sender);
+		acceptRequest(recipient,ids[1]);
+		String replyId=json(postAs(recipient,"/api/check-requests/{id}/replies",
+			"{\"findings\":\"압력 실측값 정상, 실제 확인 완료\",\"confirmedByUser\":true,\"expectedVersion\":2}",ids[1]),"$.data.replyId");
+		assertThat(jobs.findByIncidentIdOrderByCreatedAtDesc(ids[0])).hasSize(1);
+		String body="{\"sourceRefs\":[{\"type\":\"REPLY\",\"id\":\""+replyId+"\"}],\"expectedIncidentVersion\":"+incidentVersion(sender,ids[0])+"}";
+		String key=java.util.UUID.randomUUID().toString();
+		var response=postWithKey(sender,key,"/api/incidents/{id}/followup-analysis-jobs",body,ids[0])
+			.andExpect(status().isAccepted()).andExpect(jsonPath("$.data.executionMode").value("NEW"));
+		String arq=json(response,"$.data.analysisRequestId"), job=json(response,"$.data.jobId");
+		postWithKey(sender,key,"/api/incidents/{id}/followup-analysis-jobs",body,ids[0])
+			.andExpect(header().string("Idempotent-Replayed","true")).andExpect(jsonPath("$.data.jobId").value(job));
+		getAs(sender,"/api/analysis-requests/{id}",arq).andExpect(jsonPath("$.data.inputs[0].includedInInput").value(true));
+		assertThat(analysisRequests.findById(arq).orElseThrow().getInputs().getFirst().get("content"))
+			.isEqualTo("압력 실측값 정상, 실제 확인 완료");
+		assertThat(jobs.findById(job).orElseThrow().getInput().get("analysisRequestId")).isEqualTo(arq);
+		getAs(recipient,"/api/analysis-requests/{id}",arq).andExpect(status().isForbidden());
+	}
+
+	@Test
+	void invalidAndDuplicateFollowupInputsDoNotCreateJobs() throws Exception {
+		Session sender=cmp(), recipient=cvd();
+		String[] ids=openManualRequest(sender);
+		postAs(recipient,"/api/check-requests/{id}/decisions","{\"decision\":\"REJECT\",\"comment\":\"점검 불가\",\"expectedVersion\":1}",ids[1]);
+		long version=incidentVersion(sender,ids[0]);
+		String ref="{\"type\":\"REQUEST_DECISION\",\"id\":\""+ids[1]+"\"}";
+		postAs(sender,"/api/incidents/{id}/followup-analysis-jobs","{\"sourceRefs\":["+ref+","+ref+"],\"expectedIncidentVersion\":"+version+"}",ids[0])
+			.andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.error.code").value("DUPLICATE_SOURCE_REF"));
+		String other=newIncident(sender,false).incidentId();
+		postAs(sender,"/api/incidents/{id}/followup-analysis-jobs","{\"sourceRefs\":["+ref+"],\"expectedIncidentVersion\":"+incidentVersion(sender,other)+"}",other)
+			.andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.error.code").value("INVALID_SOURCE_REF"));
+		assertThat(jobs.findByIncidentIdOrderByCreatedAtDesc(ids[0])).hasSize(1);
+	}
+
 }

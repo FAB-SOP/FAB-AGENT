@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 
 class WorkItemApiTest extends ApiTestSupport {
 	@org.springframework.beans.factory.annotation.Autowired
+	private com.fabcontext.api.domain.job.JobRepository jobs;
+	@org.springframework.beans.factory.annotation.Autowired
 	private com.fabcontext.api.auth.UserAccountRepository accounts;
 	private String propose(Session s,String id,String operation,String title) throws Exception {
 		String result=json(getAs(s,"/api/incidents/{id}/analysis-results",id),"$.data.resultId");
@@ -24,6 +26,8 @@ class WorkItemApiTest extends ApiTestSupport {
 		getAs(s,"/api/incidents/{id}/actions",id).andExpect(jsonPath("$.data.items",hasSize(0)));
 		postAs(s,"/api/work-items/{id}/completions",completion(s,id,version),task).andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("COMPLETED"));
 		getAs(s,"/api/incidents/{id}/actions",id).andExpect(jsonPath("$.data.items",hasSize(1))).andExpect(jsonPath("$.data.items[0].relatedSource.refId").value(task));
+		org.assertj.core.api.Assertions.assertThat(jobs.findByIncidentIdOrderByCreatedAtDesc(id)).hasSize(1);
+		getAs(s,"/api/incidents/{id}/investigation-results",id).andExpect(jsonPath("$.data.items[0].sourceRef.type").value("ACTION"));
 	}
 	@Test
 	void changePlanNeedsAssignedManagerAndApprovalDoesNotRecordExecution() throws Exception {
@@ -63,9 +67,9 @@ class WorkItemApiTest extends ApiTestSupport {
 		Session s=cmp();String id=newIncident(s,false).incidentId();String task=propose(s,id,"UPSTREAM_CHECK","앞 공정 계측 결과 확인");
 		postAs(s,"/api/work-items/{id}/adoptions","{\"expectedVersion\":1,\"ownerUserId\":\"USR-MNT-01\",\"targetProcessCode\":\"ETCH\"}",task).andExpect(status().isUnprocessableEntity());
 		var adopted=postAs(s,"/api/work-items/{id}/adoptions","{\"expectedVersion\":1,\"ownerUserId\":\"USR-ETCH-01\",\"targetProcessCode\":\"ETCH\"}",task).andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REQUESTED"));
-		String request=json(adopted,"$.data.requestId");Session etch=login("etch.lee");
+		String request=json(adopted,"$.data.requestId");Session etch=login("etch.lee");acceptRequest(etch,request);
 		getAs(etch,"/api/check-requests/{id}",request).andExpect(jsonPath("$.data.equipmentId").value("ETCH-PM2"));
-		postAs(etch,"/api/check-requests/{id}/replies","{\"findings\":\"처리 이력 확인 완료\",\"confirmedByUser\":true,\"expectedVersion\":1}",request).andExpect(status().isCreated()).andExpect(jsonPath("$.data.resumeJobId").isNotEmpty());
+		postAs(etch,"/api/check-requests/{id}/replies","{\"findings\":\"처리 이력 확인 완료\",\"confirmedByUser\":true,\"expectedVersion\":2}",request).andExpect(status().isCreated()).andExpect(jsonPath("$.data.resumeJobId").doesNotExist());
 		getAs(s,"/api/incidents/{id}/work-items",id).andExpect(jsonPath("$.data.items[0].status").value("COMPLETED"));
 		getAs(s,"/api/incidents/{id}/check-requests",id).andExpect(jsonPath("$.data.items[0].status").value("REPLIED")).andExpect(jsonPath("$.data.items[0].replies[0].findings").isNotEmpty());
 		getAs(manager(),"/api/incidents/{id}/check-requests",id).andExpect(status().isOk());
@@ -83,7 +87,8 @@ class WorkItemApiTest extends ApiTestSupport {
 		getAs(cvd(),"/api/incidents/{id}/work-items",id).andExpect(status().isForbidden());
 		var adopted=postAs(s,"/api/work-items/{id}/adoptions","{\"expectedVersion\":1,\"ownerUserId\":\"USR-MNT-01\",\"targetProcessCode\":\"CMP\"}",task).andExpect(status().isOk());
 		String request=json(adopted,"$.data.requestId");
-		postAs(login("mnt.jung"),"/api/check-requests/{id}/replies","{\"findings\":\"펌프 현장 확인 결과 기록\",\"confirmedByUser\":true,\"expectedVersion\":1}",request).andExpect(status().isCreated()).andExpect(jsonPath("$.data.resumeJobId").isNotEmpty());
+		acceptRequest(login("mnt.jung"),request);
+		postAs(login("mnt.jung"),"/api/check-requests/{id}/replies","{\"findings\":\"펌프 현장 확인 결과 기록\",\"confirmedByUser\":true,\"expectedVersion\":2}",request).andExpect(status().isCreated()).andExpect(jsonPath("$.data.resumeJobId").doesNotExist());
 		getAs(s,"/api/incidents/{id}/work-items",id).andExpect(jsonPath("$.data.items[0].status").value("COMPLETED"));
 	}
 	@Test
