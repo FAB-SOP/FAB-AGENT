@@ -10,6 +10,7 @@ import {ActionWorkspace} from '../components/ActionWorkspace';
 import {loadQuestionThread} from '../domain/questionThreads';
 import {incidentStage} from '../domain/actionSources';
 import {AnalysisRequestStatus} from '../components/AnalysisRequestStatus';
+import {ProposedWorkList} from '../components/WorkItems';
 import {InvestigationConversation} from '../components/InvestigationConversation';
 import {conversationEntries} from '../domain/conversation';
 import {canManageInvestigation} from '../domain/permissions';
@@ -238,6 +239,7 @@ function AnalysisTab(props:AnalysisTabProps){
   {questionJobs.some(query=>query.error)&&<ErrorMessage error={questionJobs.find(query=>query.error)?.error}/>}
   {answerResults.some(query=>query.error)&&<ErrorMessage error={answerResults.find(query=>query.error)?.error}/>}
   {proposal.error&&<ErrorMessage error={proposal.error}/>}
+  <ProposedWorkList incident={incident} canManage={props.canManage}/>
   <QuestionComposer
    canManage={props.canManage}
    blocked={props.blocked}

@@ -120,6 +120,19 @@ export function WorkItemsPanel({incident,sources,results,canManage}:{
  {selected&&<WorkDialog item={selected.item} mode={selected.mode} incident={incident} onClose={()=>setSelected(null)}/>}
  </>;
 }
+/** 분석 바로 아래에 보이는 채택 대기 제안 — 검토·조치 탭과 같은 데이터·대화상자를 쓴다 */
+export function ProposedWorkList({incident,canManage}:{incident:Incident;canManage:boolean}){
+ const {workItems}=useIncidentWork(incident.incidentId);
+ const [selected,setSelected]=useState<{item:Obj;mode:string}|null>(null);
+ const {proposed}=classifyWorkItems(workItems.data?.items||[]);
+ if(!proposed.length)return null;
+ const disabled=!canManage||incident.status==='CLOSED';
+ return <section className="proposed-work">
+  <h3>추천 조치안 <span className="small muted">AI 제안 {proposed.length}건 · 진행할 조치를 선택하세요</span></h3>
+  {proposed.map(item=><ProposedWorkCard key={item.taskId} item={item} disabled={disabled} onSelect={mode=>setSelected({item,mode})}/>)}
+  {selected&&<WorkDialog item={selected.item} mode={selected.mode} incident={incident} onClose={()=>setSelected(null)}/>}
+ </section>;
+}
 function TeamRequestResult({request}:{request:Obj}) {
  const replies:Obj[]=request.replies||[];
  const replied=request.status==='REPLIED'&&replies.length>0;
