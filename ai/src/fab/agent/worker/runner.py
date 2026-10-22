@@ -193,9 +193,10 @@ class JobRunner:
         result, analysis = final_state["result"], final_state.get("analysis") or {}
         # 계약(AnalysisResult)은 추가 필드를 허용하지 않는다. nextStep 등은 계약 개정 전까지 옵션으로만 싣는다.
         payload = {**result, **analysis} if os.getenv("FAB_RESULT_EXTENSIONS") == "true" else result
-        await self._event(job, "RESULT_READY", {"result": payload},
+        suggestions = final_state.get("workSuggestions") or []
+        await self._event(job, "RESULT_READY", {"result": payload, **({"workSuggestions": suggestions} if suggestions else {})},
                           trace)
-        return {"status": "DONE", "result": result, "analysis": analysis, "trace": trace}
+        return {"status": "DONE", "result": result, "analysis": analysis, "workSuggestions": suggestions, "trace": trace}
 
 
 def make_job(kind: str, incident_id: str = "EV-1009", thread_id: str = "THR-EV1009-01",

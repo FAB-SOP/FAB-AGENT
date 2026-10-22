@@ -17,6 +17,7 @@ from fab.agent.harness.retry import TransientJobError
 from fab.agent import purpose
 from fab.agent.purpose import may_propose
 from fab.agent.tools import HARNESS_NAMES, PROPOSALS, ToolCallError
+from fab.agent.work import validate_work_suggestions
 
 
 class _Turn:
@@ -90,6 +91,7 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         turn.update["report"] = args
         return
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
+    errs += validate_work_suggestions(args.get("workSuggestions"), _cited(args))
     note = ""
     if not errs:
         args, note, change_error = _check_conclusion(turn, args)
@@ -101,6 +103,12 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
     else:
         turn.say("[ACCEPTED] 결과를 접수했습니다." + note, cid, name)
         turn.update["result"] = args
+
+
+def _cited(result: dict) -> set[str]:
+    """답이 인용한 근거 — 관측 사실 · 원인 후보 지지 근거(결과 evidenceRefs가 되는 것)"""
+    return ({e for fact in result.get("observedFacts") or [] for e in fact.get("evidenceIds") or []}
+            | {e for cause in result.get("candidateCauses") or [] for e in cause.get("supportingEvidenceIds") or []})
 
 
 def _check_conclusion(turn: _Turn, args: dict) -> tuple[dict, str, str | None]:

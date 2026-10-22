@@ -60,7 +60,8 @@ async def test_full_flow_records_request_only_after_approval(spring_url, kb):
                                                             "actionsAndVerification", "unresolved"}
 
 
-async def test_basic_analysis_does_not_create_work_cards(spring_url, kb):
+async def test_basic_analysis_offers_work_candidates_only_as_proposals(spring_url, kb):
+    """C1(팀 TO-DO 8절) — 기본 분석은 답과 함께 업무 후보를 낸다. 후보는 PROPOSED로만 생기고 요청 · 승인은 생기지 않는다"""
     import uuid
     import httpx
 
@@ -79,11 +80,17 @@ async def test_basic_analysis_does_not_create_work_cards(spring_url, kb):
     assert result["status"] == "DONE"
     assert result["result"]["candidateCauses"]
     event = next(e for e in runner.sink.events if e["jobId"] == accepted["jobId"] and e["type"] == "RESULT_READY")
-    assert "workSuggestions" not in event["payload"]
+    suggestions = event["payload"]["workSuggestions"]
+    assert {s["operationCode"] for s in suggestions} == {"REVIEW_SENSOR_DATA", "EQUIPMENT_INSPECTION"}
+    cited = {ref["evidenceId"] for ref in event["payload"]["result"]["evidenceRefs"]}
+    assert all(s["evidenceIds"] and set(s["evidenceIds"]) <= cited for s in suggestions)
     assert "toolCalls" in event["metrics"]  # 기존 흐름 복구 후에도 작업별 관측 정보는 유지한다.
     user = await User("cmp.park", spring_url).login()
     status, tasks = await user.get(f"/api/incidents/{accepted['incidentId']}/work-items")
-    assert status == 200 and tasks["data"]["items"] == []
+    assert status == 200 and len(tasks["data"]["items"]) == 2
+    assert {task["status"] for task in tasks["data"]["items"]} == {"PROPOSED"}
+    status, requests = await user.get(f"/api/check-requests?box=sent&incidentId={accepted['incidentId']}")
+    assert status == 200 and requests["data"]["items"] == []  # 후보만으로 요청이 나가지 않는다
     await user.close()
 
 

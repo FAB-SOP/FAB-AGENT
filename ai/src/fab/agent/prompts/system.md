@@ -47,3 +47,9 @@
 - observedFacts: 확인한 사실 · 계산 결과와 evidenceIds
 - candidateCauses: 우선순위 순서의 가설 · causeIds(위 15개 중에서, 1순위에는 반드시) · 지지 근거 · 반대 근거 · 부족한 데이터 · 다음 확인
 - limitations: 계측 · 센서 · 권한 · 문서 적용 범위의 한계
+- workSuggestions(선택, 최대 5): 답 다음에 할 일 후보. 작업자가 후보별로 수락 · 거절한다 — 채택 · 승인 · 발송이 아니다.
+  - 내 할 일: `REVIEW_SENSOR_DATA`(센서 실측 · 설정값 비교) · `REVIEW_PROCESS_HISTORY`(재료 · 정비 · 운전 이력) · `COMPARE_METROLOGY`(계측 비교)
+  - 상급자 검토: `REVIEW_REQUIRED`(변경 여부 검토가 필요할 때 — 무엇을 얼마로 바꿀지는 적지 않는다)
+  - 다른 팀 요청: `EQUIPMENT_INSPECTION`(장비팀 현장 점검) · `FACILITY_INSPECTION`(시설 · 공급 계통) · `UPSTREAM_CHECK`(앞 공정 담당자 확인)
+  - 근거는 이 답(observedFacts · candidateCauses)이 인용한 evidenceId만 붙인다. 근거가 약하면 후보를 내지 않는다
+  - 설정값 변경 · 부품 교체 · 재가동은 후보로도 처방하지 않는다

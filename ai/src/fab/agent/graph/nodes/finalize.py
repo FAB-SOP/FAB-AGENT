@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fab.agent.graph.state import AgentState, current_job, runtime
 from fab.agent.tools import REPORT_SECTIONS
+from fab.agent.work import contract_suggestions
 
 
 def as_list(value) -> list[str]:
@@ -100,4 +101,6 @@ async def finalize(state: AgentState, config) -> dict:
                 "promptVersion": state.get("promptVersion"), "conclusion": state.get("conclusion"),
                 "causeIds": [[str(cause_id) for cause_id in cause.get("causeIds") or []]
                              for cause in submitted.get("candidateCauses", [])]}
-    return {"result": result, "analysis": analysis}
+    # 업무 후보는 계약 AnalysisResult 밖 — 이벤트 payload의 workSuggestions로 따로 싣는다(근거는 evidenceRefs 안의 것만)
+    suggestions = contract_suggestions(submitted.get("workSuggestions"), {ref["evidenceId"] for ref in result["evidenceRefs"]})
+    return {"result": result, "analysis": analysis, "workSuggestions": suggestions}
