@@ -56,7 +56,7 @@ function IncidentRow({incident,onOpen}:{incident:Incident;onOpen:(incidentId:str
 /** 서버 판정값만 표시한다. 사유는 마우스를 올리면 툴팁, 누르면 펼침(모바일). */
 function PriorityBadge({incident}:{incident:Incident}){
  const [open,setOpen]=useState(false);
- const view=priorityView(incident.analysisPriority);
+ const view=priorityView(incident.investigationPriority);
  return <span className="priority-cell">
   <button type="button" className={'priority-badge '+view.tone} title={view.reason||undefined} aria-expanded={open}
    aria-label={'우선순위 '+view.label+(view.reason?' · '+view.reason:'')}

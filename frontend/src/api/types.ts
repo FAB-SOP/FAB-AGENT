@@ -29,13 +29,15 @@ export interface Incident {
  activeJob?:Obj|null;
  jobStatus?:string;
  severity:string;
- analysisPriority?:AnalysisPriority|null;
+ investigationPriority?:InvestigationPriority|null;
  timeline?:Obj[];
 }
-/** 조사 우선순위 — 서버(백엔드·AI)가 판정한 값. severity(입력 알림 심각도)와 별개다. 필드명은 협의안. */
-export interface AnalysisPriority {
+/** 조사 우선순위 — 서버가 저장한 판정값(GET /api/incidents). severity(입력 알림 심각도)와 별개다. */
+export interface InvestigationPriority {
  status:'NOT_EVALUATED'|'PENDING'|'COMPLETED'|'FAILED';
  level:'HIGH'|'MEDIUM'|'LOW'|null;
+ /** 근거 부족으로 잠정 분류한 '중'일 때만 true */
+ provisional:boolean;
  reason:string|null;
 }
 export interface SensorSample {
