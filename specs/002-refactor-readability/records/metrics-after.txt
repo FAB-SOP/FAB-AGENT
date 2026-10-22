@@ -1,0 +1,32 @@
+== 화면: 파일별 가장 긴 줄 · 160자 초과 줄 수
+  159   0 fab-context-web/src/components/InvestigationContext.tsx
+  156   0 fab-context-web/src/components/ActionWorkspace.tsx
+  155   0 fab-context-web/src/components/WorkItems.tsx
+  144   0 fab-context-web/src/pages/Dashboard.tsx
+  142   0 fab-context-web/src/domain/permissions.ts
+  139   0 fab-context-web/src/components/SensorPanel.tsx
+  132   0 fab-context-web/src/components/InvestigationConversation.tsx
+  131   0 fab-context-web/src/components/DemoPersonaSelect.tsx
+  128   0 fab-context-web/src/auth.tsx
+  128   0 fab-context-web/src/components/AnalysisRequestStatus.tsx
+  124   0 fab-context-web/src/api/sensor-observation.ts
+  122   0 fab-context-web/src/api/types.ts
+  120   0 fab-context-web/src/components/IncidentNotifications.tsx
+  118   0 fab-context-web/src/pages/Login.tsx
+  117   0 fab-context-web/src/api/client.ts
+  114   0 fab-context-web/src/api/monitoring.ts
+  114   0 fab-context-web/src/domain/questionThreads.ts
+  111   0 fab-context-web/src/domain/actionSources.ts
+  109   0 fab-context-web/src/domain/conversation.ts
+  107   0 fab-context-web/src/App.tsx
+  105   0 fab-context-web/src/components/ui.tsx
+  102   0 fab-context-web/src/main.tsx
+   93   0 fab-context-web/src/api/incident-notifications.ts
+   56   0 fab-context-web/src/pages/Workflow.tsx
+요약: 가장 긴 줄 159자 · 160자 초과 줄이 있는 파일 0개
+
+== Python: 본문 40줄 초과 함수 0개
+
+== Java: 본문 40줄 초과 메서드 0개
+
+== Python: 한두 글자 이름 0곳 (허용 _ e i j k v)

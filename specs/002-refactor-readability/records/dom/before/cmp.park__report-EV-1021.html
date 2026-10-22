@@ -1,0 +1,176 @@
+<body>
+ <div id="root">
+  <div class="app-shell">
+   <a class="skip-link" href="#main">
+    #text "본문으로 이동"
+   <aside class="sidebar">
+    <a class="brand" href="/dashboard">
+     <span class="brand-mark">
+      <svg class="lucide lucide-layers">
+       <path>
+       <path>
+       <path>
+     <span>
+      #text "FAB"
+      <span class="brand-sub">
+       #text "CONTEXT"
+    <div class="workspace-name">
+     <span class="small">
+      #text "공정 조사 워크스페이스"
+     <strong>
+      #text "라인 A · "
+      #text "CMP"
+    <nav aria-label="주 메뉴">
+     <a class="" href="/dashboard">
+      <svg class="lucide lucide-layout-dashboard">
+       <rect>
+       <rect>
+       <rect>
+       <rect>
+      <span>
+       #text "공정 대시보드"
+     <a class="" href="/incidents">
+      <svg class="lucide lucide-activity">
+       <path>
+      <span>
+       #text "이상 조사"
+     <a class="" href="/work-items">
+      <svg class="lucide lucide-list-todo">
+       <rect>
+       <path>
+       <path>
+       <path>
+       <path>
+      <span>
+       #text "내 할 일"
+     <a class="" href="/check-requests">
+      <svg class="lucide lucide-messages-square">
+       <path>
+       <path>
+      <span>
+       #text "확인·정비 요청"
+     <a class="" href="/approvals">
+      <svg class="lucide lucide-check-check">
+       <path>
+       <path>
+      <span>
+       #text "제안 검토·승인"
+     <a aria-current="page" class="active" href="/reports">
+      <svg class="lucide lucide-file-text">
+       <path>
+       <path>
+       <path>
+       <path>
+       <path>
+      <span>
+       #text "조사 보고서"
+     <a class="" href="/knowledge">
+      <svg class="lucide lucide-book-open">
+       <path>
+       <path>
+      <span>
+       #text "참고 문서"
+    <div class="sidebar-bottom">
+     <div class="workspace-health">
+      <svg class="lucide lucide-shield-check">
+       <path>
+       <path>
+      <span>
+       #text "담당 공정 연결됨"
+     <p class="small">
+      #text "업무 시스템 연결"
+     <p class="small">
+      #text "FAB CONTEXT / MVP"
+   <div class="workspace">
+    <header class="topbar">
+     <div class="breadcrumb">
+      #text "FAB CONTEXT "
+      <span>
+       #text "/"
+      #text " "
+      #text "조사 보고서"
+     <div class="topbar-actions">
+      <span class="connection-mode ">
+       <i>
+       #text "연결됨"
+      <label class="process-select">
+       <span class="sr-only">
+        #text "담당 공정"
+       <select>
+        <option>
+         #text "CMP"
+      <a aria-label="받은 확인 요청" class="icon-button" href="/check-requests">
+       <svg class="lucide lucide-bell">
+        <path>
+        <path>
+      <span class="user-avatar">
+       #text "박"
+      <div class="user-name">
+       <strong>
+        #text "박연마"
+       <span>
+        #text "CMP 공정 담당자"
+      <button aria-label="로그아웃" class="icon-button">
+       <svg class="lucide lucide-log-out">
+        <path>
+        <polyline>
+        <line>
+    <main id="main">
+     <a class="back-link" href="/incidents/<inc-id>">
+      <svg class="lucide lucide-chevron-left">
+       <path>
+      #text "사건으로 돌아가기"
+     <div class="page-heading">
+      <div>
+       <p class="eyebrow">
+        #text "REPORT VERSION 1 · REVISION 1"
+       <h1>
+        #text "조사 보고서 검토"
+       <p>
+        #text "내용을 검토·수정한 뒤 확정합니다."
+      <span class="badge confirmed">
+       #text "확정"
+     <section class="panel ">
+      <label class="field">
+       <span>
+        #text "보고서 제목"
+       <input disabled="" value="EV-1021 CMP-PM2 슬러리 유량 저하 조사 보고서">
+      <label class="field">
+       <span>
+        #text "사건 개요"
+       <textarea class="report-section" disabled="">
+        #text "- 사건: EV-1021 CMP-PM2 슬러리 유량 저하\n- 공정/설비: CMP · CMP-PM2\n- 로트/웨이퍼: HIST-L021 · \n- 감지 시각: <datetime> (KST)\n- 현재 상태: INVESTIGATING (사건 버전 5)\n- 접수 내용: CMP-PM2 슬러리 유량 저하\n- 보고서 작성 요청자: 박연마 (cmp.park · USR-CMP-01)"
+      <label class="field">
+       <span>
+        #text "조사 내용"
+       <textarea class="report-section" disabled="">
+        #text "최신 분석(BASIC, <datetime>): 기본 분석(시뮬레이터) — 관측 사실 0건(공정 데이터 값 그대로). 시뮬레이터 결과이며 원인은 판정하지 않았습니다.\n\n**관측 사실**\n\n**가설 (확정 아님)**\n- [INSUFFICIENT_EVIDENCE] 원인을 판정하지 않음 (시뮬레이터 — 실제 판정은 fab-agent)"
+      <label class="field">
+       <span>
+        #text "확인 요청 · 회신"
+       <textarea class="report-section" disabled="">
+        #text "발송된 확인 요청이 없습니다.\n\n\n**담당자·요청·검토 이력 (등록 기록)**\n- 실제 확인·조치 수행자: 박연마 (cmp.park · USR-CMP-01) · <datetime> KST · 슬러리 공급 라인 점검 및 필터 교체"
+      <label class="field">
+       <span>
+        #text "조치 · 효과"
+       <textarea class="report-section" disabled="">
+        #text "- <datetime> PART_CHECK (USR-CMP-01): 슬러리 공급 라인 점검 및 필터 교체 → 효과: IMPROVED\n  - 확인(IMPROVED): 후속 12 run의 슬러리 유량이 기준 수준으로 회복"
+      <label class="field">
+       <span>
+        #text "미해결 항목"
+       <textarea class="report-section" disabled="">
+        #text "- 분석 한계: 시뮬레이터 결과 — 실제 분석 아님 (원인은 판정하지 않았습니다. 실제 판정은 fab-agent가 합니다)\n- 분석 한계: 사건에 연결된 웨이퍼가 없어 계측 근거를 붙이지 않았습니다."
+      <div class="form-actions">
+       <button class="button secondary">
+        <svg class="lucide lucide-download">
+         <path>
+         <polyline>
+         <line>
+        #text "Markdown 다운로드"
+    <aside aria-label="새 이상 알림" class="incident-notifications">
+     <div class="sr-only" role="status">
+    <footer class="workspace-footer">
+     <span>
+     <span>
+      #text "실제 API 응답 기준"
+      #text " · KST"

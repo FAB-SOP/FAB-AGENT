@@ -1,0 +1,495 @@
+<body>
+ <div id="root">
+  <div class="app-shell">
+   <a class="skip-link" href="#main">
+    #text "본문으로 이동"
+   <aside class="sidebar">
+    <a class="brand" href="/dashboard">
+     <span class="brand-mark">
+      <svg class="lucide lucide-layers">
+       <path>
+       <path>
+       <path>
+     <span>
+      #text "FAB"
+      <span class="brand-sub">
+       #text "CONTEXT"
+    <div class="workspace-name">
+     <span class="small">
+      #text "공정 조사 워크스페이스"
+     <strong>
+      #text "라인 A · "
+      #text "CMP"
+    <nav aria-label="주 메뉴">
+     <a aria-current="page" class="active" href="/dashboard">
+      <svg class="lucide lucide-layout-dashboard">
+       <rect>
+       <rect>
+       <rect>
+       <rect>
+      <span>
+       #text "공정 대시보드"
+     <a class="" href="/incidents">
+      <svg class="lucide lucide-activity">
+       <path>
+      <span>
+       #text "이상 조사"
+     <a class="" href="/work-items">
+      <svg class="lucide lucide-list-todo">
+       <rect>
+       <path>
+       <path>
+       <path>
+       <path>
+      <span>
+       #text "내 할 일"
+     <a class="" href="/check-requests">
+      <svg class="lucide lucide-messages-square">
+       <path>
+       <path>
+      <span>
+       #text "확인·정비 요청"
+     <a class="" href="/approvals">
+      <svg class="lucide lucide-check-check">
+       <path>
+       <path>
+      <span>
+       #text "제안 검토·승인"
+     <a class="" href="/reports">
+      <svg class="lucide lucide-file-text">
+       <path>
+       <path>
+       <path>
+       <path>
+       <path>
+      <span>
+       #text "조사 보고서"
+     <a class="" href="/knowledge">
+      <svg class="lucide lucide-book-open">
+       <path>
+       <path>
+      <span>
+       #text "참고 문서"
+    <div class="sidebar-bottom">
+     <div class="workspace-health">
+      <svg class="lucide lucide-shield-check">
+       <path>
+       <path>
+      <span>
+       #text "담당 공정 연결됨"
+     <p class="small">
+      #text "업무 시스템 연결"
+     <p class="small">
+      #text "FAB CONTEXT / MVP"
+   <div class="workspace">
+    <header class="topbar">
+     <div class="breadcrumb">
+      #text "FAB CONTEXT "
+      <span>
+       #text "/"
+      #text " "
+      #text "공정 대시보드"
+     <div class="topbar-actions">
+      <span class="connection-mode ">
+       <i>
+       #text "연결됨"
+      <label class="process-select">
+       <span class="sr-only">
+        #text "담당 공정"
+       <select>
+        <option>
+         #text "CVD"
+        <option>
+         #text "ETCH"
+        <option>
+         #text "CMP"
+      <a aria-label="받은 확인 요청" class="icon-button" href="/check-requests">
+       <svg class="lucide lucide-bell">
+        <path>
+        <path>
+      <span class="user-avatar">
+       #text "정"
+      <div class="user-name">
+       <strong>
+        #text "정정비"
+       <span>
+        #text "설비정비팀 · 조회 전용"
+      <button aria-label="로그아웃" class="icon-button">
+       <svg class="lucide lucide-log-out">
+        <path>
+        <polyline>
+        <line>
+    <main id="main">
+     <div class="page-heading">
+      <div>
+       <p class="eyebrow">
+        #text "PROCESS MONITORING"
+       <h1>
+        #text "CMP 공정 대시보드"
+       <p>
+        #text "로트의 설비별 결과를 확인하고, 한 웨이퍼의 계측과 센서 데이터를 함께 조사합니다."
+      <button class="button secondary">
+       <svg class="lucide lucide-refresh-cw">
+        <path>
+        <path>
+        <path>
+        <path>
+       #text "새로고침"
+     <div class="kpi-row">
+      <div>
+       <span>
+        #text "미종결 이상"
+       <strong>
+        #text "4"
+        <small>
+         #text "건"
+      <div>
+       <span>
+        #text "검토 대기 제안"
+       <strong>
+        #text "0"
+        <small>
+         #text "건"
+      <div>
+       <span>
+        #text "받은 확인 요청"
+       <strong>
+        #text "0"
+        <small>
+         #text "건"
+      <div class="kpi-context">
+       <span>
+        #text "관찰 범위"
+       <strong>
+        #text "CMP"
+        <small>
+         #text "담당 공정"
+     <div class="section-toolbar">
+      <div>
+       <h2>
+        #text "설비별 웨이퍼 결과"
+       <p class="muted">
+        #text "각 PM당 웨이퍼 한 장 · 한 장 내 5위치 평균"
+      <label class="inline-field">
+       #text "로트"
+       <select aria-label="로트 선택">
+        <option value="CURRENT-L001">
+         #text "L001"
+        <option value="CURRENT-L002">
+         #text "L002"
+        <option value="CURRENT-L003">
+         #text "L003"
+        <option value="CURRENT-L004">
+         #text "L004"
+        <option value="CURRENT-L005">
+         #text "L005"
+        <option value="CURRENT-L006">
+         #text "L006"
+        <option value="CURRENT-L007">
+         #text "L007"
+        <option value="CURRENT-L008">
+         #text "L008"
+        <option value="CURRENT-L009">
+         #text "L009"
+        <option value="CURRENT-L010">
+         #text "L010"
+     <div class="pm-grid">
+      <button class="pm-card ">
+       <div class="pm-top">
+        <span class="equipment-icon">
+         #text "PM1"
+        <span class="status-dot ">
+         <svg class="lucide lucide-circle-check">
+          <circle>
+          <path>
+         #text " "
+         #text "관리 범위 내"
+       <p class="small muted">
+        #text "공정 후 평균 두께"
+       <div class="pm-value">
+        #text "9,984.1"
+        <span>
+         #text "Å"
+       <div class="pm-meta">
+        <span>
+         #text "평균 기준 대비 "
+         <strong>
+          #text "-17.8 Å"
+        <svg class="lucide lucide-arrow-up-right">
+         <path>
+         <path>
+      <button class="pm-card ">
+       <div class="pm-top">
+        <span class="equipment-icon">
+         #text "PM2"
+        <span class="status-dot ">
+         <svg class="lucide lucide-circle-check">
+          <circle>
+          <path>
+         #text " "
+         #text "관리 범위 내"
+       <p class="small muted">
+        #text "공정 후 평균 두께"
+       <div class="pm-value">
+        #text "9,973.3"
+        <span>
+         #text "Å"
+       <div class="pm-meta">
+        <span>
+         #text "평균 기준 대비 "
+         <strong>
+          #text "-28.6 Å"
+        <svg class="lucide lucide-arrow-up-right">
+         <path>
+         <path>
+      <button class="pm-card alert active">
+       <div class="pm-top">
+        <span class="equipment-icon">
+         #text "PM3"
+        <span class="status-dot red">
+         <svg class="lucide lucide-triangle-alert">
+          <path>
+          <path>
+          <path>
+         #text " "
+         #text "OOC · 규격 내"
+       <p class="small muted">
+        #text "공정 후 평균 두께"
+       <div class="pm-value">
+        #text "10,140.4"
+        <span>
+         #text "Å"
+       <div class="pm-meta">
+        <span>
+         #text "평균 기준 대비 "
+         <strong>
+          #text "+138.5 Å"
+        <svg class="lucide lucide-arrow-up-right">
+         <path>
+         <path>
+     <div class="limit-summary small">
+      <span>
+       #text "동일 조건·매칭 PM의 고정 기준"
+      <span>
+       #text "LCL "
+       <b>
+        #text "9,870.3"
+      <span>
+       #text "평균 "
+       <b>
+        #text "10,001.9"
+      <span>
+       #text "UCL "
+       <b>
+        #text "10,133.5"
+       #text " Å"
+      <span>
+       #text "가상 규격 9,000–11,000 Å"
+     <div class="detail-heading">
+      <div>
+       <p class="eyebrow">
+        #text "SELECTED EQUIPMENT"
+       <h2>
+        #text "CMP-PM3"
+        #text " "
+        <span>
+         #text "웨이퍼 상세"
+       <p class="muted small">
+        #text "W-CURRENT-009-3"
+        #text " · "
+        #text "DEMO-SIO2-CMP-V1"
+        #text " · "
+        #text "10. 19. <time>"
+        #text " KST"
+      <a class="button" href="/incidents/<inc-id>">
+       #text "이상 조사 열기 "
+       <svg class="lucide lucide-arrow-up-right">
+        <path>
+        <path>
+     <div class="detail-grid">
+      <section class="panel ">
+       <div class="panel-title">
+        <div>
+         <p class="eyebrow">
+          #text "DURING PROCESS"
+         <h2>
+          #text "센서 시계열"
+        <select aria-label="레시피 단계">
+         <option value="STEADY">
+          #text "본 처리 안정 구간"
+         <option value="ALL">
+          #text "전체 처리 구간"
+         <option value="PROCESS">
+          #text "본 처리 구간"
+         <option value="READY">
+          #text "준비 구간"
+         <option value="END">
+          #text "종료 구간"
+       <div class="sensor-options">
+        <label class="sensor-chip selected">
+         <input checked="" type="checkbox">
+         <span aria-hidden="true" class="sensor-color">
+         <span>
+          #text "헤드 압력"
+         <span class="muted">
+          #text "psi"
+        <label class="sensor-chip ">
+         <input type="checkbox">
+         <span>
+          #text "플래튼 회전속도"
+         <span class="muted">
+          #text "rpm"
+        <label class="sensor-chip ">
+         <input type="checkbox">
+         <span>
+          #text "헤드 회전속도"
+         <span class="muted">
+          #text "rpm"
+        <label class="sensor-chip ">
+         <input type="checkbox">
+         <span>
+          #text "슬러리 유량"
+         <span class="muted">
+          #text "mL/min"
+        <label class="sensor-chip ">
+         <input type="checkbox">
+         <span>
+          #text "플래튼 모터 전류"
+         <span class="muted">
+          #text "A"
+       <div class="chart-toolbar">
+        <span class="small">
+         #text "정상 기준선 자동 표시"
+        <label class="small">
+         #text "구간 확대 "
+         <select aria-label="시계열 표시 구간">
+          <option value="0">
+           #text "전체 구간"
+          <option value="60">
+           #text "60초 확대"
+          <option value="30">
+           #text "30초 확대"
+       <div aria-label="This is a chart with type Line chart named 헤드 압력.The first 10 items are: 12, 2.998652, 12.1, 3.001449, 12.2, 3.001859, 12.3, 2.999305, 12.4, 2.999581, 12.5, 2.998088, 12.6, 2.997369, 12.7, 2.998925, 12.8, 2.996415, 12.9, 2.99836. " class="chart" role="img">
+        <div>
+         <canvas>
+       <div class="chart-foot small">
+        <span>
+         #text "기준선 · 정상 run 평균 참고 범위"
+        <span>
+         #text "USL/LSL: "
+         #text "미등록"
+       <div class="sensor-stats">
+        <div>
+         <span>
+          #text "헤드 압력"
+         <strong>
+          #text "3.00"
+          #text " "
+          <small>
+           #text "psi"
+         <span class="small muted">
+          #text "선택 처리 구간 평균 · "
+          #text "2,980"
+          #text " 샘플"
+      <div class="side-stack">
+       <section class="panel ">
+        <div class="panel-title">
+         <div>
+          <p class="eyebrow">
+           #text "AFTER PROCESS"
+          <h2>
+           #text "공정 후 두께 계측"
+        <div class="metrology-detection" role="status">
+         <strong>
+          <svg class="lucide lucide-triangle-alert">
+           <path>
+           <path>
+           <path>
+          #text " 공정 후 계측에서 OOC 검출"
+         <span>
+          #text "계측 시각 · "
+          #text "10. 19. <time>"
+          #text " KST"
+         <span>
+          #text "평균 두께 "
+          #text "10,140.4"
+          #text " Å · "
+          #text "UCL 10,133.5 Å 초과"
+        <div class="metrology-mean">
+         <span>
+          #text "한 장 내 5위치 평균"
+         <strong>
+          #text "10,140.4"
+          #text " "
+          <small>
+           #text "Å"
+        <div aria-label="웨이퍼 5위치 두께 측정" class="wafer-map">
+         <div class="wafer-site center">
+          <span>
+           #text "중앙"
+          <b>
+           #text "10,144"
+         <div class="wafer-site north">
+          <span>
+           #text "북"
+          <b>
+           #text "10,146"
+         <div class="wafer-site east">
+          <span>
+           #text "동"
+          <b>
+           #text "10,133"
+         <div class="wafer-site south">
+          <span>
+           #text "남"
+          <b>
+           #text "10,140"
+         <div class="wafer-site west">
+          <span>
+           #text "서"
+          <b>
+           #text "10,139"
+        <p class="small muted">
+         #text "처리 종료 후 측정 결과"
+       <section class="panel ">
+        <div class="panel-title">
+         <div>
+          <h2>
+           #text "처리 결과 요약"
+        <dl class="facts">
+         <div>
+          <dt>
+           #text "입고 두께"
+          <dd>
+           #text "15,123.6"
+           #text " Å"
+         <div>
+          <dt>
+           #text "제거량"
+          <dd>
+           #text "4,983.2"
+           #text " Å"
+         <div>
+          <dt>
+           #text "본 처리 시간"
+          <dd>
+           #text "300"
+           #text "초"
+         <div>
+          <dt>
+           #text "위치 간 최대 차이"
+          <dd>
+           #text "13.6"
+           #text " Å"
+         <div>
+          <dt>
+           #text "규격 판정"
+          <dd>
+           #text "규격 내"
+    <aside aria-label="새 이상 알림" class="incident-notifications">
+     <div class="sr-only" role="status">
+    <footer class="workspace-footer">
+     <span>
+     <span>
+      #text "실제 API 응답 기준"
+      #text " · KST"

@@ -1,0 +1,83 @@
+본문으로 이동
+FAB
+CONTEXT
+공정 조사 워크스페이스
+라인 A · CMP
+공정 대시보드
+이상 조사
+내 할 일
+확인·정비 요청
+제안 검토·승인
+조사 보고서
+참고 문서
+담당 공정 연결됨
+
+업무 시스템 연결
+
+FAB CONTEXT / MVP
+
+FAB CONTEXT / 이상 조사
+연결됨
+담당 공정
+CVD
+ETCH
+CMP
+최
+최관리
+운영 관리자
+
+INVESTIGATIONS
+
+이상 조사
+
+관측된 이상부터 확인 요청, 실제 조치와 결과까지 하나의 사건으로 추적합니다.
+
+모든 상태
+접수
+확인·조치 진행
+담당자 회신 대기
+보류
+종료
+사건 / 관측 내용	로트 · 설비	조사 상태	발견 시각	
+CMP-PM2 패드 온도 드리프트
+EV-1022 · CMP
+	HIST-L022
+CMP-PM2
+	처리 보류	10. 19. <time>	
+
+CMP-PM3 CMP 후 두께 관리한계 이탈
+EV-1009 · CMP
+	L009
+CMP-PM3
+	분석 완료	10. 19. <time>	
+
+CMP-PM3 CMP 후 두께 관리한계 이탈
+EV-1007 · CMP
+	L007
+CMP-PM3
+	분석 완료	10. 18. <time>	
+
+CMP-PM3 CMP 후 두께 관리한계 이탈
+EV-1006 · CMP
+	L006
+CMP-PM3
+	분석 완료	10. 18. <time>	
+
+CMP-PM2 슬러리 유량 저하
+EV-1021 · CMP
+	HIST-L021
+CMP-PM2
+	처리 종료	10. 18. <time>	
+
+CMP-PM1 헤드 압력 변동
+EV-1020 · CMP
+	HIST-L020
+CMP-PM1
+	처리 종료	10. 16. <time>	
+
+CMP-PM2 플래튼 모터 전류 상승 추세
+EV-1018 · CMP
+	HIST-L018
+CMP-PM2
+	처리 종료	10. 09. <time>	
+실제 API 응답 기준 · KST
