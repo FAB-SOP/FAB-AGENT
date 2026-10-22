@@ -13,105 +13,108 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load(base):
-    with urllib.request.urlopen(base.rstrip("/") + "/v3/api-docs") as r:
-        return json.load(r)
+    with urllib.request.urlopen(base.rstrip("/") + "/v3/api-docs") as response:
+        return json.load(response)
 
 
-def resolve(doc, s, seen=()):
-    if not isinstance(s, dict):
-        return s
-    if "$ref" in s:
-        name = s["$ref"].split("/")[-1]
+def resolve(doc, schema, seen=()):
+    if not isinstance(schema, dict):
+        return schema
+    if "$ref" in schema:
+        name = schema["$ref"].split("/")[-1]
         if name in seen:
             return {"$ref": name}
         return resolve(doc, doc["components"]["schemas"][name], seen + (name,))
     out = {}
-    for k, v in s.items():
-        if k == "properties":
-            out[k] = {p: resolve(doc, x, seen) for p, x in v.items()}
-        elif k in ("items", "additionalProperties"):
-            out[k] = resolve(doc, v, seen)
-        elif k in ("allOf", "oneOf", "anyOf"):
-            out[k] = [resolve(doc, x, seen) for x in v]
+    for key, value in schema.items():
+        if key == "properties":
+            out[key] = {prop_name: resolve(doc, item, seen) for prop_name, item in value.items()}
+        elif key in ("items", "additionalProperties"):
+            out[key] = resolve(doc, value, seen)
+        elif key in ("allOf", "oneOf", "anyOf"):
+            out[key] = [resolve(doc, item, seen) for item in value]
         else:
-            out[k] = v
+            out[key] = value
     return out
 
 
-def flat(s, path=""):
+def flat(schema, path=""):
     """스키마를 '경로 → (타입, 필수 여부, enum)'으로 펼친다"""
     out = {}
-    if not isinstance(s, dict):
+    if not isinstance(schema, dict):
         return out
-    for sub in s.get("allOf", []) + s.get("oneOf", []) + s.get("anyOf", []):
+    for sub in schema.get("allOf", []) + schema.get("oneOf", []) + schema.get("anyOf", []):
         out.update(flat(sub, path))
-    req = set(s.get("required", []))
-    for p, x in (s.get("properties") or {}).items():
-        key = f"{path}.{p}" if path else p
-        t = x.get("type") if isinstance(x, dict) else None
-        out[key] = {"type": json.dumps(t), "required": p in req, "enum": tuple(sorted(map(str, x.get("enum", []))))
-                    if isinstance(x, dict) else ()}
-        out.update(flat(x, key))
-    if isinstance(s.get("items"), dict):
-        out.update(flat(s["items"], path + "[]"))
+    required = set(schema.get("required", []))
+    for prop_name, prop_schema in (schema.get("properties") or {}).items():
+        key = f"{path}.{prop_name}" if path else prop_name
+        prop_type = prop_schema.get("type") if isinstance(prop_schema, dict) else None
+        out[key] = {"type": json.dumps(prop_type), "required": prop_name in required, "enum": tuple(sorted(map(str, prop_schema.get("enum", []))))
+                    if isinstance(prop_schema, dict) else ()}
+        out.update(flat(prop_schema, key))
+    if isinstance(schema.get("items"), dict):
+        out.update(flat(schema["items"], path + "[]"))
     return out
 
 
 def ops(doc):
-    m = {}
-    for p, items in doc["paths"].items():
-        for meth, o in items.items():
-            if meth not in ("get", "post", "patch", "put", "delete"):
+    operations = {}
+    for path, items in doc["paths"].items():
+        for method, operation in items.items():
+            if method not in ("get", "post", "patch", "put", "delete"):
                 continue
-            body = (((o.get("requestBody") or {}).get("content") or {}).get("application/json") or {}).get("schema")
+            body = (((operation.get("requestBody") or {}).get("content") or {}).get("application/json") or {}).get("schema")
             resp = {}
-            for code, r in (o.get("responses") or {}).items():
-                c = (r.get("content") or {})
-                sch = next(iter(c.values()), {}).get("schema") if c else None
-                if sch and code.startswith("2"):
-                    resp[code] = flat(resolve(doc, sch))
-            params = {x["name"]: (x.get("in"), x.get("required", False), tuple(sorted(map(str, (x.get("schema") or {}).get("enum", [])))))
-                      for x in o.get("parameters", [])}
-            m[(meth.upper(), p)] = {"op": o.get("operationId"), "params": params,
+            for code, response in (operation.get("responses") or {}).items():
+                content = (response.get("content") or {})
+                schema = next(iter(content.values()), {}).get("schema") if content else None
+                if schema and code.startswith("2"):
+                    resp[code] = flat(resolve(doc, schema))
+            params = {param["name"]: (param.get("in"), param.get("required", False), tuple(sorted(map(str, (param.get("schema") or {}).get("enum", [])))))
+                      for param in operation.get("parameters", [])}
+            operations[(method.upper(), path)] = {"op": operation.get("operationId"), "params": params,
                                     "body": flat(resolve(doc, body)) if body else {}, "resp": resp}
-    return m
+    return operations
+
+
+def operation_rows(name, front_op, server_op):
+    """공통 operation 하나의 차이 — operationId · 파라미터 · 요청 필드 · 응답 필드(서버에만 있는 응답 필드는 뺀다)"""
+    rows = []
+    if front_op["op"] != server_op["op"]:
+        rows.append((name, "operationId", front_op["op"], server_op["op"]))
+    for param in sorted(set(front_op["params"]) | set(server_op["params"])):
+        if front_op["params"].get(param) != server_op["params"].get(param):
+            rows.append((name, f"param {param}", str(front_op["params"].get(param)), str(server_op["params"].get(param))))
+    for field in sorted(set(front_op["body"]) | set(server_op["body"])):
+        if front_op["body"].get(field) != server_op["body"].get(field):
+            rows.append((name, f"요청 {field}", str(front_op["body"].get(field)), str(server_op["body"].get(field))))
+    for code in sorted(set(front_op["resp"]) | set(server_op["resp"])):
+        front_fields, server_fields = front_op["resp"].get(code, {}), server_op["resp"].get(code, {})
+        for field in sorted(set(front_fields) | set(server_fields)):
+            front_value, server_value = front_fields.get(field), server_fields.get(field)
+            if front_value is None and server_value is not None:
+                continue  # 서버가 더 주는 필드(프론트는 무시) — 아래에서 따로 센다
+            if front_value != server_value:
+                rows.append((name, f"응답 {code} {field}", str(front_value), str(server_value)))
+    return rows
 
 
 def main():
     server, front = ops(load(sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8096")), ops(
         json.loads((ROOT / "backend-handoff-v2/combined.openapi.json").read_text(encoding="utf-8")))
     rows = []
-    only_front, only_server = sorted(set(front) - set(server)), sorted(set(server) - set(front))
-    for k in only_front:
-        rows.append((f"{k[0]} {k[1]}", "operation", "프론트에만", ""))
-    for k in only_server:
-        rows.append((f"{k[0]} {k[1]}", "operation", "서버에만", ""))
-    for k in sorted(set(front) & set(server)):
-        f, s = front[k], server[k]
-        name = f"{k[0]} {k[1]}"
-        if f["op"] != s["op"]:
-            rows.append((name, "operationId", f["op"], s["op"]))
-        for p in sorted(set(f["params"]) | set(s["params"])):
-            if f["params"].get(p) != s["params"].get(p):
-                rows.append((name, f"param {p}", str(f["params"].get(p)), str(s["params"].get(p))))
-        for part in ("body",):
-            for fld in sorted(set(f[part]) | set(s[part])):
-                if f[part].get(fld) != s[part].get(fld):
-                    rows.append((name, f"요청 {fld}", str(f[part].get(fld)), str(s[part].get(fld))))
-        for code in sorted(set(f["resp"]) | set(s["resp"])):
-            fr, sr = f["resp"].get(code, {}), s["resp"].get(code, {})
-            for fld in sorted(set(fr) | set(sr)):
-                a, b = fr.get(fld), sr.get(fld)
-                if a is None and b is not None:
-                    continue  # 서버가 더 주는 필드(프론트는 무시) — 아래에서 따로 센다
-                if a != b:
-                    rows.append((name, f"응답 {code} {fld}", str(a), str(b)))
+    for key in sorted(set(front) - set(server)):
+        rows.append((f"{key[0]} {key[1]}", "operation", "프론트에만", ""))
+    for key in sorted(set(server) - set(front)):
+        rows.append((f"{key[0]} {key[1]}", "operation", "서버에만", ""))
+    for key in sorted(set(front) & set(server)):
+        rows += operation_rows(f"{key[0]} {key[1]}", front[key], server[key])
     print(f"operation: 프론트 {len(front)} · 서버 {len(server)} · 공통 {len(set(front) & set(server))}")
     print("| operation | 항목 | 프론트 계약 | 서버 |\n|---|---|---|---|")
-    for r in rows:
-        print("| " + " | ".join(x.replace("|", "\\|") for x in r) + " |")
-    extra = sum(1 for k in set(front) & set(server) for code in server[k]["resp"]
-                for fld in server[k]["resp"][code] if fld not in front[k]["resp"].get(code, {}))
+    for row in rows:
+        print("| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |")
+    extra = sum(1 for key in set(front) & set(server) for code in server[key]["resp"]
+                for field in server[key]["resp"][code] if field not in front[key]["resp"].get(code, {}))
     print(f"\n(서버가 더 내려주는 응답 필드 {extra}개는 표에서 뺐다 — 프론트는 모르는 필드를 무시한다)")
 
 

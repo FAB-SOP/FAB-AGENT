@@ -23,28 +23,28 @@ def price_of(model: str) -> tuple[float, float]:
 
 
 def stats(path: Path) -> dict:
-    recs = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] if path.exists() else []
-    llm = [r for r in recs if r["kind"] == "llm"]
-    errs = [r for r in recs if r["kind"] == "llm_error"]
-    cost = sum(r.get("inputTokens", 0) * price_of(r.get("apiModel") or r.get("modelName"))[0]
-               + r.get("outputTokens", 0) * price_of(r.get("apiModel") or r.get("modelName"))[1] for r in llm) / 1e6
+    recs = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()] if path.exists() else []
+    llm = [record for record in recs if record["kind"] == "llm"]
+    errs = [record for record in recs if record["kind"] == "llm_error"]
+    cost = sum(record.get("inputTokens", 0) * price_of(record.get("apiModel") or record.get("modelName"))[0]
+               + record.get("outputTokens", 0) * price_of(record.get("apiModel") or record.get("modelName"))[1] for record in llm) / 1e6
     return {
-        "modelNames": sorted({r.get("modelName") for r in llm if r.get("modelName")}),
-        "apiModels": dict(Counter(r.get("apiModel") for r in llm)),
+        "modelNames": sorted({record.get("modelName") for record in llm if record.get("modelName")}),
+        "apiModels": dict(Counter(record.get("apiModel") for record in llm)),
         "llmCalls": len(llm),
-        "fallbackCalls": sum(1 for r in llm if r.get("model") == "fallback"),
-        "timeouts": sum(1 for r in errs if r.get("error") in ("TimeoutError", "CancelledError")),
+        "fallbackCalls": sum(1 for record in llm if record.get("model") == "fallback"),
+        "timeouts": sum(1 for record in errs if record.get("error") in ("TimeoutError", "CancelledError")),
         "llmErrors": len(errs),
-        "inputTokens": sum(r.get("inputTokens", 0) or 0 for r in llm),
-        "outputTokens": sum(r.get("outputTokens", 0) or 0 for r in llm),
-        "llmSeconds": round(sum(r.get("ms", 0) for r in llm) / 1000, 1),
-        "maxCallSeconds": round(max((r.get("ms", 0) for r in llm), default=0) / 1000, 1),
+        "inputTokens": sum(record.get("inputTokens", 0) or 0 for record in llm),
+        "outputTokens": sum(record.get("outputTokens", 0) or 0 for record in llm),
+        "llmSeconds": round(sum(record.get("ms", 0) for record in llm) / 1000, 1),
+        "maxCallSeconds": round(max((record.get("ms", 0) for record in llm), default=0) / 1000, 1),
         "wallSeconds": round(recs[-1]["at"] - recs[0]["at"], 1) if recs else 0,
         "costUsd": round(cost, 4),
-        "jobs": len({r["jobId"] for r in recs}),
+        "jobs": len({record["jobId"] for record in recs}),
     }
 
 
 if __name__ == "__main__":
-    for p in sys.argv[1:]:
-        print(p, json.dumps(stats(Path(p)), ensure_ascii=False))
+    for trace_path in sys.argv[1:]:
+        print(trace_path, json.dumps(stats(Path(trace_path)), ensure_ascii=False))

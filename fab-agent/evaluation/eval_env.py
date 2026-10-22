@@ -54,7 +54,7 @@ def stop_postgres() -> None:
 
 def _jar() -> Path:
     subprocess.run(["./gradlew", "-q", "bootJar"], cwd=BACKEND, check=True)
-    return next(p for p in (BACKEND / "build" / "libs").glob("*.jar") if not p.name.endswith("-plain.jar"))
+    return next(jar for jar in (BACKEND / "build" / "libs").glob("*.jar") if not jar.name.endswith("-plain.jar"))
 
 
 class Spring:
@@ -70,21 +70,21 @@ class Spring:
                "DDL_AUTO": "create", "FAB_PACK_DIR": str(PACK), "FAB_RAG_DIR": str(RAG)}
         env.pop("SPRING_PROFILES_ACTIVE", None)
         self.log.parent.mkdir(parents=True, exist_ok=True)
-        f = open(self.log, "a", encoding="utf-8")
-        self.proc = subprocess.Popen(["java", "-jar", str(_jar())], cwd=BACKEND, env=env, stdout=f, stderr=subprocess.STDOUT)
+        log_file = open(self.log, "a", encoding="utf-8")
+        self.proc = subprocess.Popen(["java", "-jar", str(_jar())], cwd=BACKEND, env=env, stdout=log_file, stderr=subprocess.STDOUT)
         for _ in range(120):
             try:
-                r = httpx.get(BASE + "/internal/incidents/EV-1009", timeout=2,
+                response = httpx.get(BASE + "/internal/incidents/EV-1009", timeout=2,
                               headers={"Authorization": "Bearer " + os.getenv("SERVICE_TOKEN", "dev-service-token")})
-                if r.status_code == 200:
+                if response.status_code == 200:
                     break
             except httpx.HTTPError:
                 pass
             if self.proc.poll() is not None:
                 raise RuntimeError(f"평가용 Spring이 뜨지 못했습니다 — {self.log}")
             time.sleep(1)
-        m = re.findall(r"jdbc:postgresql://[^\s\]]+", self.log.read_text(encoding="utf-8", errors="replace"))
-        self.jdbc = m[-1] if m else None
+        jdbc_urls = re.findall(r"jdbc:postgresql://[^\s\]]+", self.log.read_text(encoding="utf-8", errors="replace"))
+        self.jdbc = jdbc_urls[-1] if jdbc_urls else None
         if not self.jdbc or f":{PG_PORT}/" not in self.jdbc:
             self.stop()
             raise RuntimeError(f"평가용 Spring이 평가용 DB가 아닌 곳에 붙었습니다: {self.jdbc}")
@@ -110,7 +110,7 @@ def environment(run_dir: Path):
 
 
 if __name__ == "__main__":
-    d = RUNS / time.strftime("%Y%m%d-%H%M%S")
-    with environment(d) as s:
-        print("평가용 Spring:", BASE, "JDBC:", s.start())
+    run_dir = RUNS / time.strftime("%Y%m%d-%H%M%S")
+    with environment(run_dir) as spring:
+        print("평가용 Spring:", BASE, "JDBC:", spring.start())
         input("Enter를 누르면 정리합니다 ")
