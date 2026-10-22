@@ -59,11 +59,18 @@ def _term_pattern(alt: str) -> re.Pattern:
 
 
 def _alternatives(en: str) -> list[str]:
-    """'mass flow controller MFC' → ['mass flow controller', 'MFC'] — 구절과 약어를 따로 센다."""
+    """'mass flow controller MFC' → ['mass flow controller MFC', 'mass flow controller', 'MFC'].
+
+    전체 구절, 약어를 뺀 구절(두 단어 이상일 때만), 약어를 따로 센다. 약어를 빼고 한 단어만 남으면
+    ('ICP power' → 'power') 그 한 단어는 세지 않는다 — 흔한 단어로 범용어가 잘못 정해지는 것을 막는다.
+    """
     words = en.split()
     acronyms = [w for w in words if w.isupper() and len(w) >= 2]
-    phrase = " ".join(w for w in words if w not in acronyms)
-    return ([phrase] if phrase else []) + acronyms
+    rest = " ".join(w for w in words if w not in acronyms)
+    alts = [en]
+    if rest and rest != en and (len(rest.split()) >= 2 or not acronyms):
+        alts.append(rest)
+    return alts + [a for a in acronyms if a != en]
 
 
 def generic_terms(terms: dict[str, str], docs: dict[str, str], min_docs: int = GENERIC_MIN_DOCS) -> frozenset[str]:

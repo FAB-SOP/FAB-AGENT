@@ -49,3 +49,24 @@ def test_generic_only_when_no_specific_term():
     generic = frozenset({"공정"})
     assert augment_query("경계층 공정", terms, generic) == "경계층(boundary layer) 공정"
     assert augment_query("공정 변화", terms, generic) == "공정(process) 변화"
+
+
+def test_alternatives_do_not_reduce_to_single_common_word():
+    from fab.rag.server import _alternatives
+    assert _alternatives("ICP power") == ["ICP power", "ICP"]
+    assert _alternatives("mass flow controller MFC") == ["mass flow controller MFC", "mass flow controller", "MFC"]
+    assert _alternatives("boundary layer") == ["boundary layer"]
+
+
+def test_every_term_value_appears_in_source_documents():
+    """사전의 영어 값은 원문에 실제로 나오는 구절 또는 약어여야 한다(원문 조각이 없으면 건너뜀)."""
+    import json
+    import pytest
+    from fab.common.env import rag_dir
+    from fab.rag.server import _alternatives, _term_pattern
+    path = rag_dir() / "rag" / "source-chunks.jsonl"
+    if not path.exists():
+        pytest.skip("source-chunks.jsonl 없음(공개 저장소 제외 파일)")
+    text = " ".join(json.loads(line)["text"] for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+    missing = [(ko, en) for ko, en in TERMS.items() if not any(_term_pattern(a).search(text) for a in _alternatives(en))]
+    assert not missing, missing
