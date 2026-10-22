@@ -1,0 +1,632 @@
+[
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CVD-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-1-CVD",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T04:00:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CVD-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-1-CVD",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T04:00:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CVD-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-1-CVD",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T04:05:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CVD-RUN_END",
+    "runId": "RUN-W-CURRENT-011-1-CVD",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T04:05:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CVD-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-1-CVD",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T04:10:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-ETCH-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-1-ETCH",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T04:35:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-ETCH-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-1-ETCH",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T04:35:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-ETCH-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-1-ETCH",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T04:38:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-ETCH-RUN_END",
+    "runId": "RUN-W-CURRENT-011-1-ETCH",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T04:38:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-ETCH-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-1-ETCH",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T04:43:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CMP-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-1-CMP",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T05:10:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CMP-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-1-CMP",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T05:10:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CMP-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-1-CMP",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T05:15:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CMP-RUN_END",
+    "runId": "RUN-W-CURRENT-011-1-CMP",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T05:15:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-1-CMP-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-1-CMP",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T05:20:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CVD-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-2-CVD",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T04:02:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CVD-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-2-CVD",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T04:02:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CVD-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-2-CVD",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T04:07:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CVD-RUN_END",
+    "runId": "RUN-W-CURRENT-011-2-CVD",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T04:07:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CVD-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-2-CVD",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T04:12:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-ETCH-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-2-ETCH",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T04:37:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-ETCH-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-2-ETCH",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T04:37:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-ETCH-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-2-ETCH",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T04:40:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-ETCH-RUN_END",
+    "runId": "RUN-W-CURRENT-011-2-ETCH",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T04:40:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-ETCH-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-2-ETCH",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T04:45:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CMP-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-2-CMP",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T05:12:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CMP-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-2-CMP",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T05:12:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CMP-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-2-CMP",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T05:17:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CMP-RUN_END",
+    "runId": "RUN-W-CURRENT-011-2-CMP",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T05:17:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-2-CMP-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-2-CMP",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T05:22:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CVD-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-3-CVD",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T04:04:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CVD-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-3-CVD",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T04:04:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CVD-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-3-CVD",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T04:09:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CVD-RUN_END",
+    "runId": "RUN-W-CURRENT-011-3-CVD",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T04:09:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CVD-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-3-CVD",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T04:14:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-ETCH-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-3-ETCH",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T04:39:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-ETCH-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-3-ETCH",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T04:39:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-ETCH-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-3-ETCH",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T04:42:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-ETCH-RUN_END",
+    "runId": "RUN-W-CURRENT-011-3-ETCH",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T04:42:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-ETCH-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-3-ETCH",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T04:47:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CMP-RUN_READY",
+    "runId": "RUN-W-CURRENT-011-3-CMP",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T05:14:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CMP-PROCESS_START",
+    "runId": "RUN-W-CURRENT-011-3-CMP",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T05:14:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CMP-PROCESS_END",
+    "runId": "RUN-W-CURRENT-011-3-CMP",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T05:19:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CMP-RUN_END",
+    "runId": "RUN-W-CURRENT-011-3-CMP",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T05:19:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-011-3-CMP-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-011-3-CMP",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T05:24:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CVD-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-1-CVD",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T06:00:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CVD-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-1-CVD",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T06:00:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CVD-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-1-CVD",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T06:05:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CVD-RUN_END",
+    "runId": "RUN-W-CURRENT-012-1-CVD",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T06:05:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CVD-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-1-CVD",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T06:10:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-ETCH-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-1-ETCH",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T06:35:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-ETCH-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-1-ETCH",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T06:35:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-ETCH-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-1-ETCH",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T06:38:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-ETCH-RUN_END",
+    "runId": "RUN-W-CURRENT-012-1-ETCH",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T06:38:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-ETCH-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-1-ETCH",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T06:43:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CMP-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-1-CMP",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T07:10:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CMP-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-1-CMP",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T07:10:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CMP-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-1-CMP",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T07:15:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CMP-RUN_END",
+    "runId": "RUN-W-CURRENT-012-1-CMP",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T07:15:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-1-CMP-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-1-CMP",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T07:20:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CVD-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-2-CVD",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T06:02:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CVD-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-2-CVD",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T06:02:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CVD-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-2-CVD",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T06:07:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CVD-RUN_END",
+    "runId": "RUN-W-CURRENT-012-2-CVD",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T06:07:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CVD-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-2-CVD",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T06:12:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-ETCH-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-2-ETCH",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T06:37:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-ETCH-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-2-ETCH",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T06:37:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-ETCH-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-2-ETCH",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T06:40:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-ETCH-RUN_END",
+    "runId": "RUN-W-CURRENT-012-2-ETCH",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T06:40:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-ETCH-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-2-ETCH",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T06:45:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CMP-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-2-CMP",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T07:12:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CMP-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-2-CMP",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T07:12:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CMP-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-2-CMP",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T07:17:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CMP-RUN_END",
+    "runId": "RUN-W-CURRENT-012-2-CMP",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T07:17:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-2-CMP-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-2-CMP",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T07:22:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CVD-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-3-CVD",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T06:04:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CVD-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-3-CVD",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T06:04:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CVD-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-3-CVD",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T06:09:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CVD-RUN_END",
+    "runId": "RUN-W-CURRENT-012-3-CVD",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T06:09:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CVD-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-3-CVD",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T06:14:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-ETCH-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-3-ETCH",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T06:39:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-ETCH-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-3-ETCH",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T06:39:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-ETCH-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-3-ETCH",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T06:42:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-ETCH-RUN_END",
+    "runId": "RUN-W-CURRENT-012-3-ETCH",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T06:42:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-ETCH-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-3-ETCH",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T06:47:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CMP-RUN_READY",
+    "runId": "RUN-W-CURRENT-012-3-CMP",
+    "eventType": "RUN_READY",
+    "occurredAt": "2026-10-19T07:14:00.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CMP-PROCESS_START",
+    "runId": "RUN-W-CURRENT-012-3-CMP",
+    "eventType": "PROCESS_START",
+    "occurredAt": "2026-10-19T07:14:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CMP-PROCESS_END",
+    "runId": "RUN-W-CURRENT-012-3-CMP",
+    "eventType": "PROCESS_END",
+    "occurredAt": "2026-10-19T07:19:10.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CMP-RUN_END",
+    "runId": "RUN-W-CURRENT-012-3-CMP",
+    "eventType": "RUN_END",
+    "occurredAt": "2026-10-19T07:19:20.000+09:00",
+    "synthetic": true
+  },
+  {
+    "eventId": "RUN-W-CURRENT-012-3-CMP-METROLOGY_AVAILABLE",
+    "runId": "RUN-W-CURRENT-012-3-CMP",
+    "eventType": "METROLOGY_AVAILABLE",
+    "occurredAt": "2026-10-19T07:24:20.000+09:00",
+    "synthetic": true
+  }
+]

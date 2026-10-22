@@ -3,8 +3,13 @@
 **/.env
 !.env.example
 !**/.env.example
+# 개인 메모 · 실행 가이드(예: RUNBOOK.local.md)
+*.local.md
+# 개인 작업 · 조사 디렉터리
+local/
 
 # ── 생성물
+.specify
 **/.venv/
 **/__pycache__/
 *.py[oc]
@@ -12,9 +17,9 @@
 **/*.egg-info/
 **/dist/
 **/wheels/
-fab-context-api/build/
-fab-context-api/.gradle/
-fab-context-api/out/
+backend/build/
+backend/.gradle/
+backend/out/
 **/.DS_Store
 
 # ── 편집기
@@ -27,30 +32,36 @@ fab-context-api/out/
 강의자료/
 # 실제 원문 PDF — 출판자 저작물. 공개 다운로드가 재배포 허가를 뜻하지 않는다(그 폴더 README 6절).
 # RAG에 쓰는 것은 rag/source-chunks.jsonl(조각 · 출처 · 쪽)뿐이다
-FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1/originals/
-FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1/selected/
+data/fab-rag-real-documents-v1/originals/
+data/fab-rag-real-documents-v1/selected/
 # 실제 원문 발췌(100조각) — 원문 그대로라 공개 저장소에 두지 않는다. 팀 내부로 받아 같은 경로에 둔다
-FAB-실제문서-선별RAG-센서데이터-통합/fab-rag-real-documents-v1/rag/source-chunks.jsonl
+data/fab-rag-real-documents-v1/rag/source-chunks.jsonl
 
 # ── 정답(평가자 전용) — 공개 저장소에 두지 않는다. 로컬 · 평가자만 가진다
-FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/evaluation/
+data/fab-causal-pack-v1/evaluation/
 # 생성 스크립트 — 평가 문항(E01–E08) · 기대 행동을 코드 안에 담고 있다(평가자 전용). 실행 코드는 쓰지 않는다
-FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/prepare_knowledge.py
-FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/generate.py
-FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/validate.py
-FAB-실제문서-선별RAG-센서데이터-통합/fab-causal-pack-v1/README.md
-backend-handoff-v2/시나리오-문제-원인-조치.md
-fab-agent/evaluation/ground_truth.json
+data/fab-causal-pack-v1/prepare_knowledge.py
+data/fab-causal-pack-v1/generate.py
+data/fab-causal-pack-v1/validate.py
+data/fab-causal-pack-v1/README.md
+data/backend-handoff-v2/시나리오-문제-원인-조치.md
+# L011 · L012 추가 묶음 — 기대 우선순위(정답) · 그것을 만들고 검증하는 스크립트 · 정답을 적은 설명서
+data/priority-addon-l011-l012-v1/evaluation/
+data/priority-addon-l011-l012-v1/build_addon.py
+data/priority-addon-l011-l012-v1/validate_addon.py
+data/priority-addon-l011-l012-v1/finalize_bundle.py
+data/priority-addon-l011-l012-v1/README.md
+ai/evaluation/ground_truth.json
 # 실제 모델 평가 산출물(trace · 결과 원문 · Spring 로그) — 시험 문항 · 모델 답변이 들어 있다
-fab-agent/evaluation/runs/
+ai/evaluation/runs/
 
 # ── 설계 · 전달 문서 — 공개 저장소에는 실행 · 테스트 · 도구가 쓰는 것만 둔다(문서는 로컬 · 팀 내부)
 fab-flow-atlas/
-# 팀 계획 · 계약 원본(팀 내부). 테스트가 쓰는 계약 3개는 fab-agent/contracts/에 사본으로 둔다
+# 팀 계획 · 계약 원본(팀 내부). 테스트가 쓰는 계약 3개는 ai/contracts/에 사본으로 둔다
 fab-team-plan_draft/
 # 보고서 · 그림 원본(팀 내부)
 reports/
-backend-handoff-v2/*
-!backend-handoff-v2/data/
-!backend-handoff-v2/examples/
-!backend-handoff-v2/combined.openapi.json
+data/backend-handoff-v2/*
+!data/backend-handoff-v2/data/
+!data/backend-handoff-v2/examples/
+!data/backend-handoff-v2/combined.openapi.json

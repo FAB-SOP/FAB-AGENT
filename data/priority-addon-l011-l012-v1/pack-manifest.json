@@ -1,0 +1,86 @@
+{
+  "dataVersion": "priority-addon-l011-l012-v1",
+  "kind": "APPEND_ONLY_ADDON_NOT_FULL_PACK",
+  "policyVersion": "DEMO-1.2-DRAFT",
+  "basePack": "causal-pack-v2-scenarios",
+  "lots": [
+    "CURRENT-L011",
+    "CURRENT-L012"
+  ],
+  "templateLot": "CURRENT-L010",
+  "templateUse": "normal run/metrology/trace templates with new IDs and shifted times; selected sensor deviations injected; all features recalculated",
+  "allSynthetic": true,
+  "appendedCounts": {
+    "lots": 2,
+    "wafers": 6,
+    "runs": 18,
+    "metrologyRows": 90,
+    "features": 120,
+    "traces": 120,
+    "lineageEdges": 12,
+    "runEvents": 90
+  },
+  "featureCalculation": "[readySeconds+2,readySeconds+processSeconds)",
+  "featureStd": "population",
+  "assessmentAsOf": "2026-10-20T11:59:00+09:00",
+  "dependencies": {
+    "pack-manifest.json": "76ff4db8e812ea1a2c1d4234daa3f8e63dd7c82420416693165a9f8e2c9a1121",
+    "README.md": "08e50e46910e7acacdc724af87bd719f9472ec1c8f8bc7f558d2dea37402581d",
+    "SHA256SUMS.txt": "d30de9c03fda9339d737d6844e70a3f09aca4cbfe28f9a5d3c2eee70dd67ba4a",
+    "knowledge/cause-matrix.json": "fb5e31762242b831e8e5e421a85e6f4d95bbe8eb5836630b41ecb79d96fe3ace",
+    "knowledge/agent-instructions.md": "56824a3add0ca03d9d07f93b660335aec4b2b564f1136b5b4c0a15b3602e2f75",
+    "knowledge/synthetic-cases.jsonl": "b77c2c5ae7b848e91a69eaba0385bfc827687ef75d4c13b0d1902af2d42e5906",
+    "knowledge/source-registry.json": "fad2e4a1686b4797a1034ea89ae7b96c6202cbc9eda47a67a4a2fa18f74ad01e",
+    "knowledge/agent-contract.json": "3fbb751c8883b648370ed5c72bf4651b7d287ce07160111bd2d6b33ad486863d",
+    "knowledge/rag-chunks.jsonl": "a4570d375a2a700c93562a9644f6bc40318777e26703f46721e329761d1bf076",
+    "data/sensor-traces.jsonl.gz": "a20c9a5662270d131ae70e71c2156bbdd167f6bce20ab7a1de4eebd0ac59f83b",
+    "data/change-events.json": "c3b0635777532a13cf5cb1a4cc77d474d338fdad1242f932582cf652d52ae0b0",
+    "data/current-wafer-summary.json": "4da383691c8668b8e4f6a3b1a00e67dcb4d417198346c53cbe76a490d5ea6839",
+    "data/feature-reference-bands.json": "55904281ebd8386052992ab0d2397afebeb0e20ed8ebf1643dfa01e3252d77e3",
+    "data/quality-limits.json": "dfa4f7ad0057eb799a7704c5cb4431ee72c9f704cf28ec82c7ad9e70aed7b9e4",
+    "data/trace-manifest.json": "992fe101c7dee7b2369f4abccf6ad1f869b20422f1dfb1e14efac08628416c82",
+    "data/process-runs.json": "adf510bc512287a95f1528eaa0f214a6e5727ee66a6c922bd39d060205416fab",
+    "data/sensor-catalog.json": "b63f68a20307954ffccbceac797c42411230cc2dc4f4b9bae79c119ca209918e",
+    "data/wafer-lineage.json": "e22be835ab408809c66d286a34ba6f363e334613d0a659a8d072a6a45dae2edd",
+    "data/sensor-envelopes.json": "65dd8c5243b6aabeb5039b8cf6ddad96f4a345e6a0cfef04c69fb015e1c84541",
+    "data/run-events.json": "e3b8cec907161000d4bd82994b0bd850a91a383c320c1db72ff9dc53e6541eab",
+    "data/run-sensor-features.json": "1a75e82b4f4924f1b3c0ea40ae8a7cf3a491793c1ea453f06e95002cda2cd3b9",
+    "data/site-metrology.json": "aa47cb3bc5f5a84bdb49d476a0d51532cdea4b2563cf79888d41121a150a445b"
+  },
+  "mergeKeys": {
+    "process-runs.json": [
+      "runId"
+    ],
+    "site-metrology.json": [
+      "runId",
+      "siteId"
+    ],
+    "run-sensor-features.json": [
+      "runId",
+      "sensorId"
+    ],
+    "sensor-traces.jsonl.gz": [
+      "runId",
+      "sensorId"
+    ],
+    "run-events.json": [
+      "eventId"
+    ],
+    "wafer-lineage.json": [
+      "waferId",
+      "fromRunId",
+      "toRunId"
+    ],
+    "current-wafer-summary.json": [
+      "waferId"
+    ]
+  },
+  "doNotIndexInRAG": [
+    "data/*",
+    "event-candidates/*",
+    "evaluation/*",
+    "reference/*",
+    "build_addon.py"
+  ],
+  "liveServiceModified": false
+}

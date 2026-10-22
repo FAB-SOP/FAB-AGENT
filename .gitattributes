@@ -1,6 +1,8 @@
 # 납품 원본 · 전달 묶음 · 조립 데이터는 바이트 그대로 저장한다 — 줄바꿈을 바꾸면 SHA256SUMS 검증이 깨진다
-FAB-실제문서-선별RAG-센서데이터-통합/** -text
-backend-handoff-v2/** -text
+data/fab-causal-pack-v1/** -text
+data/fab-rag-real-documents-v1/** -text
+data/backend-handoff-v2/** -text
+data/priority-addon-l011-l012-v1/** -text
 data/fab-causal-pack-v2/** -text
 # Windows 배치 파일은 CRLF 유지
 *.bat text eol=crlf

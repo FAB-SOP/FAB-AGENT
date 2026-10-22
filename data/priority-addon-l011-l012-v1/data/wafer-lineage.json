@@ -1,0 +1,62 @@
+[
+  {
+    "waferId": "W-CURRENT-011-1",
+    "fromRunId": "RUN-W-CURRENT-011-1-CVD",
+    "toRunId": "RUN-W-CURRENT-011-1-ETCH"
+  },
+  {
+    "waferId": "W-CURRENT-011-1",
+    "fromRunId": "RUN-W-CURRENT-011-1-ETCH",
+    "toRunId": "RUN-W-CURRENT-011-1-CMP"
+  },
+  {
+    "waferId": "W-CURRENT-011-2",
+    "fromRunId": "RUN-W-CURRENT-011-2-CVD",
+    "toRunId": "RUN-W-CURRENT-011-2-ETCH"
+  },
+  {
+    "waferId": "W-CURRENT-011-2",
+    "fromRunId": "RUN-W-CURRENT-011-2-ETCH",
+    "toRunId": "RUN-W-CURRENT-011-2-CMP"
+  },
+  {
+    "waferId": "W-CURRENT-011-3",
+    "fromRunId": "RUN-W-CURRENT-011-3-CVD",
+    "toRunId": "RUN-W-CURRENT-011-3-ETCH"
+  },
+  {
+    "waferId": "W-CURRENT-011-3",
+    "fromRunId": "RUN-W-CURRENT-011-3-ETCH",
+    "toRunId": "RUN-W-CURRENT-011-3-CMP"
+  },
+  {
+    "waferId": "W-CURRENT-012-1",
+    "fromRunId": "RUN-W-CURRENT-012-1-CVD",
+    "toRunId": "RUN-W-CURRENT-012-1-ETCH"
+  },
+  {
+    "waferId": "W-CURRENT-012-1",
+    "fromRunId": "RUN-W-CURRENT-012-1-ETCH",
+    "toRunId": "RUN-W-CURRENT-012-1-CMP"
+  },
+  {
+    "waferId": "W-CURRENT-012-2",
+    "fromRunId": "RUN-W-CURRENT-012-2-CVD",
+    "toRunId": "RUN-W-CURRENT-012-2-ETCH"
+  },
+  {
+    "waferId": "W-CURRENT-012-2",
+    "fromRunId": "RUN-W-CURRENT-012-2-ETCH",
+    "toRunId": "RUN-W-CURRENT-012-2-CMP"
+  },
+  {
+    "waferId": "W-CURRENT-012-3",
+    "fromRunId": "RUN-W-CURRENT-012-3-CVD",
+    "toRunId": "RUN-W-CURRENT-012-3-ETCH"
+  },
+  {
+    "waferId": "W-CURRENT-012-3",
+    "fromRunId": "RUN-W-CURRENT-012-3-ETCH",
+    "toRunId": "RUN-W-CURRENT-012-3-CMP"
+  }
+]

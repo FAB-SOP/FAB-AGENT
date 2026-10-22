@@ -1,0 +1,46 @@
+# 팀 계약에 반영 제안 (원본: 팀 내부 fab-team-plan_draft/contracts — 테스트용 사본은 ../contracts/)
+
+공정을 CVD → ETCH → CMP로 확정하고, 동료 납품 묶음(당시 `FAB-실제문서-선별RAG-센서데이터-통합`, 지금은 `data/` 아래 — 데이터 팩 `fab-causal-pack-v1` · 실제 원문 RAG)에 맞춰 업무 MCP · 지식 MCP · Agent · Spring backend를 다시 짜면서 드러난 계약 변경점이다.
+주인(업무 MCP 4번, 공개 API 3번)과 확인 후 반영한다. **ID와 근거 형식은 다른 동료들이 확정 중**이라, 아래 이름은 그 결정이 나오면 따라 바꾼다.
+
+## 2026-10-20 데이터 팩 기준으로 바뀐 것
+
+| # | 위치 | 전 | 제안(지금 구현) | 이유 |
+|---|---|---|---|---|
+| 1 | `processCode` enum | `PHOTO` · `ETCH` | `CVD` · `ETCH` · `CMP` (지식 검색은 `+COMMON`) | 공정 확정 |
+| 2 | 장비 ID | 공정 이름 · 챔버(`CMP-C1`) | 팩의 PM ID(`CMP-PM3` 등), 공정마다 셋. 경로는 웨이퍼 run으로 잇고 PM 이름으로 잇지 않는다 | 팩 데이터 모델 |
+| 3 | 업무 MCP 읽기 도구 | 11개(센서 · 계측 · 비교 묶음) | 팩 계약 `dataMcpTools` 그대로 + 협업 도구: `get_incident` · `list_incidents` · `get_wafer_lineage` · `get_run_and_metrology` · `get_run_features` · `get_sensor_trace` · `get_frozen_limits` · `get_change_events` · `get_process_owner` · `get_check_requests` · `get_action_history` · `get_report_context` (12) | 숫자는 backend가 계산하고 Agent는 해석만 — 팩 계약 |
+| 4 | `compare_process_evidence` | 그룹 비율 비교 · 근거 부족 규칙 | **없앴다.** run별 증거(R1 · OOS · 같은 PM 정상 분포 대비 z · 참고 범위 이탈)를 `get_run_and_metrology` · `get_run_features`가 돌려준다. 공개 API `getComparisons`도 같은 계산을 보여 준다 | 팩은 웨이퍼 한 장의 경로 증거로 판단한다 |
+| 5 | 변경 도구 | 3개(확인 요청 · 조치 기록 · 보고서 확정) | `create_cross_process_check_request` · **`create_maintenance_request`(새로)** · `confirm_report`, 모두 `destructiveHint` · 승인 ID 필수 | 현재 설비 원인은 설비정비팀 정비 요청이 맞다. 조치 기록은 사람이 화면에서 한다 |
+| 6 | 승인 `actionType` | `CREATE_CHECK_REQUEST` · `RECORD_ACTION` · `CONFIRM_REPORT` | **팀 계약(내부 API · Agent 제안 · 이벤트)**: `CREATE_CHECK_REQUEST` · `CREATE_MAINTENANCE_REQUEST`(추가) · `RECORD_ACTION` · `CONFIRM_REPORT`. **공개 API(프론트 계약)**: `CHECK_REQUEST` · `MAINTENANCE_REQUEST`(추가) · `RECORD_ACTION` · `CONFIRM_REPORT` — Spring이 변환하고 DB에는 공개 이름 하나로 저장한다. 팀 폴더 `public-openapi.json`도 공개 이름으로 고쳐 공개 계약 문서를 하나로 맞췄다(2026-10-20). 확인 요청에 `requestType`(`CROSS_PROCESS` · `MAINTENANCE`) | 위 5 · 프론트 계약(backend-handoff-v2) |
+| 7 | 결과 `nextStep` | `UPSTREAM_CHECK` · `CURRENT_CHECK` · `INSUFFICIENT_EVIDENCE` · `NEEDS_DEEP_ANALYSIS` | **`OBSERVE`** 추가(정상 변동 · 관찰만) | 팩 시나리오 |
+| 8 | 결과 원인 ID | 없음 | `causeIds` — 팩 원인 매트릭스 15개(`CMP_PRESSURE` · `ETCH_WALL` · `METROLOGY` …). **계약 `candidateCauses`가 추가 필드를 막아** Worker 반환값 `analysis`에만 둔다(`FAB_RESULT_EXTENSIONS=true`면 이벤트에 합침) | 평가 · 화면 분기 |
+| 9 | 분석 시점 | 없음 | 팩 `analysisAsOf` 이후 공개된 계측 · FOLLOWUP run은 내부 API가 403. 작업 맥락에 `analysisAsOf` | 미래 정보 누설 방지 |
+| 10 | 지식 MCP | `search_procedures` · `manual://` | `search_technical_documents`(실제 원문 100청크) · `search_applicable_playbooks`(팀 점검 문서 15) · `search_past_cases`(가상 사례 7, `availableAt ≤ asOf`) · Resource `doc://{chunkId}` · `case://{caseId}`. 공개 요약 청크(PUB-*) · 원문 PDF는 색인하지 않는다 | 팩 수집 정책 |
+| 11 | 정답표 | 생성기 S1 · S2 · S3 | `evaluation/ground_truth.json` — EV-1006(E01) · EV-1007(E02) · EV-1009(E03). E04–E08은 실제 모델 평가 대상. 팩 `evaluation/`과 생성기 정답은 Agent · RAG · 컨테이너에 노출하지 않는다 | 팩 규칙 |
+| 12 | 공개 API 비교 · 센서 기준선 | 그룹 비교 저장본, 「기준선 없음」 | `getComparisons` = run 서버 계산 증거(`processCode` 지정) — 프론트 유지 목록에 없어 그대로. 센서 `baseline`은 프론트 계약대로 정상 기준 trace 자리라 **null + baselineUnavailableReason**(팩에 기준 trace가 없다). 참고 분포 · 시계열 참조 범위는 모니터링 상세(`references` · `sensorEnvelopes`) | 위 4 · 프론트 계약 |
+
+## 앞서 제안한 것 (유지)
+
+| # | 위치 | 제안 | 이유 |
+|---|---|---|---|
+| 13 | 도구 `description` | 도구마다 「무엇을 돌려주고, 언제 쓰는지」 (`business/server.py` docstring) | 모델은 설명만 보고 도구를 고른다 |
+| 14 | 작업 확보 | `POST /internal/jobs/{jobId}/claims` {attempt, workerId, leaseSeconds} — 같은 attempt면 `409` → `SKIPPED` | 중복 전달 · 재시작에도 한 번만 처리 |
+| 15 | 제안 멱등 | `POST /internal/jobs/{jobId}/proposals`에 `idempotencyKey` = `{jobId}:{toolCallId}` | 재시도에도 승인 요청 하나 |
+| 16 | 보고서 `sections` | 고정 다섯 키 `overview` · `investigation` · `requestsAndReplies` · `actionsAndVerification` · `unresolved` + `evidenceIds` | **Agent 초안(REPORT_DRAFT_READY) · 내부 API는 다섯 키 객체 그대로.** 공개 API · DB는 프론트 계약대로 배열 `[{key, title, body}]`(다섯 키 · 순서 고정, 서버 검사) — Spring이 변환 | `Report` 스키마 · 프론트 SectionInput |
+| 17 | 승인 뒤 실행 | **승인은 기록만, 실행은 재개된 Agent가 승인 ID로 `/internal/approved-actions/*`**, backend가 저장본 · 상태 · 만료를 다시 확인해 한 번만 실행. 수동 제안은 승인 때 실행 | 팀 결정(2026-10-20) |
+| 18 | 작업 소스 | `GET /internal/jobs`(QUEUED) · `POST /internal/jobs/{jobId}/events` (이벤트 모양은 agent-event 그대로). **지금 compose의 기본 경로** | Kafka를 어디까지 쓸지 정하는 동안 |
+| 19 | `jobs/{jobId}/context` | `{job: <job-message>, question, scope, status, analysisAsOf}`로 감쌈 | job-message가 추가 필드를 막는다 |
+| 20 | 서비스 인증 | 고정 Bearer 토큰(`SERVICE_TOKEN`) | 방식은 잠정 보류(팀) |
+| 21 | 제안 받는 사람 검증 | backend가 `POST /internal/jobs/{jobId}/proposals`에서 확인: 앞 공정 확인은 대상 공정 ≠ 사건 공정이고 받는 사람이 그 공정 PROCESS_OWNER, 정비 요청은 설비정비팀, 질문한 본인 금지 → 아니면 400 + hint | 실제 모델이 질문한 본인 · 다른 공정 담당에게 요청을 냈다(2026-10-20) |
+| 22 | 거절 뒤 | Agent가 기다리던 제안을 거절하면 외부 Agent 모드에서는 RESUME 작업을 만든다(승인과 같은 재개 입력). 시뮬레이터 모드는 그 자리에서 끝낸다 | 재개하지 않으면 Agent 체크포인트가 승인 대기에 남아 다음 질문을 받을 수 없다 |
+| 23 | 제안이 붙는 작업 | 제안은 지금 처리 중인 작업(회신 뒤면 RESUME 작업)에 붙는다 | 처음 작업에 붙으면 backend가 「기다리는 Agent 없음」으로 보고 승인 즉시 실행했다 |
+| 24 | 결과 규칙 | `causeIds`는 매트릭스 15개 enum, 1순위 가설에 하나 이상. nextStep은 1순위 원인 공정과 일치(사건 공정 → CURRENT_CHECK, 앞 공정 → UPSTREAM_CHECK). 사건당 제안 2개 | Harness가 반려 — 실제 모델이 없는 ID(`ETCH_REMOVAL_VARIATION`)를 만들었다 |
+| 25 | backend DB 스키마 | 외래 키 14개(String ID는 그대로, 읽기 전용 연관으로 제약만), JSON 컬럼 21개를 jsonb로, `metrology.cd_value` → `value_a` | 공개 · 내부 API 응답 모양은 그대로라 계약 변경은 없다. 로컬 Postgres는 `backend` · `agent` 스키마를 지우고 다시 시드해야 한다(`backend/README.md`) |
+| 26 | 요청 브리프 | 제안 payload에 `brief`({reason, deviations, suspectedCauses(confirmed=false), relatedRecords, askFor}) · `causeIds` · `equipmentId`를 넣고, 승인 해시가 덮으며, 승인 뒤 확인 요청(`GET /api/check-requests/{id}`)에 `brief` · `causeIds` · `equipmentId` · `requestType`로 복사한다. run 증거에 `normalVariationSigma`. 모델은 `reason`만 쓰고(제안 도구 인자, 필수) 나머지는 Harness의 `request_brief` 노드가 도구 결과에서 옮긴다 | 받는 사람은 사건 분석(P07) 권한이 없어 요청 문구 한 줄과 근거 ID만으로는 무엇을 왜 확인하는지 알 수 없었다. 공개 API 계약에 없는 필드라 주인(3번)과 확인한다 |
+| 27 | 데이터 팩 | v1(`fab-causal-pack-v1`) | **v2 조립본** `data/fab-causal-pack-v2`(dataVersion `causal-pack-v2-scenarios`) — v1 BASELINE · FOLLOWUP + v2 CURRENT(L006 CMP-PM3 한 run 수정) + `sensor-envelopes.json`. `data/build_pack_v2.py`가 만들고 검사한다. 결과 · 근거의 `dataVersion`은 팩 버전(지식 MCP의 `KNOWLEDGE-*`가 덮어쓰지 않는다) | 프론트 명세 · 데이터 주인 확인 |
+| 28 | 공개 API 모니터링 3개 | 없음 | `GET /api/monitoring/lots` · `/lots/{lotId}/summary` · `/runs/{runId}/sensor-data` (프론트 monitoring.openapi.json 그대로, 예시와 필드 · 값 대조 테스트) | 정상 LOT · PM 조회 |
+| 29 | 분석 결과 화면용 키 | `factId · statement · evidenceIds` / `priority · hypothesis · supportingEvidenceIds …` | 공개 API에 프론트 제안 키(`label · value · unit · evidenceId` / `rank · cause · supportingEvidence · counterEvidence · check · action · verify · sourceIds`)를 더하고 옛 키도 둔다(프론트 사용 여부 확정 전). Agent 이벤트 계약은 그대로, Spring이 변환. `relation` · `processCode`는 근거가 가리키는 공정으로 판단(예전 `-UPSTREAM-` 글자 판단은 새 근거 ID에서 늘 CURRENT였다) | 프론트 명세 「분석 결과의 화면용 필드」 |
+| 30 | `get_sensor_trace` 구간 · `recipeStep` | 구간 평균 점만 · `SHUTDOWN` | `sensorEnvelope` · `segments[]`(DEMO-SEGMENT-V2: fromSeconds · toSeconds · direction · mean, run 시작 기준 초) · 근거 `E-SEG-*`. step은 `READY · PROCESS · END`. 공개 API에는 구간을 넣지 않는다(프론트와 합의 전) | Agent가 「부분 저하」를 관측 근거로 쓰게 |
+| 31 | 이벤트 `metrics` · `job.metrics` | 없음 — Worker가 trace 요약을 만들고 버렸다 | agent-event envelope에 선택 필드 `metrics`(작업을 끝내거나 멈추는 이벤트에만: modelCalls · fallbackCalls · tokens · inputTokens · outputTokens · apiModels · toolCalls · toolErrors · retries · guardRejects · ms · attempt). backend가 `job.metrics`(jsonb)에 저장한다. 공개 API 응답은 그대로 | Docker에서 Harness trace가 어디에도 남지 않았다(`FAB_TRACE_FILE` 미설정). 컨테이너 trace는 `FAB_TRACE_STDOUT=true`로 표준출력 JSON 한 줄씩 — docker logs · 로그 수집기가 가져간다 |
+| 32 | 데이터 팩 내용 · dataVersion | `causal-pack-v2-scenarios` — CURRENT 10 LOT · 90 run | `causal-pack-v2.1-scenarios` — 추가 묶음 `data/priority-addon-l011-l012-v1`의 CURRENT-L011 · L012(6 wafer · 18 run · 계측 90 · 특징 120 · 원시 시계열 120 · run 이벤트 90 · 경로 12)를 기존 행 뒤에 덧붙였다(append-only, 기존 행 · 관리한계 · baseline은 그대로). 모니터링 LOT 목록이 12개가 되고, 결과 · 근거 · 화면의 dataVersion이 바뀐다. 두 LOT은 두께가 관리한계 안이라 사건이 생기지 않는다. 묶음의 편차 구간(`DEMO-PRIORITY-SEGMENT-V1`) · 사건 후보 · 조사 우선순위 정책은 읽는 코드가 없어 팩에 넣지 않았다 | 조사 우선순위(짧은 단일 센서 편차 · 관련 센서 2종 동반 편차) 시연용 LOT 추가. 프론트 전달 예시(`data/backend-handoff-v2/examples`)는 고치지 않았다 — 예시의 dataVersion은 전달 당시 값이다 |

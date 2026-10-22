@@ -1,5 +1,0 @@
-실제 문서와 RAG 선별 자료: fab-rag-real-documents-v1/README.md
-센서 데이터와 가상 사례: fab-causal-pack-v1/README.md
-실제 원문 검색 입력: fab-rag-real-documents-v1/rag/source-chunks.jsonl
-가상 과거 사례 검색 입력: fab-causal-pack-v1/knowledge/synthetic-cases.jsonl
-센서/계측은 DB에 적재. evaluation 및 생성기 정답은 Agent/RAG에 노출하지 마세요.

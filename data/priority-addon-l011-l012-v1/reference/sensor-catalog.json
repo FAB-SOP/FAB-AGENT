@@ -1,0 +1,302 @@
+[
+  {
+    "sensorId": "chamber_pressure",
+    "process": "CVD",
+    "unit": "Torr",
+    "requestedIntervalMs": 100,
+    "demoNominal": 2.5,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CVD_PRESSURE_RF"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "heater_temperature",
+    "process": "CVD",
+    "unit": "degC",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 350,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CVD_THERMAL"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "gas_SiH4_feed",
+    "process": "CVD",
+    "unit": "sccm",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 60,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CVD_GAS"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "gas_N2O",
+    "process": "CVD",
+    "unit": "sccm",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 900,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CVD_GAS"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "rf_forward",
+    "process": "CVD",
+    "unit": "W",
+    "requestedIntervalMs": 100,
+    "demoNominal": 600,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CVD_PRESSURE_RF"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "rf_reflected",
+    "process": "CVD",
+    "unit": "W",
+    "requestedIntervalMs": 100,
+    "demoNominal": 3,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": false,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CVD_PRESSURE_RF"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "chamber_pressure",
+    "process": "ETCH",
+    "unit": "mTorr",
+    "requestedIntervalMs": 100,
+    "demoNominal": 5,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_PRESSURE"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "source_rf_forward",
+    "process": "ETCH",
+    "unit": "W",
+    "requestedIntervalMs": 100,
+    "demoNominal": 900,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_RF"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "source_rf_reflected",
+    "process": "ETCH",
+    "unit": "W",
+    "requestedIntervalMs": 100,
+    "demoNominal": 4,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": false,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_RF"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "bias_rf_forward",
+    "process": "ETCH",
+    "unit": "W",
+    "requestedIntervalMs": 100,
+    "demoNominal": 50,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_RF"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "bias_rf_reflected",
+    "process": "ETCH",
+    "unit": "W",
+    "requestedIntervalMs": 100,
+    "demoNominal": 1,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": false,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_RF"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "gas_CF4",
+    "process": "ETCH",
+    "unit": "sccm",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 30,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_GAS"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "gas_CHF3",
+    "process": "ETCH",
+    "unit": "sccm",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 10,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_GAS"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "esc_temperature",
+    "process": "ETCH",
+    "unit": "degC",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 20,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_THERMAL"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "backside_he_pressure",
+    "process": "ETCH",
+    "unit": "Torr",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 10,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "ETCH_THERMAL"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "head_pressure",
+    "process": "CMP",
+    "unit": "psi",
+    "requestedIntervalMs": 100,
+    "demoNominal": 3,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CMP_PRESSURE"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "platen_speed",
+    "process": "CMP",
+    "unit": "rpm",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 90,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CMP_SPEED"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "head_speed",
+    "process": "CMP",
+    "unit": "rpm",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 87,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CMP_SPEED"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "slurry_flow",
+    "process": "CMP",
+    "unit": "mL/min",
+    "requestedIntervalMs": 1000,
+    "demoNominal": 150,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": true,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CMP_SLURRY"
+    ],
+    "usl": null,
+    "lsl": null
+  },
+  {
+    "sensorId": "platen_motor_current",
+    "process": "CMP",
+    "unit": "A",
+    "requestedIntervalMs": 100,
+    "demoNominal": 8,
+    "nominalOrigin": "TEAM_SYNTHETIC_NOT_OEM_RECIPE",
+    "controlSetpointAvailable": false,
+    "sourceCadenceMustBeRecorded": true,
+    "causes": [
+      "CMP_PAD"
+    ],
+    "usl": null,
+    "lsl": null
+  }
+]
