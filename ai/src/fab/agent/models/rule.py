@@ -100,8 +100,12 @@ def _current_check_step(seen, mode, notes, process, current, features, outside) 
     if mode == "BASIC":  # 심층 조사에서는 정비 요청 제안이 다른 팀 요청을 맡는다
         work.append(_work("EQUIPMENT_INSPECTION", f"{current['equipmentId']} {sensor or '제거량'} 계통 현장 점검 요청",
                           "현재 공정 run의 이탈이 설비 쪽 확인을 필요로 합니다.", support))
+    upstream_normal = [run for run_process, run in runs_by_process(seen).items()
+                       if run_process != process and run["amountWithinNormalVariation"] and run.get("_seq", 0) < current.get("_seq", 9)]
+    others = [_refuted(f"앞 공정 {run['equipmentId']}의 기여", run["_ev"], f"{run['processCode']} 제거 · 증착량이 정상 변동 안")
+              for run in upstream_normal]
     answer = _submit("CURRENT_CHECK", facts, headline, cause, support, limitations=segment_limitations, notes=notes,
-                     work=work)
+                     work=work, others=others)
     if mode == "DEEP" and _proposal_state(seen, notes) is None:
         return _with_answer(_maintenance_proposal(seen, process, current, outside, sensor, cause, support), answer)
     return answer
@@ -167,8 +171,10 @@ def _upstream_check_step(seen, mode, notes, incident_id, current, upstream, upst
     if mode == "BASIC":
         work.append(_work("UPSTREAM_CHECK", f"{upstream['processCode']} 담당자에게 {upstream['equipmentId']} run 확인 요청",
                           "앞 공정의 기여를 그 공정 담당자가 확인해야 합니다.", support))
+    others = [_refuted(f"현재 공정 {current['equipmentId']} 원인", current["_ev"], f"{current['processCode']} 제거량이 정상 변동 안"
+                       " · 센서 참고 범위 안")]
     answer = _submit("UPSTREAM_CHECK", facts, headline, cause, support, counter=[current["_ev"]], notes=notes, seen=seen,
-                     work=work)
+                     work=work, others=others)
     if mode == "DEEP" and _proposal_state(seen, notes) is None:
         return _with_answer(_cross_process_proposal(seen, current, upstream, cause, support), answer)
     return answer
@@ -288,7 +294,15 @@ def _work(code: str, title: str, reason: str, support: list) -> dict:
             "evidenceIds": [evidence_id for evidence_id in support if evidence_id][:2]}
 
 
-def _submit(step, facts, headline, cause, support, counter=None, limitations=None, notes="", seen=None, work=None):
+def _refuted(hypothesis: str, evidence_id: str, why: str) -> dict:
+    """검토했지만 근거가 반대하는 후보 — 2순위 이하에 반대 근거와 함께 남긴다(반증)"""
+    return {"hypothesis": f"{hypothesis} — {why}라 근거가 반대함", "causeIds": [], "supportingEvidenceIds": [],
+            "conflictingEvidenceIds": [evidence_id] if evidence_id else [], "missingData": [],
+            "nextCheck": "새 측정 근거가 나오기 전에는 우선 확인하지 않음"}
+
+
+def _submit(step, facts, headline, cause, support, counter=None, limitations=None, notes="", seen=None, work=None,
+            others=None):
     all_limitations = ["원인 순위는 증거 기반 우선순위이며 확률이 아닙니다. 부품 원인은 확인 전까지 미확인입니다.",
                        "시연용 합성 운전 데이터입니다.", *(limitations or [])]
     if "[시스템 알림] 승인 결과: REJECT" in notes:
@@ -308,5 +322,6 @@ def _submit(step, facts, headline, cause, support, counter=None, limitations=Non
                              "supportingEvidenceIds": [evidence_id for evidence_id in support if evidence_id],
                              "conflictingEvidenceIds": [evidence_id for evidence_id in (counter or []) if evidence_id],
                              "missingData": ["부품 · 챔버 상태의 직접 확인 결과"],
-                             "nextCheck": (cause or {}).get("excerpt", "담당 엔지니어 검토")[:160]}],
+                             "nextCheck": (cause or {}).get("excerpt", "담당 엔지니어 검토")[:160]},
+                            *[other | {"priority": i + 2} for i, other in enumerate(others or [])]],
         "limitations": all_limitations, **({"workSuggestions": work} if work else {})})

@@ -79,6 +79,8 @@ async def test_basic_analysis_offers_work_candidates_only_as_proposals(spring_ur
     result = next(item for item in processed if item["job"]["jobId"] == accepted["jobId"])
     assert result["status"] == "DONE"
     assert result["result"]["candidateCauses"]
+    stances = result["analysis"]["causeStances"]  # C4 — 1순위는 지지, 정상 변동인 앞 공정은 반증으로 남는다
+    assert stances[0] == "SUPPORTED" and "REFUTED" in stances[1:], stances
     event = next(e for e in runner.sink.events if e["jobId"] == accepted["jobId"] and e["type"] == "RESULT_READY")
     suggestions = event["payload"]["workSuggestions"]
     assert {s["operationCode"] for s in suggestions} == {"REVIEW_SENSOR_DATA", "EQUIPMENT_INSPECTION"}

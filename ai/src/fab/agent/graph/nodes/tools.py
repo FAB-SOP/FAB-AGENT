@@ -243,7 +243,7 @@ async def run_tool(turn: _Turn, name: str, args: dict, cid: str) -> None:
         new_evidence, data_version = record_evidence(result)
         turn.evidence.update(new_evidence)
         turn.dv = data_version or turn.dv
-        turn.say(context.to_tool_text(result), cid, name)
+        turn.say(context.to_tool_text(result, name), cid, name)
     except ToolCallError as e:
         turn.say(e.text, cid, name)
         if e.retryable:  # 재시도 후에도 일시 장애면 작업 단위 재시도로 넘긴다
