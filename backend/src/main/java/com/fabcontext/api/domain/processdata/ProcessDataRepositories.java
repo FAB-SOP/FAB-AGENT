@@ -20,6 +20,8 @@ public final class ProcessDataRepositories {
 
 	public interface RouteRunRepository extends JpaRepository<RouteRun, Long> {
 
+		List<RouteRun> findByProcessCodeAndEquipmentId(String processCode, String equipmentId);
+
 		Optional<RouteRun> findByRunId(String runId);
 
 		List<RouteRun> findByWaferIdOrderBySequenceNoAsc(String waferId);
