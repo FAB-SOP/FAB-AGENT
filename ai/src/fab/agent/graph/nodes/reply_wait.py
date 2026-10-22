@@ -21,6 +21,6 @@ async def reply_wait(state: AgentState, config) -> dict:
     note = HumanMessage(content=f"[시스템 알림] 담당자 회신({pending['requestId']}, 근거 ID {eid} — 담당자 진술이며 측정 근거와 구분):\n"
                                 + guard.untrusted("check-request-reply", body))
     runtime(config).tracer.event("reply", requestId=pending["requestId"])
-    return {"messages": [note], "pending": None, "counters": limits.new_window(),
+    return {"messages": [note], "pending": None, "counters": limits.new_window(), "result": None,
             "evidence": {eid: {"evidenceId": eid, "sourceType": "REPLY", "sourceId": pending["requestId"],
                                "dataVersion": state.get("dataVersion"), "synthetic": True}}}

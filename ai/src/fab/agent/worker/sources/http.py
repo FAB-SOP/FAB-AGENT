@@ -23,7 +23,7 @@ async def poll_once(runner: JobRunner, backend) -> list[dict]:
     for item in queued:
         job = item["job"]
         try:
-            out = await runner.process(job, question=item.get("question"))
+            out = await runner.process(job, question=item.get("question"), trigger=item.get("trigger"))
         except Exception as e:  # noqa: BLE001 — 한 작업 때문에 Worker가 멈추지 않게
             out = {"status": "ERROR", "error": str(e)}
         print(f"[job] {job['jobId']} {job['kind']} → {out['status']} {summary_line(out.get('trace'))}".rstrip(), flush=True)

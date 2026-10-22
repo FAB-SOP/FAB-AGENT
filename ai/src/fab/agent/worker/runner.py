@@ -22,6 +22,7 @@ from fab.agent.harness.limits import LIMITS
 from fab.agent.harness.retry import PermanentJobError, TransientJobError
 from fab.agent.harness.trace import Tracer
 from fab.agent.models import make_models
+from fab.agent.purpose import purpose_of
 from fab.agent.tools import Toolbox
 from fab.common.envelope import FabToolError
 
@@ -73,7 +74,7 @@ class JobRunner:
         await self.sink.dead_letter(job, f"[{code}] {message}")
         return {"status": "FAILED", "errorCode": code, "error": message, "trace": tracer.summary()}
 
-    async def process(self, job: dict, *, question: str | None = None) -> dict:
+    async def process(self, job: dict, *, question: str | None = None, trigger: str | None = None) -> dict:
         tracer = Tracer(job["traceId"], job["jobId"], job["incidentId"])
         try:  # 같은 jobId · attempt를 두 번 처리하지 않는다(중복 전달 · 재시작)
             await self.backend.claim(job["jobId"], job["attempt"], self.worker_id)
@@ -94,7 +95,7 @@ class JobRunner:
             async with Toolbox(self.servers) as toolbox:
                 cfg["configurable"]["runtime"] = Runtime(toolbox, self.backend, self.primary, self.fallback, tracer,
                                                          job_id=job["jobId"])
-                payload = await self._input(job, question, cfg)
+                payload = await self._input(job, question, cfg, trigger)
                 async for chunk in self.graph.astream(payload, cfg, stream_mode="updates"):
                     for node in chunk:
                         if node in STEP_MESSAGES:
@@ -122,7 +123,7 @@ class JobRunner:
                                                    "errorCode": code}, tracer.summary())
         return {"status": "RETRY_SCHEDULED", "errorCode": code, "error": message, "trace": tracer.summary()}
 
-    async def _input(self, job: dict, question: str | None, cfg: dict):
+    async def _input(self, job: dict, question: str | None, cfg: dict, trigger: str | None = None):
         snap = await self.graph.aget_state(cfg)
         if job["kind"] == "RESUME":
             resume_ref = job["resume"] or {}
@@ -151,7 +152,7 @@ class JobRunner:
         if snap and snap.next:
             raise PermanentJobError("이 사건은 승인 또는 회신을 기다리는 중입니다. 대기를 먼저 해제하세요.")
         return {"incidentId": job["incidentId"], "threadId": job["threadId"], "jobId": job["jobId"],
-                "mode": job["kind"], "question": question or ""}
+                "mode": job["kind"], "purpose": purpose_of(job["kind"], trigger), "question": question or ""}
 
     async def _outcome(self, job: dict, cfg: dict, tracer: Tracer) -> dict:
         snap = await self.graph.aget_state(cfg)

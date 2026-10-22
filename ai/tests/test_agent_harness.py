@@ -208,7 +208,7 @@ class SecondProposalModel:
                 "processCode": "ETCH", "equipmentId": "ETCH-PM2", "ownerUserId": "USR-MNT-01",
                 "question": "ETCH-PM2 챔버 세정 · 시즈닝 이력 점검 부탁드립니다(설정 변경 아님).", "causeIds": ["ETCH_WALL"],
                 "evidenceIds": ev, "rationale": "회신 뒤 해당 설비 점검도 함께",
-                "reason": "앞 공정 회신과 별개로 ETCH-PM2 챔버 상태 점검이 필요합니다."}}])
+                "reason": "앞 공정 회신과 별개로 ETCH-PM2 챔버 상태 점검이 필요합니다."}}, call])  # 답 먼저 — 답과 함께
         return r
 
 
@@ -270,7 +270,7 @@ class ProposeEveryTurnModel(SecondProposalModel):
                                                       "args": {"processCode": "ETCH", "equipmentId": "ETCH-PM2",
                                                                "ownerUserId": "USR-MNT-01", "question": "다시 점검 부탁",
                                                                "causeIds": ["ETCH_WALL"], "evidenceIds": ev,
-                                                               "rationale": "반복", "reason": "다시 점검이 필요합니다."}}])
+                                                               "rationale": "반복", "reason": "다시 점검이 필요합니다."}}, call])
         return r
 
 
@@ -403,7 +403,7 @@ async def test_trace_records_api_snapshot_model_name():
                              response_metadata={"model_name": "gpt-4.1-mini-2025-04-14"})
 
     class Tools:
-        def model_tools(self, mode):
+        def model_tools(self, mode, *, allow_proposals):
             return []
 
     for model, want in ((Snapshot(), ("gpt-4.1-mini", "gpt-4.1-mini-2025-04-14")), (RuleModel(), ("rule-policy-v2",) * 2)):
@@ -453,3 +453,94 @@ def test_finalize_wraps_string_lists():
 
     assert as_list("ETCH 정비 이력 확인 필요") == ["ETCH 정비 이력 확인 필요"]
     assert as_list(["a", 1]) == ["a", "1"] and as_list(None) == [] and as_list("") == []
+
+
+# ---- 답 먼저(확정 11) — 제안은 이번 작업의 답이 접수된 뒤에만 받는다
+
+class _Tracer:
+    def event(self, *args, **kwargs):
+        pass
+
+
+def _turn(state: dict):
+    from fab.agent.graph.nodes.tools import _Turn
+    from fab.agent.harness import limits
+
+    base = {"mode": "DEEP", "messages": [AIMessage(content="", tool_calls=[])], "counters": limits.new_window(),
+            "evidence": {"E-1": {"evidenceId": "E-1"}}, "proposals": [], "result": None, "incidentProcess": "CMP"}
+
+    class _Runtime:
+        tracer = _Tracer()
+    return _Turn(base | state, {"configurable": {"runtime": _Runtime()}})
+
+
+def test_proposal_before_answer_is_rejected():
+    from fab.agent.graph.nodes.tools import _proposal_rejection
+
+    reason = _proposal_rejection(_turn({}), "propose_maintenance_request", {"processCode": "CMP", "evidenceIds": ["E-1"]},
+                                 "c1", "CREATE_MAINTENANCE_REQUEST", {"brief": {}})
+    assert reason and "먼저 submit_result" in reason
+
+
+def test_current_check_without_proposal_is_accepted():
+    """지금까지는 DEEP에서 nextStep이 CURRENT_CHECK면 제안 없이는 답을 반려했다(문제 1) — 이제 답은 늘 받는다"""
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    turn = _turn({})
+    handle_submit(turn, "submit_result", {
+        "nextStep": "CURRENT_CHECK", "observedFacts": [{"text": "헤드 압력 낮음", "evidenceIds": ["E-1"]}], "limitations": [],
+        "candidateCauses": [{"priority": 1, "hypothesis": "CMP 헤드 압력 공급 저하", "causeIds": ["CMP_PRESSURE"],
+                             "supportingEvidenceIds": ["E-1"]}]}, "c1")
+    assert str(turn.out[-1].content).startswith("[ACCEPTED]"), turn.out[-1].content
+    assert turn.update["result"]["nextStep"] == "CURRENT_CHECK"
+
+
+async def test_answer_and_proposal_in_same_turn_propose_first(spring_url, kb):
+    """규칙 모델은 [제안, 답] 순서로 한 응답에 낸다 — Harness가 답을 먼저 접수해 제안을 받고, 답은 상태에 남는다"""
+    runner, backend = make_runner(kb, base=spring_url)
+    await poll_once(runner, backend)
+    await _ask(spring_url, "EV-1009", "앞 공정 확인이 필요해?")
+    out = (await poll_once(runner, backend))[-1]
+    assert out["status"] == "WAITING_APPROVAL", out
+    snap = await runner.graph.aget_state({"configurable": {"thread_id": out["job"]["threadId"]}})
+    assert snap.values["result"] and snap.values["result"]["nextStep"] == "UPSTREAM_CHECK"
+    assert snap.values["pending"]["kind"] == "APPROVAL"
+
+
+# ---- 작업 종류(purpose)별 제안 허용(확정 10 · 12 · 19)
+
+def test_purpose_mapping():
+    from fab.agent import purpose as p
+
+    assert p.purpose_of("BASIC", None) == p.BASIC and p.purpose_of("REPORT", None) == p.REPORT
+    assert p.purpose_of("DEEP", None) == p.QUESTION
+    assert p.purpose_of("DEEP", "WORK_REPLY") == p.REPLY and p.purpose_of("DEEP", "REPLY") == p.REPLY
+    assert p.purpose_of("DEEP", "REQUEST_BUTTON") == p.REQUEST and p.purpose_of("DEEP", "REGENERATE") == p.REQUEST
+    assert [p.can_propose(x, False) for x in (p.BASIC, p.REPLY, p.QUESTION, p.REQUEST, p.REPORT)] == \
+        [False, False, True, True, False]
+    assert p.can_propose(p.QUESTION, True) is False and p.can_propose(p.REQUEST, True) is True
+    assert p.result_kind(p.BASIC, False) == p.result_kind(p.REPLY, False) == "CAUSE_ANALYSIS"
+    assert p.result_kind(p.QUESTION, False) == "ANSWER" and p.result_kind(p.QUESTION, True) == "CAUSE_ANALYSIS"
+
+
+def test_model_tools_follow_purpose():
+    from fab.agent.tools import Toolbox
+
+    box = Toolbox({})
+    names = lambda tools: {t["function"]["name"] for t in tools}  # noqa: E731
+    assert "propose_maintenance_request" not in names(box.model_tools("DEEP", allow_proposals=False))
+    assert {"submit_result", "propose_cross_process_check"} <= names(box.model_tools("DEEP", allow_proposals=True))
+    assert names(box.model_tools("REPORT", allow_proposals=False)) == {"submit_report"}
+
+
+@pytest.mark.parametrize("purpose,pending,forbidden", [("BASIC", None, True), ("REPLY", None, True),
+                                                       ("QUESTION", {"approvalId": "APR-1"}, True),
+                                                       ("QUESTION", None, False), ("REQUEST", {"approvalId": "APR-1"}, False)])
+def test_proposal_allowed_only_for_question_and_request(purpose, pending, forbidden):
+    """원인 분석(기본 조사 · 회신 반영)은 판단만, 승인 대기 중 질문은 질문 전용 — 도구 목록에 없어도 이름을 지어 부르면 막는다"""
+    from fab.agent.graph.nodes.tools import _proposal_rejection
+
+    turn = _turn({"purpose": purpose, "pendingApproval": pending, "result": {"nextStep": "CURRENT_CHECK"}})
+    reason = _proposal_rejection(turn, "propose_maintenance_request", {"processCode": "CMP", "evidenceIds": ["E-9"]},
+                                 "c1", "CREATE_MAINTENANCE_REQUEST", {"brief": {}})
+    assert (reason or "").startswith("[FORBIDDEN]") is forbidden, reason

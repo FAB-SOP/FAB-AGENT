@@ -14,6 +14,7 @@ from fab.agent.evidence import tool_results
 from fab.agent.graph.state import AgentState, current_job, record_evidence, runtime
 from fab.agent.harness import context, guard, limits
 from fab.agent.harness.retry import TransientJobError
+from fab.agent.purpose import may_propose
 from fab.agent.tools import HARNESS_NAMES, PROPOSALS, ToolCallError
 
 
@@ -42,10 +43,15 @@ class _Turn:
                 **self.update}
 
 
+def _submits_first(calls: list[dict]) -> list[dict]:
+    """답 먼저 — 한 응답 안에서는 제출(submit_*)을 먼저 처리해, 같은 응답의 제안이 그 답을 보고 접수되게 한다"""
+    return sorted(calls, key=lambda call: call["name"] not in ("submit_result", "submit_report"))
+
+
 async def tools(state: AgentState, config) -> dict:
     turn = _Turn(state, config)
     reply: AIMessage = state["messages"][-1]
-    for call in reply.tool_calls:
+    for call in _submits_first(reply.tool_calls):
         name, args, cid = call["name"], call["args"], call["id"]
         turn.counters["toolCalls"][name] = turn.counters["toolCalls"].get(name, 0) + 1
         if not limits.tool_allowed(state["counters"], name):
@@ -59,6 +65,8 @@ async def tools(state: AgentState, config) -> dict:
             turn.say(f"[FORBIDDEN] {name}는 이 모드에서 쓸 수 없습니다.", cid, name)
         else:
             await run_tool(turn, name, args, cid)
+    order = {call["id"]: i for i, call in enumerate(reply.tool_calls)}
+    turn.out.sort(key=lambda message: order.get(message.tool_call_id, len(order)))  # 도구 메시지는 원래 호출 순서로
     return turn.result()
 
 
@@ -70,13 +78,6 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         turn.update["report"] = args
         return
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
-    # 심층 조사에서 점검 · 확인이 필요하다고 판단했으면 요청 초안을 먼저 제안한다(팩 E03 — 보낼지는 사람이 승인으로 정한다)
-    if (state["mode"] == "DEEP" and args.get("nextStep") in ("CURRENT_CHECK", "UPSTREAM_CHECK")
-            and not state.get("proposals") and not turn.update.get("pending")):
-        kind = "propose_cross_process_check(앞 공정 PROCESS_OWNER)" if args["nextStep"] == "UPSTREAM_CHECK" \
-            else "propose_maintenance_request(설비정비팀 MAINTENANCE)"
-        errs.append(f"nextStep이 {args['nextStep']}이면 먼저 {kind}로 확인 · 점검 요청 초안을 제안하세요. "
-                    "get_process_owner로 받는 사람을 찾고, 보낼지는 사람이 승인으로 정합니다.")
     if errs:
         turn.rt.tracer.event("guard_reject", tool=name, errors=errs)
         turn.say("[REJECTED] " + " / ".join(errs), cid, name)
@@ -88,8 +89,12 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
 def _proposal_rejection(turn: _Turn, name: str, args: dict, cid: str, action_type: str, made_brief: dict) -> str | None:
     """제안 검사(모드 · 근거 · 브리프 · 한 번에 하나 · 상한 · 중복) — 걸리면 모델에 돌려줄 문장, 통과면 None"""
     state, job_runtime = turn.state, turn.rt
-    if state["mode"] != "DEEP":
-        return "[FORBIDDEN] 이 모드에서는 요청을 제안할 수 없습니다."
+    if not may_propose(state):
+        return ("[FORBIDDEN] 이 작업에서는 요청을 제안할 수 없습니다 — 원인 분석은 nextStep으로 판단만 남기고, "
+                "승인 대기 중인 요청서가 있으면 질문에만 답합니다.")
+    if not (state.get("result") or turn.update.get("result")):  # 답 먼저 — 사람은 답을 보고 승인을 정한다
+        return ("[REJECTED] 먼저 submit_result로 답을 제출하세요. 요청 제안은 답이 접수된 뒤에만 받습니다 — "
+                "같은 응답에서 submit_result와 함께 호출하면 됩니다.")
     unknown = set(args.get("evidenceIds", [])) - turn.known_ids()
     if unknown:
         return f"[REJECTED] 조회하지 않은 근거 ID: {sorted(unknown)}"

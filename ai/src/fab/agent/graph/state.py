@@ -19,6 +19,8 @@ class AgentState(TypedDict, total=False):
     threadId: str
     jobId: str
     mode: str  # BASIC | DEEP | REPORT
+    purpose: str  # BASIC | REPLY | QUESTION | REQUEST | REPORT — 작업 종류(fab.agent.purpose)
+    pendingApproval: dict | None  # 이 사건에서 승인을 기다리는 요청서 — 있으면 질문은 질문 전용(사건 기록 조회가 채운다)
     question: str
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: Annotated[dict, _merge]  # evidenceId -> ref
