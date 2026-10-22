@@ -25,6 +25,7 @@ public class JobService {
 
 	private static final EnumSet<JobStatus> IN_PROGRESS = EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING);
 
+	private final com.fabcontext.api.domain.notification.NotificationEvents notificationEvents;
 	private final JobRepository jobRepository;
 	private final IncidentService incidentService;
 	private final IncidentStreamHub streamHub;
@@ -107,11 +108,13 @@ public class JobService {
 			incident.setActiveJobId(null);
 		}
 		sync(job, incident);
+		notificationEvents.analysisFinished(job, incident);
 	}
 
 	public void fail(Job job, Incident incident, String code, String message) {
 		job.fail(code, message, Instant.now(clock));
 		sync(job, incident);
+		notificationEvents.analysisFinished(job, incident);
 	}
 
 	public void waitFor(Job job, Incident incident, JobStatus waitingStatus, Ref ref) {

@@ -14,6 +14,7 @@ import com.fabcontext.api.domain.job.JobDtos.Accepted;
 import com.fabcontext.api.domain.job.JobKind;
 import com.fabcontext.api.domain.job.JobRepository;
 import com.fabcontext.api.domain.job.JobService;
+import com.fabcontext.api.domain.notification.NotificationEvents;
 import com.fabcontext.api.domain.processdata.DataVersion;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,7 @@ public class EventService {
 	private final JobRepository jobRepository;
 	private final JobService jobService;
 	private final IncidentStreamHub streamHub;
+	private final NotificationEvents notificationEvents;
 	private final DataVersion dataVersion;
 	private final Clock clock;
 
@@ -77,6 +79,7 @@ public class EventService {
 		incident.record(now, "DETECTED", "svc_simulator",
 			"이상 이벤트 접수 (" + event.anomalyType() + ", eventId " + event.eventId() + ")", "EVENT", event.eventId());
 		incident = incidentRepository.save(incident);
+		notificationEvents.incidentCreated(incident);
 		dataVersion.bump();
 		// 사건 저장 즉시 화면에 표시하고 기본 분석은 비동기로 병행한다.
 		Job job = jobService.enqueue(incident, JobKind.BASIC, "svc_simulator", null, null, Map.of(), null, null);

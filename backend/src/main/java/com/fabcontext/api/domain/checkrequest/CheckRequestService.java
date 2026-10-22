@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CheckRequestService {
 
+	private final com.fabcontext.api.domain.notification.NotificationEvents notificationEvents;
 	private final CheckRequestRepository requestRepository;
 	private final ReplyRepository replyRepository;
 	private final IncidentRepository incidentRepository;
@@ -80,6 +81,7 @@ public class CheckRequestService {
 			request.getRequestId());
 		streamHub.publish(incident.getIncidentId(), "check-request.created",
 			Map.of("requestId", request.getRequestId(), "ownerUserId", request.getOwnerUserId()));
+		notificationEvents.checkRequestCreated(request);
 		return request;
 	}
 
@@ -130,6 +132,7 @@ public class CheckRequestService {
 		reply = replyRepository.save(reply);
 		String savedReplyId = reply.getReplyId();
 		workItems.findByRequestId(requestId).ifPresent(workItem -> workItem.completeFromReply(savedReplyId, now));
+		notificationEvents.checkRequestReplied(request, reply);
 
 		if (incident.getStatus() == IncidentStatus.WAITING_REPLY
 				&& !requestRepository.existsByIncidentIdAndStatus(incident.getIncidentId(), CheckRequestStatus.OPEN)) {

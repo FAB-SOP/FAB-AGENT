@@ -30,6 +30,7 @@ public class WorkService {
 	private final jakarta.persistence.EntityManager entityManager;
 	private final com.fabcontext.api.domain.checkrequest.CheckRequestRepositories.CheckRequestRepository requests;
 	private final com.fabcontext.api.domain.processdata.ProcessDataRepositories.RouteRunRepository routes;
+	private final com.fabcontext.api.domain.notification.NotificationEvents notificationEvents;
 	private static final Pattern CHANGE = Pattern.compile("조정|수정|재가동|재시작|수리|분해|(?:교체|변경)(?!\\s*(?:이력|기록|여부|시점))|\\b(?:adjust|modify|replace|restart|repair)\\b", Pattern.CASE_INSENSITIVE);
 
 	@Transactional(readOnly=true)
@@ -112,6 +113,7 @@ public class WorkService {
 				.findFirst().orElseThrow(() -> ApiException.unprocessable("APPROVER_UNAVAILABLE","요청자와 다른 담당 공정 관리자를 지정해야 합니다.")).getUserId();
 		}
 		w.accept(user.userId(),manager,Instant.now(clock));
+		notificationEvents.workApprovalRequested(w);
 		if(w.getRoute()==WorkOperation.Route.TEAM_REQUEST) {
 			UserAccount owner=users.findById(body.ownerUserId()==null?"":body.ownerUserId()).orElseThrow(() -> ApiException.unprocessable("WORK_OWNER_INVALID","등록된 수신 담당자를 선택하세요."));
 			String target=body.targetProcessCode();boolean maintenance=w.getOperationCode()!=WorkOperation.UPSTREAM_CHECK;
@@ -140,6 +142,7 @@ public class WorkService {
 			if(!user.isManager()||!user.userId().equals(w.getApproverUserId())||user.userId().equals(w.getRequestedBy())) throw ApiException.forbidden("WORK_APPROVER_REQUIRED","지정된 관리자만 승인·반려할 수 있고 자기 승인은 허용되지 않습니다.");
 			if("REJECT".equals(body.decision())&&(body.comment()==null||body.comment().isBlank())) throw ApiException.unprocessable("REJECT_REASON_REQUIRED","반려 사유를 입력하세요.");
 			w.decide("APPROVE".equals(body.decision()),body.comment(),Instant.now(clock));
+			notificationEvents.workDecided(w,user.userId());
 		}
 		i.record(Instant.now(clock),"WORK_DECIDED",user.userId(),"업무 결정 "+body.decision()+": "+w.getTitle(),"WORK_ITEM",id);return changed(w);
 	}
