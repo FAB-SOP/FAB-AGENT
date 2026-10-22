@@ -41,7 +41,7 @@ def proposal_block(action_type: str, target_process: str | None, requests: list[
                     "회신 뒤 원인 분석이 바뀐 경우에만 다시 요청할 수 있습니다.")
     for request in [] if human_requested else same_requests:  # 받는 사람의 거절 — 회신이 아니다, 거절된 승인처럼 본다
         if request.get("status") == "REJECTED" and not cause_changed_after(request.get("decisionAt") or request.get("createdAt")):
-            return ("[REJECTED] 같은 담당 팀 · 종류의 요청을 받는 사람이 거절했습니다(거절 사유는 get_check_requests). "
+            return ("[REJECTED] 같은 담당 팀 · 종류의 요청을 받는 사람이 거절했습니다. "
                     "원인 분석이 바뀐 뒤에만 다시 제안할 수 있습니다. 지금 근거로 답하세요.")
     for approval in [] if human_requested else same_approvals:
         if approval.get("status") == "REJECTED" and not cause_changed_after(approval.get("decidedAt")):
