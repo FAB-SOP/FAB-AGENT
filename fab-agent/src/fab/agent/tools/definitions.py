@@ -113,4 +113,4 @@ HARNESS_TOOLS = [
     },
 ]
 REPORT_SECTIONS = ("overview", "investigation", "requestsAndReplies", "actionsAndVerification", "unresolved")
-HARNESS_NAMES = {t["function"]["name"] for t in HARNESS_TOOLS}
+HARNESS_NAMES = {tool["function"]["name"] for tool in HARNESS_TOOLS}

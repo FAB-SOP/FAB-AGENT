@@ -52,61 +52,80 @@ public class ProcessEvidenceService {
 	}
 
 	/** run 하나의 공정 증거 — 계측이 asOf 이후에 공개됐으면 available=false */
-	public Map<String, Object> runEvidence(RouteRun r, Instant asOf) {
-		Map<String, Object> m = new LinkedHashMap<>();
-		m.put("runId", r.getRunId());
-		m.put("waferId", r.getWaferId());
-		m.put("lotId", r.getLotId());
-		m.put("phase", r.getPhase());
-		m.put("processCode", r.getProcessCode());
-		m.put("equipmentId", r.getEquipmentId());
-		m.put("recipeId", r.getRecipeId());
-		m.put("startedAt", kst(r.getStartedAt()));
-		m.put("endedAt", kst(r.getEndedAt()));
-		m.put("processSeconds", r.getProcessSeconds());
-		m.put("controlMode", r.getControlMode());
-		m.put("upstreamRunId", r.getUpstreamRunId());
-		m.put("metrologyAvailableAt", kst(r.getMetrologyAvailableAt()));
-		boolean available = asOf == null || !r.getMetrologyAvailableAt().isAfter(asOf);
-		m.put("available", available);
+	public Map<String, Object> runEvidence(RouteRun run, Instant asOf) {
+		Map<String, Object> evidence = runIdentity(run);
+		boolean available = asOf == null || !run.getMetrologyAvailableAt().isAfter(asOf);
+		evidence.put("available", available);
 		if (!available) {
-			m.put("unavailableReason", "계측 공개 시각(" + r.getMetrologyAvailableAt() + ")이 분석 시점(" + asOf + ") 이후입니다.");
-			return m;
+			evidence.put("unavailableReason", "계측 공개 시각(" + run.getMetrologyAvailableAt() + ")이 분석 시점(" + asOf + ") 이후입니다.");
+			return evidence;
 		}
-		String proc = r.getProcessCode();
-		List<Metrology> sites = metrologyRepository.findByRunIdOrderBySiteIdAsc(r.getRunId());
-		m.put("sites", sites.stream().map(s -> Map.<String, Object>of("siteId", s.getSiteId(), "thicknessA", round(s.getValue(), 1)))
+		putMetrology(evidence, run);
+		pack.limit(run.getProcessCode()).ifPresent(limit -> putLimitJudgement(evidence, run, limit));
+		putBaselineDeviation(evidence, run);
+		return evidence;
+	}
+
+	private Map<String, Object> runIdentity(RouteRun run) {
+		Map<String, Object> evidence = new LinkedHashMap<>();
+		evidence.put("runId", run.getRunId());
+		evidence.put("waferId", run.getWaferId());
+		evidence.put("lotId", run.getLotId());
+		evidence.put("phase", run.getPhase());
+		evidence.put("processCode", run.getProcessCode());
+		evidence.put("equipmentId", run.getEquipmentId());
+		evidence.put("recipeId", run.getRecipeId());
+		evidence.put("startedAt", kst(run.getStartedAt()));
+		evidence.put("endedAt", kst(run.getEndedAt()));
+		evidence.put("processSeconds", run.getProcessSeconds());
+		evidence.put("controlMode", run.getControlMode());
+		evidence.put("upstreamRunId", run.getUpstreamRunId());
+		evidence.put("metrologyAvailableAt", kst(run.getMetrologyAvailableAt()));
+		return evidence;
+	}
+
+	/** 5위치 두께 · 위치 간 차이 · 입고/출고 평균 · 증착/제거량 */
+	private void putMetrology(Map<String, Object> evidence, RouteRun run) {
+		List<Metrology> sites = metrologyRepository.findByRunIdOrderBySiteIdAsc(run.getRunId());
+		evidence.put("sites", sites.stream()
+			.map(site -> Map.<String, Object>of("siteId", site.getSiteId(), "thicknessA", round(site.getValue(), 1)))
 			.toList());
 		var stats = sites.stream().mapToDouble(Metrology::getValue).summaryStatistics();
-		m.put("siteRangeA", sites.isEmpty() ? null : round(stats.getMax() - stats.getMin(), 1));
-		m.put("inputMeanA", round(r.getInputMeanA(), 1));
-		m.put("outputMeanA", round(r.getOutputMeanA(), 1));
-		m.put("amountKind", "CVD".equals(proc) ? "DEPOSITED" : "REMOVED");
-		m.put("amountA", round(r.getAddedOrRemovedA(), 1));
-		pack.limit(proc).ifPresent(l -> {
-			Map<String, Object> lim = new LinkedHashMap<>();
-			for (String k : List.of("limitId", "metric", "chartType", "rule", "center", "lcl", "ucl", "lsl", "usl", "specOrigin")) {
-				lim.put(k, l.get(k) instanceof Number n ? round(n.doubleValue(), 1) : l.get(k));
-			}
-			m.put("limit", lim);
-			double out = r.getOutputMeanA();
-			String side = out > num(l.get("ucl")) ? "ABOVE_UCL" : out < num(l.get("lcl")) ? "BELOW_LCL" : null;
-			m.put("r1", Map.of("outside", side != null, "side", Objects.requireNonNullElse(side, "WITHIN")));
-			m.put("oos", l.get("usl") != null && (out > num(l.get("usl")) || out < num(l.get("lsl"))));
-		});
-		double[] pm = amountStats().get(proc + "|" + r.getEquipmentId());
-		double[] all = amountStats().get(proc + "|ALL");
-		Map<String, Object> base = new LinkedHashMap<>();
-		base.put("samePm", statView(pm));
-		base.put("allPm", statView(all));
-		m.put("baselineAmount", base);
-		m.put("amountZSamePm", z(r.getAddedOrRemovedA(), pm));
-		m.put("amountZAllPm", z(r.getAddedOrRemovedA(), all));
-		m.put("amountDeltaFromBaselineA", all == null ? null : round(r.getAddedOrRemovedA() - all[0], 1));
-		Double zz = z(r.getAddedOrRemovedA(), pm);
-		m.put("amountWithinNormalVariation", zz == null || Math.abs(zz) < SIGMA_MARK);
-		m.put("normalVariationSigma", SIGMA_MARK); // 위 판정의 기준 |z| — 요청 브리프가 숫자를 그대로 옮긴다
-		return m;
+		evidence.put("siteRangeA", sites.isEmpty() ? null : round(stats.getMax() - stats.getMin(), 1));
+		evidence.put("inputMeanA", round(run.getInputMeanA(), 1));
+		evidence.put("outputMeanA", round(run.getOutputMeanA(), 1));
+		evidence.put("amountKind", "CVD".equals(run.getProcessCode()) ? "DEPOSITED" : "REMOVED");
+		evidence.put("amountA", round(run.getAddedOrRemovedA(), 1));
+	}
+
+	/** 동결 관리한계(R1) 판정과 제품 규격(OOS) 판정 */
+	private static void putLimitJudgement(Map<String, Object> evidence, RouteRun run, Map<String, Object> limit) {
+		Map<String, Object> limitView = new LinkedHashMap<>();
+		for (String key : List.of("limitId", "metric", "chartType", "rule", "center", "lcl", "ucl", "lsl", "usl", "specOrigin")) {
+			limitView.put(key, limit.get(key) instanceof Number number ? round(number.doubleValue(), 1) : limit.get(key));
+		}
+		evidence.put("limit", limitView);
+		double output = run.getOutputMeanA();
+		String side = output > num(limit.get("ucl")) ? "ABOVE_UCL" : output < num(limit.get("lcl")) ? "BELOW_LCL" : null;
+		evidence.put("r1", Map.of("outside", side != null, "side", Objects.requireNonNullElse(side, "WITHIN")));
+		evidence.put("oos", limit.get("usl") != null && (output > num(limit.get("usl")) || output < num(limit.get("lsl"))));
+	}
+
+	/** 같은 PM · 전체 PM 정상(BASELINE) run 대비 증착/제거량 편차와 정상 변동 판정 */
+	private void putBaselineDeviation(Map<String, Object> evidence, RouteRun run) {
+		String process = run.getProcessCode();
+		double[] samePm = amountStats().get(process + "|" + run.getEquipmentId());
+		double[] allPm = amountStats().get(process + "|ALL");
+		Map<String, Object> baseline = new LinkedHashMap<>();
+		baseline.put("samePm", statView(samePm));
+		baseline.put("allPm", statView(allPm));
+		evidence.put("baselineAmount", baseline);
+		evidence.put("amountZSamePm", z(run.getAddedOrRemovedA(), samePm));
+		evidence.put("amountZAllPm", z(run.getAddedOrRemovedA(), allPm));
+		evidence.put("amountDeltaFromBaselineA", allPm == null ? null : round(run.getAddedOrRemovedA() - allPm[0], 1));
+		Double zSamePm = z(run.getAddedOrRemovedA(), samePm);
+		evidence.put("amountWithinNormalVariation", zSamePm == null || Math.abs(zSamePm) < SIGMA_MARK);
+		evidence.put("normalVariationSigma", SIGMA_MARK); // 위 판정의 기준 |z| — 요청 브리프가 숫자를 그대로 옮긴다
 	}
 
 	/** run의 센서 특징 — 참고 범위(run 평균의 분포, 점 단위 SPC 아님) · 설정값 차이 · 같은 PM 정상 run 대비 편차 */

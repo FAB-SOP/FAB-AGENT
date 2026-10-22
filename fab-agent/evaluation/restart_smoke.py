@@ -24,10 +24,10 @@ async def before() -> int:
 
 async def after() -> int:
     cmp = await User("cmp.park").login()
-    i = await cmp.incident(cs.INCIDENT)
-    _, page = await cmp.get(f"/api/approvals?status=PENDING&incidentId={i['incidentId']}")
-    _, a = await cmp.get(f"/api/approvals/{page['data']['items'][0]['approvalId']}")
-    await cs.approve_to_end(cmp, i, a["data"])
+    current_incident = await cmp.incident(cs.INCIDENT)
+    _, page = await cmp.get(f"/api/approvals?status=PENDING&incidentId={current_incident['incidentId']}")
+    _, approval = await cmp.get(f"/api/approvals/{page['data']['items'][0]['approvalId']}")
+    await cs.approve_to_end(cmp, current_incident, approval["data"])
     await cmp.close()
     print(f"재시작 후 재개: 실패 {len(cs.FAILS)}건")
     return 1 if cs.FAILS else 0

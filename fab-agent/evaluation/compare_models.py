@@ -23,19 +23,19 @@ import scenario_eval  # noqa: E402
 async def measure(model: str, spring, run_dir: Path, cases: list[dict]) -> dict:
     eval_env.client_env(model, fallback="", embedder="openai")
     spring.start()
-    gt = await real_eval.one(run_dir, f"{model}-E01-E03")
+    ground_truth = await real_eval.one(run_dir, f"{model}-E01-E03")
     spring.start()
-    sc = await scenario_eval.run_all(cases, run_dir, f"{model}-E04-E08")
-    (run_dir / f"{model}-E04-E08.json").write_text(json.dumps(sc, ensure_ascii=False, indent=1), encoding="utf-8")
-    scenario_eval.report(sc, run_dir / f"{model}-E04-E08.md")
-    a, b = gt["stats"], sc["stats"]
-    return {"model": model, "E01-E03": f"{sum(r['pass'] for r in gt['rows'])}/{len(gt['rows'])}",
-            "E04-E08 자동": f"{sum(bool(r.get('pass')) for r in sc['rows'])}/{len(sc['rows'])}",
-            "apiModels": sorted(set(a["apiModels"]) | set(b["apiModels"])),
-            "llmCalls": a["llmCalls"] + b["llmCalls"], "inputTokens": a["inputTokens"] + b["inputTokens"],
-            "outputTokens": a["outputTokens"] + b["outputTokens"], "timeouts": a["timeouts"] + b["timeouts"],
-            "llmSeconds": round(a["llmSeconds"] + b["llmSeconds"], 1), "costUsd": round(a["costUsd"] + b["costUsd"], 4),
-            "errors": [x for x in (gt["error"], *[r.get("error") for r in sc["rows"]]) if x]}
+    scenarios = await scenario_eval.run_all(cases, run_dir, f"{model}-E04-E08")
+    (run_dir / f"{model}-E04-E08.json").write_text(json.dumps(scenarios, ensure_ascii=False, indent=1), encoding="utf-8")
+    scenario_eval.report(scenarios, run_dir / f"{model}-E04-E08.md")
+    truth_stats, scenario_stats = ground_truth["stats"], scenarios["stats"]
+    return {"model": model, "E01-E03": f"{sum(row['pass'] for row in ground_truth['rows'])}/{len(ground_truth['rows'])}",
+            "E04-E08 자동": f"{sum(bool(row.get('pass')) for row in scenarios['rows'])}/{len(scenarios['rows'])}",
+            "apiModels": sorted(set(truth_stats["apiModels"]) | set(scenario_stats["apiModels"])),
+            "llmCalls": truth_stats["llmCalls"] + scenario_stats["llmCalls"], "inputTokens": truth_stats["inputTokens"] + scenario_stats["inputTokens"],
+            "outputTokens": truth_stats["outputTokens"] + scenario_stats["outputTokens"], "timeouts": truth_stats["timeouts"] + scenario_stats["timeouts"],
+            "llmSeconds": round(truth_stats["llmSeconds"] + scenario_stats["llmSeconds"], 1), "costUsd": round(truth_stats["costUsd"] + scenario_stats["costUsd"], 4),
+            "errors": [error for error in (ground_truth["error"], *[row.get("error") for row in scenarios["rows"]]) if error]}
 
 
 async def main(models: list[str]) -> None:
@@ -43,14 +43,14 @@ async def main(models: list[str]) -> None:
     from fab.common.env import load_env
 
     load_env()
-    cases = [c for c in json.loads(scenario_eval.CASES_FILE.read_text(encoding="utf-8")) if c["id"] in scenario_eval.RUBRIC]
+    cases = [case for case in json.loads(scenario_eval.CASES_FILE.read_text(encoding="utf-8")) if case["id"] in scenario_eval.RUBRIC]
     run_dir = eval_env.RUNS / (time.strftime("%Y%m%d-%H%M%S-") + "compare")
     run_dir.mkdir(parents=True, exist_ok=True)
     with eval_env.environment(run_dir) as spring:
-        rows = [await measure(m, spring, run_dir, cases) for m in models]
+        rows = [await measure(model, spring, run_dir, cases) for model in models]
     (run_dir / "compare.json").write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
-    for r in rows:
-        print(json.dumps(r, ensure_ascii=False))
+    for row in rows:
+        print(json.dumps(row, ensure_ascii=False))
     print("산출물:", run_dir)
 
 

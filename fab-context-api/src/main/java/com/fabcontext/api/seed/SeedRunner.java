@@ -98,8 +98,14 @@ public class SeedRunner implements ApplicationRunner {
 		AuthUser cvd = user(SeedCatalog.CVD_ENGINEER);
 		AuthUser cmp = user(SeedCatalog.CMP_ENGINEER);
 		AuthUser manager = user(SeedCatalog.MANAGER);
-
 		// ---- 과거 사건 (추이 · 대시보드용 — 팩 데이터와 연결된 웨이퍼 없음)
+		seedClosedHistory(now, manager);
+		seedOpenHistory(now, cvd, cmp, manager);
+		seedCurrentIncidents();
+	}
+
+	/** 종료된 과거 사건 EV-1018 · EV-1019 · EV-1020 */
+	private void seedClosedHistory(Instant now, AuthUser manager) {
 		Instant d18 = now.minus(Duration.ofDays(12));
 		Incident ev1018 = incident(1018, "PAD_TEMP_DRIFT", "LOW", "CMP", "CMP-PM2", "HIST-L018", d18,
 			"CMP-PM2 플래튼 모터 전류 상승 추세");
@@ -114,7 +120,10 @@ public class SeedRunner implements ApplicationRunner {
 		Incident ev1020 = incident(1020, "PRESSURE_FLUCTUATION", "MEDIUM", "CMP", "CMP-PM1", "HIST-L020", d20,
 			"CMP-PM1 헤드 압력 변동");
 		close(ev1020, manager, d20.plus(Duration.ofHours(10)), "단발성 변동, 후속 run 정상");
+	}
 
+	/** 보고서까지 끝난 EV-1021 · 보류된 EV-1022 · 확인 요청 제안이 승인 대기인 EV-1023 */
+	private void seedOpenHistory(Instant now, AuthUser cvd, AuthUser cmp, AuthUser manager) {
 		Instant d21 = now.minus(Duration.ofDays(3));
 		Incident ev1021 = incident(1021, "SLURRY_FLOW_DROP", "HIGH", "CMP", "CMP-PM2", "HIST-L021", d21,
 			"CMP-PM2 슬러리 유량 저하");
@@ -137,15 +146,17 @@ public class SeedRunner implements ApplicationRunner {
 		payload.put("targetProcessCode", "CMP");
 		approvalService.createProposal(ev1023.getIncidentId(), cvd, new Proposal(ApprovalActionType.CHECK_REQUEST,
 			payload, "증착 속도 드리프트가 후속 CMP 결과에 영향을 줬는지 확인 필요", List.of(), null, ev1023.getVersion()));
+	}
 
-		// ---- 팩의 현재 로트에서 R1(관리한계)을 벗어난 run = 이상 탐지 서비스가 올린 사건. EV-10NN = CURRENT-L0NN
-		for (RouteRun r : catalog.currentOutOfControl()) {
-			int seq = 1000 + Integer.parseInt(r.getLotId().substring(r.getLotId().length() - 3));
-			Incident inc = fromRun(seq, r);
+	/** 팩의 현재 로트에서 R1(관리한계)을 벗어난 run = 이상 탐지 서비스가 올린 사건. EV-10NN = CURRENT-L0NN */
+	private void seedCurrentIncidents() {
+		for (RouteRun run : catalog.currentOutOfControl()) {
+			int seq = 1000 + Integer.parseInt(run.getLotId().substring(run.getLotId().length() - 3));
+			Incident incident = fromRun(seq, run);
 			// 기본 분석을 하지 않은 채 대기열에 둔다 — 서버를 띄우면 Agent(외부 Worker 또는 시뮬레이터 대역)가 바로 처리한다.
 			// 판정은 Agent 한 곳에서만 한다(시드가 결과를 미리 만들지 않는다)
-			at(r.getMetrologyAvailableAt().plusSeconds(60));
-			jobService.enqueue(inc, JobKind.BASIC, "svc_detector", null, null, Map.of(), null, null);
+			at(run.getMetrologyAvailableAt().plusSeconds(60));
+			jobService.enqueue(incident, JobKind.BASIC, "svc_detector", null, null, Map.of(), null, null);
 		}
 	}
 

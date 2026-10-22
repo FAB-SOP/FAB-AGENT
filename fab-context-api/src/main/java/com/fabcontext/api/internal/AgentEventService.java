@@ -45,7 +45,7 @@ public class AgentEventService {
 		Job job = jobService.load(jobId);
 		Incident incident = incidentRepository.findById(job.getIncidentId()).orElseThrow();
 		String type = String.valueOf(event.get("type"));
-		Map<String, Object> p = (Map<String, Object>) event.getOrDefault("payload", Map.of());
+		Map<String, Object> payload = (Map<String, Object>) event.getOrDefault("payload", Map.of());
 		if (job.getStatus() == JobStatus.SUCCEEDED || job.getStatus() == JobStatus.FAILED) {
 			return Map.of("jobId", jobId, "applied", false, "reason", "이미 끝난 작업입니다: " + job.getStatus());
 		}
@@ -56,39 +56,48 @@ public class AgentEventService {
 		switch (type) {
 			case "JOB_STARTED", "ANALYSIS_PROGRESS" -> jobService.startExternal(job, incident);
 			case "APPROVAL_REQUIRED" -> {
-				job.putInput("interruptId", p.get("interruptId"));
-				jobService.waitFor(job, incident, JobStatus.WAITING_APPROVAL, new Ref("APPROVAL", (String) p.get("approvalId")));
+				job.putInput("interruptId", payload.get("interruptId"));
+				jobService.waitFor(job, incident, JobStatus.WAITING_APPROVAL, new Ref("APPROVAL", (String) payload.get("approvalId")));
 			}
-			case "WAITING_REPLY" -> {
-				String requestId = (String) p.get("requestId");
-				job.putInput("interruptId", p.get("interruptId"));
-				checkRequestRepository.findById(requestId).ifPresent(r -> r.setWaitingJobId(jobId));
-				jobService.waitFor(job, incident, JobStatus.WAITING_REPLY, new Ref("CHECK_REQUEST", requestId));
-			}
-			case "RESULT_READY" -> {
-				AnalysisResult result = resultRepository.save(mapper.toResult(job, incident, (Map<String, Object>) p.get("result")));
-				work.importSuggestions(incident,result,(List<Map<String,Object>>)p.getOrDefault("workSuggestions",List.of()));
-				jobService.succeed(job, incident, new Ref("ANALYSIS_RESULT", result.getResultId()));
-				if (incident.getStatus() == IncidentStatus.OPEN) {
-					incident.setStatus(IncidentStatus.INVESTIGATING);
-				}
-				incident.record(Instant.now(clock), "ANALYSIS_COMPLETED", "agent", "Agent 분석 완료: " + result.getSummary(),
-					"ANALYSIS_RESULT", result.getResultId());
-				streamHub.publish(incident.getIncidentId(), "analysis.result",
-					Map.of("resultId", result.getResultId(), "jobId", jobId, "kind", result.getKind()));
-			}
+			case "WAITING_REPLY" -> waitForReply(job, incident, payload);
+			case "RESULT_READY" -> applyResult(job, incident, payload);
 			case "REPORT_DRAFT_READY" -> {
-				Map<String, Object> report = (Map<String, Object>) p.getOrDefault("report", Map.of());
+				Map<String, Object> report = (Map<String, Object>) payload.getOrDefault("report", Map.of());
 				jobService.succeed(job, incident, new Ref("REPORT", (String) report.get("reportId")));
 			}
-			case "RETRY_SCHEDULED" -> jobService.requeueExternal(job, incident, ((Number) p.get("nextAttempt")).intValue());
-			case "JOB_FAILED" -> {
-				jobService.failExternal(job, incident, String.valueOf(p.get("errorCode")), String.valueOf(p.get("message")));
-				incident.record(Instant.now(clock), "ANALYSIS_FAILED", "agent", job.getKind() + " 작업 실패: " + p.get("message"),
-					"JOB", jobId);
-			}
+			case "RETRY_SCHEDULED" -> jobService.requeueExternal(job, incident, ((Number) payload.get("nextAttempt")).intValue());
+			case "JOB_FAILED" -> recordFailure(job, incident, payload);
 			default -> throw InternalError.invalid("알 수 없는 이벤트 type: " + type, "");
 		}
 		return Map.of("jobId", jobId, "applied", true, "status", job.getStatus().name());
+	}
+
+	private void waitForReply(Job job, Incident incident, Map<String, Object> payload) {
+		String requestId = (String) payload.get("requestId");
+		job.putInput("interruptId", payload.get("interruptId"));
+		checkRequestRepository.findById(requestId).ifPresent(request -> request.setWaitingJobId(job.getJobId()));
+		jobService.waitFor(job, incident, JobStatus.WAITING_REPLY, new Ref("CHECK_REQUEST", requestId));
+	}
+
+	/** 분석 결과 저장 → 업무 제안 반영 → 작업 완료 → 사건 조사 중 표시 · 기록 · 알림 */
+	@SuppressWarnings("unchecked")
+	private void applyResult(Job job, Incident incident, Map<String, Object> payload) {
+		AnalysisResult result = resultRepository.save(mapper.toResult(job, incident, (Map<String, Object>) payload.get("result")));
+		work.importSuggestions(incident, result,
+			(List<Map<String, Object>>) payload.getOrDefault("workSuggestions", List.of()));
+		jobService.succeed(job, incident, new Ref("ANALYSIS_RESULT", result.getResultId()));
+		if (incident.getStatus() == IncidentStatus.OPEN) {
+			incident.setStatus(IncidentStatus.INVESTIGATING);
+		}
+		incident.record(Instant.now(clock), "ANALYSIS_COMPLETED", "agent", "Agent 분석 완료: " + result.getSummary(),
+			"ANALYSIS_RESULT", result.getResultId());
+		streamHub.publish(incident.getIncidentId(), "analysis.result",
+			Map.of("resultId", result.getResultId(), "jobId", job.getJobId(), "kind", result.getKind()));
+	}
+
+	private void recordFailure(Job job, Incident incident, Map<String, Object> payload) {
+		jobService.failExternal(job, incident, String.valueOf(payload.get("errorCode")), String.valueOf(payload.get("message")));
+		incident.record(Instant.now(clock), "ANALYSIS_FAILED", "agent", job.getKind() + " 작업 실패: " + payload.get("message"),
+			"JOB", job.getJobId());
 	}
 }

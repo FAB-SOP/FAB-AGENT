@@ -45,16 +45,16 @@ class BackendClient:
     async def call(self, method: str, path: str, *, params: dict | None = None, json: dict | None = None) -> dict:
         params = {k: v for k, v in (params or {}).items() if v is not None}
         try:
-            r = await self._c.request(method, path, params=params, json=json)
+            response = await self._c.request(method, path, params=params, json=json)
         except httpx.TransportError as e:
             raise FabToolError("UNAVAILABLE", f"backend에 연결하지 못했습니다({type(e).__name__}).",
                                hint="잠시 후 다시 시도하세요.", retryable=True) from e
-        body = r.json()
-        if r.is_success:
+        body = response.json()
+        if response.is_success:
             return body["data"]
         e = body.get("error", {})
-        raise FabToolError(e.get("code", "INTERNAL"), e.get("message", r.text[:200]), hint=e.get("hint", ""),
-                           retryable=bool(e.get("retryable")) or r.status_code in (429, 503))
+        raise FabToolError(e.get("code", "INTERNAL"), e.get("message", response.text[:200]), hint=e.get("hint", ""),
+                           retryable=bool(e.get("retryable")) or response.status_code in (429, 503))
 
 
 def build_server(*, backend_url: str | None = None, transport: httpx.AsyncBaseTransport | None = None,
@@ -73,6 +73,18 @@ def build_server(*, backend_url: str | None = None, transport: httpx.AsyncBaseTr
             "create_maintenance_request · confirm_report)는 사람이 승인한 approvalId로만 실행된다."
         ),
     )
+    # 등록 순서가 곧 도구 목록 순서다 — 모델 입력에 들어가므로 바꾸지 않는다
+    _register_incident_tools(mcp, backend)
+    _register_lineage_tools(mcp, backend)
+    _register_trace_and_limit_tools(mcp, backend)
+    _register_collaboration_tools(mcp, backend)
+    _register_change_tools(mcp, backend)
+    _register_health_route(mcp)
+    return mcp
+
+
+def _register_incident_tools(mcp: FastMCP, backend: BackendClient) -> None:
+    """읽기 도구 — 사건"""
     # ------------------------------------------------------------------ 읽기 도구 — 사건
     @mcp.tool(annotations=READ)
     async def get_incident(incidentId: IncidentId) -> dict:
@@ -88,6 +100,9 @@ def build_server(*, backend_url: str | None = None, transport: httpx.AsyncBaseTr
         """사건 목록을 돌려준다. 같은 PM에서 비슷한 사건이 또 있었는지 볼 때 쓴다."""
         return await backend.call("GET", "/internal/incidents", params={"processCode": processCode, "status": status})
 
+
+def _register_lineage_tools(mcp: FastMCP, backend: BackendClient) -> None:
+    """읽기 도구 — 설비 데이터(경로 · run/계측 · 특징)"""
     # ------------------------------------------------------------------ 읽기 도구 — 설비 데이터 (팩 계약 dataMcpTools)
     @mcp.tool(annotations=READ)
     async def get_wafer_lineage(waferId: WaferId) -> dict:
@@ -113,6 +128,9 @@ def build_server(*, backend_url: str | None = None, transport: httpx.AsyncBaseTr
         return await backend.call("GET", f"/internal/runs/{runId}/features",
                                   params={"sensorIds": ",".join(sensorIds) if sensorIds else None})
 
+
+def _register_trace_and_limit_tools(mcp: FastMCP, backend: BackendClient) -> None:
+    """읽기 도구 — 설비 데이터(원시 시계열 · 관리한계 · 정비 이력)"""
     @mcp.tool(annotations=READ)
     async def get_sensor_trace(
         runId: RunId,
@@ -140,6 +158,9 @@ def build_server(*, backend_url: str | None = None, transport: httpx.AsyncBaseTr
         제거량이 달라진 PM에서 최근 정비 · 세정이 있었는지 볼 때 쓴다. 정비 기록이 원인 확정은 아니다."""
         return await backend.call("GET", "/internal/changes", params={"equipmentId": equipmentId})
 
+
+def _register_collaboration_tools(mcp: FastMCP, backend: BackendClient) -> None:
+    """읽기 도구 — 협업 · 기록"""
     # ------------------------------------------------------------------ 읽기 도구 — 협업 · 기록
     @mcp.tool(annotations=READ)
     async def get_process_owner(processCode: Annotated[Process, Field(description="담당자를 찾을 공정")]) -> dict:
@@ -162,6 +183,9 @@ def build_server(*, backend_url: str | None = None, transport: httpx.AsyncBaseTr
         """보고서 초안에 필요한 기록을 한 번에 돌려준다 — 사건, 요청 · 회신, 조치, 기존 보고서 버전."""
         return await backend.call("GET", f"/internal/incidents/{incidentId}/report-context")
 
+
+def _register_change_tools(mcp: FastMCP, backend: BackendClient) -> None:
+    """변경 도구 — 사람이 승인한 approvalId로만 실행된다"""
     # ------------------------------------------------------------------ 변경 도구 (사람 승인 필요 — 팩 계약 writeTools)
     @mcp.tool(annotations=WRITE, meta={"approvalRequired": True})
     async def create_cross_process_check_request(approvalId: ApprovalId, idempotencyKey: IdemKey) -> dict:
@@ -181,13 +205,13 @@ def build_server(*, backend_url: str | None = None, transport: httpx.AsyncBaseTr
         return await backend.call("POST", "/internal/approved-actions/report-confirmation",
                                   json={"approvalId": approvalId, "idempotencyKey": idempotencyKey})
 
+
+def _register_health_route(mcp: FastMCP) -> None:
     @mcp.custom_route("/healthz", methods=["GET"])
     async def healthz(request):
         from starlette.responses import JSONResponse
 
         return JSONResponse({"status": "ok"})
-
-    return mcp
 
 
 def main() -> None:

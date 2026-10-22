@@ -30,13 +30,71 @@ async def run_incident(display_id: str, *, reject: bool = False, kb=None, verbos
 
 def demo() -> None:
     load_env()
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--incident", default="EV-1009", choices=["EV-1006", "EV-1007", "EV-1009"])
-    ap.add_argument("--reject", action="store_true")
-    a = ap.parse_args()
-    r = asyncio.run(run_incident(a.incident, reject=a.reject))
-    print(json.dumps({"nextStep": r["analysis"].get("nextStep"), "causeIds": r["analysis"].get("causeIds"),
-                      "trace": r["trace"]}, ensure_ascii=False))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--incident", default="EV-1009", choices=["EV-1006", "EV-1007", "EV-1009"])
+    parser.add_argument("--reject", action="store_true")
+    options = parser.parse_args()
+    outcome = asyncio.run(run_incident(options.incident, reject=options.reject))
+    print(json.dumps({"nextStep": outcome["analysis"].get("nextStep"), "causeIds": outcome["analysis"].get("causeIds"),
+                      "trace": outcome["trace"]}, ensure_ascii=False))
+
+
+async def _first_basic(user, case: dict, first: dict, runner, backend) -> tuple[dict, dict]:
+    """사건의 첫 기본 분석 — 기동 때 처리한 것이 없으면 기본 분석을 다시 요청해 돌린다. (분석 결과, 최신 사건)"""
+    from fab.agent.worker import poll_once
+
+    incident = await user.incident(case["id"])
+    basic = first.get(incident["incidentId"])
+    if not basic:  # 시드에서 시뮬레이터가 이미 분석한 사건 — Agent로 다시 돌린다(이 thread의 첫 Agent 판단)
+        _, accepted = await user.post(f"/api/incidents/{incident['incidentId']}/basic-analysis-jobs",
+                                      {"expectedIncidentVersion": incident["version"], "reason": "평가 — 첫 판단"})
+        basic = next((outcome for outcome in await poll_once(runner, backend)
+                      if outcome["job"]["jobId"] == accepted["data"]["jobId"]), {})
+        incident = await user.incident(case["id"])
+    return basic, incident
+
+
+async def _first_proposal(user, case: dict, incident: dict, runner, backend) -> tuple[dict, dict | None]:
+    """팩 질문으로 심층 조사 — 첫 제안을 읽고 거절해 변경 없이 끝낸다. (조사 결과, 첫 제안)"""
+    from fab.agent.worker import poll_once
+    from fab.devtools.spring import internal_action
+
+    _, accepted = await user.post(f"/api/incidents/{incident['incidentId']}/questions",
+                                  {"question": case["question"], "expectedIncidentVersion": incident["version"]})
+    deep = next((outcome for outcome in await poll_once(runner, backend)
+                 if outcome["job"]["jobId"] == accepted["data"]["jobId"]), {})
+    if deep.get("status") != "WAITING_APPROVAL":
+        return deep, None
+    _, approval = await user.get(f"/api/approvals/{deep['interrupt']['approvalId']}")
+    approval = approval["data"]
+    proposal = {"actionType": internal_action(approval["actionType"]),
+                "targetProcessCode": approval["payload"].get("targetProcessCode"),
+                "ownerUserId": approval["payload"].get("ownerUserId")}
+    await user.post(f"/api/approvals/{approval['approvalId']}/decisions",
+                    {"decision": "REJECT", "comment": "평가 — 첫 제안만 본다", "expectedVersion": approval["version"]})
+    await poll_once(runner, backend)  # 거절 뒤 재개 — Agent가 지금 근거로 결과를 정리한다
+    return deep, proposal
+
+
+async def _evaluate_case(case: dict, first: dict, runner, backend, base: str | None) -> dict:
+    from fab.devtools.spring import OWNER_OF_PROCESS, User, internal
+
+    process = (await internal("GET", f"/internal/incidents/{case['id']}", base))["data"]["data"]["processCode"]
+    user = await User(OWNER_OF_PROCESS[process], base).login()
+    basic, incident = await _first_basic(user, case, first, runner, backend)
+    analysis = basic.get("analysis") or {}
+    top = (analysis.get("causeIds") or [[]])[0]
+    deep, proposal = await _first_proposal(user, case, incident, runner, backend)
+    await user.close()
+    checks = {
+        "nextStep": analysis.get("nextStep") == case["expectedNextStep"],
+        "causeIds": set(case["expectedCauseIds"]) <= set(top),
+        "proposal": bool(proposal) and proposal["actionType"] == case["expectedProposal"],
+        "target": bool(proposal) and (proposal["targetProcessCode"] or process) == case["expectedTargetProcess"],
+    }
+    return {"incident": case["id"], "expected": case["expectedNextStep"], "got": analysis.get("nextStep"), "causeIds": top,
+            "proposal": proposal, "checks": checks, "pass": all(checks.values()),
+            "trace": basic.get("trace") or {}, "deepTrace": deep.get("trace") or {}}
 
 
 async def evaluate(kb=None, models=None, base: str | None = None) -> list[dict]:
@@ -46,7 +104,7 @@ async def evaluate(kb=None, models=None, base: str | None = None) -> list[dict]:
     ② 팩 질문으로 심층 조사(DEEP)를 돌려 첫 제안의 종류 · 대상 공정을 본다. 제안은 거절해 변경 없이 끝낸다
     """
     from fab.agent.worker import poll_once
-    from fab.devtools.spring import OWNER_OF_PROCESS, User, internal, internal_action, make_runner
+    from fab.devtools.spring import make_runner
     from fab.rag.server import Knowledge
 
     if not GROUND_TRUTH.exists():  # 평가자 전용 — 공개 저장소에는 없다
@@ -54,53 +112,19 @@ async def evaluate(kb=None, models=None, base: str | None = None) -> list[dict]:
     truth = json.loads(GROUND_TRUTH.read_text(encoding="utf-8"))["incidents"]
     runner, backend = make_runner(kb or Knowledge(), models, base)
     # 기동 때 대기 중인 기본 분석(예: 시드의 EV-1009)은 그 사건 thread의 첫 판단이므로 그대로 쓴다
-    first = {o["job"]["incidentId"]: o for o in await poll_once(runner, backend) if o["job"]["kind"] == "BASIC"}
-    rows = []
-    for t in truth:
-        proc = (await internal("GET", f"/internal/incidents/{t['id']}", base))["data"]["data"]["processCode"]
-        u = await User(OWNER_OF_PROCESS[proc], base).login()
-        i = await u.incident(t["id"])
-        basic = first.get(i["incidentId"])
-        if not basic:  # 시드에서 시뮬레이터가 이미 분석한 사건 — Agent로 다시 돌린다(이 thread의 첫 Agent 판단)
-            st, acc = await u.post(f"/api/incidents/{i['incidentId']}/basic-analysis-jobs",
-                                   {"expectedIncidentVersion": i["version"], "reason": "평가 — 첫 판단"})
-            basic = next((o for o in await poll_once(runner, backend) if o["job"]["jobId"] == acc["data"]["jobId"]), {})
-            i = await u.incident(t["id"])
-        a = basic.get("analysis") or {}
-        top = (a.get("causeIds") or [[]])[0]
-        st, acc = await u.post(f"/api/incidents/{i['incidentId']}/questions",
-                               {"question": t["question"], "expectedIncidentVersion": i["version"]})
-        deep = next((o for o in await poll_once(runner, backend) if o["job"]["jobId"] == acc["data"]["jobId"]), {})
-        proposal = None
-        if deep.get("status") == "WAITING_APPROVAL":
-            _, ap = await u.get(f"/api/approvals/{deep['interrupt']['approvalId']}")
-            ap = ap["data"]
-            proposal = {"actionType": internal_action(ap["actionType"]), "targetProcessCode": ap["payload"].get("targetProcessCode"),
-                        "ownerUserId": ap["payload"].get("ownerUserId")}
-            await u.post(f"/api/approvals/{ap['approvalId']}/decisions",
-                         {"decision": "REJECT", "comment": "평가 — 첫 제안만 본다", "expectedVersion": ap["version"]})
-            await poll_once(runner, backend)  # 거절 뒤 재개 — Agent가 지금 근거로 결과를 정리한다
-        await u.close()
-        checks = {
-            "nextStep": a.get("nextStep") == t["expectedNextStep"],
-            "causeIds": set(t["expectedCauseIds"]) <= set(top),
-            "proposal": bool(proposal) and proposal["actionType"] == t["expectedProposal"],
-            "target": bool(proposal) and (proposal["targetProcessCode"] or proc) == t["expectedTargetProcess"],
-        }
-        rows.append({"incident": t["id"], "expected": t["expectedNextStep"], "got": a.get("nextStep"), "causeIds": top,
-                     "proposal": proposal, "checks": checks, "pass": all(checks.values()),
-                     "trace": basic.get("trace") or {}, "deepTrace": deep.get("trace") or {}})
-    return rows
+    first = {outcome["job"]["incidentId"]: outcome for outcome in await poll_once(runner, backend)
+             if outcome["job"]["kind"] == "BASIC"}
+    return [await _evaluate_case(case, first, runner, backend, base) for case in truth]
 
 
 def eval_main() -> None:
     load_env()
     rows = asyncio.run(evaluate())
-    for r in rows:
-        p = r["proposal"] or {}
-        marks = " ".join(f"{k}{'✔' if v else '✘'}" for k, v in r["checks"].items())
-        print(f"{r['incident']}  기대 {r['expected']:<15} 결과 {str(r['got']):<22} 원인 {r['causeIds']} "
-              f"첫 제안 {p.get('actionType')}→{p.get('targetProcessCode')} {p.get('ownerUserId')}  {marks}  "
-              f"{'PASS' if r['pass'] else 'FAIL'}")
-    print(f"통과 {sum(r['pass'] for r in rows)}/{len(rows)}")
-    raise SystemExit(0 if all(r["pass"] for r in rows) else 1)
+    for row in rows:
+        proposal = row["proposal"] or {}
+        marks = " ".join(f"{k}{'✔' if v else '✘'}" for k, v in row["checks"].items())
+        print(f"{row['incident']}  기대 {row['expected']:<15} 결과 {str(row['got']):<22} 원인 {row['causeIds']} "
+              f"첫 제안 {proposal.get('actionType')}→{proposal.get('targetProcessCode')} {proposal.get('ownerUserId')}  {marks}  "
+              f"{'PASS' if row['pass'] else 'FAIL'}")
+    print(f"통과 {sum(row['pass'] for row in rows)}/{len(rows)}")
+    raise SystemExit(0 if all(row["pass"] for row in rows) else 1)

@@ -45,18 +45,18 @@ class User:
 
     async def login(self) -> "User":
         self.csrf = (await self.c.get("/api/auth/csrf")).json()["data"]["token"]
-        r = await self.c.post("/api/auth/login", json={"username": self.username, "password": "fab1234!"},
-                              headers={"X-CSRF-TOKEN": self.csrf})
-        r.raise_for_status()
+        response = await self.c.post("/api/auth/login", json={"username": self.username, "password": "fab1234!"},
+                                     headers={"X-CSRF-TOKEN": self.csrf})
+        response.raise_for_status()
         return self
 
     async def get(self, path: str) -> tuple[int, dict]:
-        r = await self.c.get(path)
-        return r.status_code, (r.json() if r.content else {})
+        response = await self.c.get(path)
+        return response.status_code, (response.json() if response.content else {})
 
     async def post(self, path: str, body: dict) -> tuple[int, dict]:
-        r = await self.c.post(path, json=body, headers={"X-CSRF-TOKEN": self.csrf, "Idempotency-Key": str(uuid.uuid4())})
-        return r.status_code, (r.json() if r.content else {})
+        response = await self.c.post(path, json=body, headers={"X-CSRF-TOKEN": self.csrf, "Idempotency-Key": str(uuid.uuid4())})
+        return response.status_code, (response.json() if response.content else {})
 
     async def incident(self, display_id: str) -> dict:
         _, page = await self.get(f"/api/incidents?q={display_id}")
@@ -77,9 +77,48 @@ def make_runner(kb=None, models=None, base: str | None = None) -> tuple[JobRunne
 
 
 async def internal(method: str, path: str, base: str | None = None, **kw) -> dict:
-    async with httpx.AsyncClient(base_url=base or spring_url(), headers={"Authorization": f"Bearer {TOKEN}"}, timeout=20) as c:
-        r = await c.request(method, path, **kw)
-        return r.json()
+    async with httpx.AsyncClient(base_url=base or spring_url(), headers={"Authorization": f"Bearer {TOKEN}"},
+                                 timeout=20) as client:
+        response = await client.request(method, path, **kw)
+        return response.json()
+
+
+async def _ask_question(engineer: User, display_id: str, question: str) -> None:
+    incident = await engineer.incident(display_id)
+    status, accepted = await engineer.post(f"/api/incidents/{incident['incidentId']}/questions",
+                                           {"question": question, "expectedIncidentVersion": incident["version"]})
+    if status != 202:
+        raise RuntimeError(f"질문 접수 실패 {status}: {accepted}")
+
+
+async def _decide_approval(engineer: User, interrupt: dict, reject: bool, say) -> dict:
+    """승인 대기 — 제안을 읽고 승인(또는 거절)한다. 읽은 제안을 팀 계약 이름으로 돌려준다"""
+    _, approval = await engineer.get(f"/api/approvals/{interrupt['approvalId']}")
+    proposal = approval["data"]
+    say(f"  승인 대기 {proposal['actionType']} → {proposal['payload'].get('ownerUserId')}: {proposal['payload']['question'][:70]}")
+    body = {"decision": "REJECT", "comment": "지금은 요청 없이 진행", "expectedVersion": proposal["version"]} if reject \
+        else {"decision": "APPROVE", "expectedVersion": proposal["version"], "actionHash": proposal["actionHash"]}
+    await engineer.post(f"/api/approvals/{interrupt['approvalId']}/decisions", body)
+    return proposal | {"actionType": internal_action(proposal["actionType"]), "publicActionType": proposal["actionType"]}
+
+
+async def _reply_as_owner(interrupt: dict, base: str | None, say) -> None:
+    """회신 대기 — 요청 받은 담당자로 로그인해 시연 회신을 남긴다"""
+    request = (await internal("GET", f"/internal/check-requests/{interrupt['requestId']}", base))["data"]
+    owner = await User(LOGIN[request["ownerUserId"]], base).login()
+    say(f"  회신 대기 {request['requestType']} → {owner.username}")
+    await owner.post(f"/api/check-requests/{request['requestId']}/replies", {
+        "findings": "확인했습니다. 해당 run 전후 정비 · 시즈닝 기록과 모니터 결과를 첨부합니다(시연 회신).",
+        "evidenceIds": [], "confirmedByUser": True, "expectedVersion": request["version"]})
+    await owner.close()
+
+
+async def _draft_report(engineer: User, display_id: str, runner: JobRunner, backend: HttpBackend, say) -> dict:
+    incident = await engineer.incident(display_id)
+    await engineer.post(f"/api/incidents/{incident['incidentId']}/report-jobs", {"expectedIncidentVersion": incident["version"]})
+    report_outcome = (await poll_once(runner, backend))[-1]
+    say(f"[{display_id}] 보고서 초안 → {report_outcome['status']}")
+    return report_outcome
 
 
 async def drive(display_id: str, question: str, *, reject: bool = False, kb=None, models=None, report: bool = True,
@@ -89,46 +128,24 @@ async def drive(display_id: str, question: str, *, reject: bool = False, kb=None
     runner, backend = make_runner(kb, models, base)
     sink = runner.sink
     await poll_once(runner, backend)  # 기동 때 대기 중인 작업(예: EV-1009 기본 분석)을 먼저 비운다
-    inc = await internal("GET", f"/internal/incidents/{display_id}", base)
-    proc = inc["data"]["data"]["processCode"]
-    engineer = await User(OWNER_OF_PROCESS[proc], base).login()
-    i = await engineer.incident(display_id)
-    st, acc = await engineer.post(f"/api/incidents/{i['incidentId']}/questions",
-                                  {"question": question, "expectedIncidentVersion": i["version"]})
-    if st != 202:
-        raise RuntimeError(f"질문 접수 실패 {st}: {acc}")
-    out = (await poll_once(runner, backend))[-1]
-    say(f"[{display_id}] DEEP → {out['status']}")
+    incident = await internal("GET", f"/internal/incidents/{display_id}", base)
+    process = incident["data"]["data"]["processCode"]
+    engineer = await User(OWNER_OF_PROCESS[process], base).login()
+    await _ask_question(engineer, display_id, question)
+    outcome = (await poll_once(runner, backend))[-1]
+    say(f"[{display_id}] DEEP → {outcome['status']}")
     proposals = []
-    while out["status"] in ("WAITING_APPROVAL", "WAITING_REPLY"):
-        intr = out["interrupt"]
-        if out["status"] == "WAITING_APPROVAL":
-            _, a = await engineer.get(f"/api/approvals/{intr['approvalId']}")
-            proposals.append(a["data"] | {"actionType": internal_action(a["data"]["actionType"]),
-                                          "publicActionType": a["data"]["actionType"]})
-            say(f"  승인 대기 {a['data']['actionType']} → {a['data']['payload'].get('ownerUserId')}: {a['data']['payload']['question'][:70]}")
-            body = {"decision": "REJECT", "comment": "지금은 요청 없이 진행", "expectedVersion": a["data"]["version"]} if reject \
-                else {"decision": "APPROVE", "expectedVersion": a["data"]["version"], "actionHash": a["data"]["actionHash"]}
-            st, _ = await engineer.post(f"/api/approvals/{intr['approvalId']}/decisions", body)
+    while outcome["status"] in ("WAITING_APPROVAL", "WAITING_REPLY"):
+        if outcome["status"] == "WAITING_APPROVAL":
+            proposals.append(await _decide_approval(engineer, outcome["interrupt"], reject, say))
         else:
-            req = (await internal("GET", f"/internal/check-requests/{intr['requestId']}", base))["data"]
-            owner = await User(LOGIN[req["ownerUserId"]], base).login()
-            say(f"  회신 대기 {req['requestType']} → {owner.username}")
-            st, _ = await owner.post(f"/api/check-requests/{req['requestId']}/replies", {
-                "findings": "확인했습니다. 해당 run 전후 정비 · 시즈닝 기록과 모니터 결과를 첨부합니다(시연 회신).",
-                "evidenceIds": [], "confirmedByUser": True, "expectedVersion": req["version"]})
-            await owner.close()
-        out = (await poll_once(runner, backend))[-1]
-        say(f"  재개 → {out['status']}")
-    result, analysis = out.get("result") or {}, out.get("analysis") or {}
-    for c in result.get("candidateCauses", []):
-        say(f"    우선순위 {c['priority']}: {c['hypothesis']}")
-    rep = None
-    if report:
-        i = await engineer.incident(display_id)
-        await engineer.post(f"/api/incidents/{i['incidentId']}/report-jobs", {"expectedIncidentVersion": i["version"]})
-        rep = (await poll_once(runner, backend))[-1]
-        say(f"[{display_id}] 보고서 초안 → {rep['status']}")
+            await _reply_as_owner(outcome["interrupt"], base, say)
+        outcome = (await poll_once(runner, backend))[-1]
+        say(f"  재개 → {outcome['status']}")
+    result, analysis = outcome.get("result") or {}, outcome.get("analysis") or {}
+    for cause in result.get("candidateCauses", []):
+        say(f"    우선순위 {cause['priority']}: {cause['hypothesis']}")
+    report_outcome = await _draft_report(engineer, display_id, runner, backend, say) if report else None
     await engineer.close()
     return {"incident": display_id, "result": result, "analysis": analysis, "proposals": proposals,
-            "events": sink.events, "trace": out.get("trace"), "report": (rep or {}).get("report")}
+            "events": sink.events, "trace": outcome.get("trace"), "report": (report_outcome or {}).get("report")}

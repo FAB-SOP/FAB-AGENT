@@ -39,8 +39,8 @@ async def run_http_worker(poll_seconds: float = 2.0, once: bool = False) -> None
     servers = {"business": os.getenv("BUSINESS_MCP_URL", "http://localhost:9101/mcp"),
                "knowledge": os.getenv("KNOWLEDGE_MCP_URL", "http://localhost:9102/mcp")}
     sink = HttpSink(backend)
-    async with make_checkpointer() as cp:
-        runner = JobRunner(servers, backend, cp, sink, worker_id=os.getenv("HOSTNAME"))
+    async with make_checkpointer() as checkpointer:
+        runner = JobRunner(servers, backend, checkpointer, sink, worker_id=os.getenv("HOSTNAME"))
         while True:
             await poll_once(runner, backend)
             if once:

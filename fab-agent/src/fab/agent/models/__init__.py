@@ -22,6 +22,6 @@ def make_models():
             raise RuntimeError("OPENAI_API_KEY가 비어 있거나 형식이 다릅니다. fab-agent/.env에 키를 넣거나, "
                                "키 없이 돌리려면 FAB_LLM=rule로 바꾸세요.")
         primary = OpenAIModel(os.getenv("FAB_MODEL", "gpt-4.1-mini"))
-        fb = os.getenv("FAB_FALLBACK_MODEL", "gpt-4o-mini")
-        return primary, (OpenAIModel(fb) if fb and fb != primary.name else None)
+        fallback_name = os.getenv("FAB_FALLBACK_MODEL", "gpt-4o-mini")
+        return primary, (OpenAIModel(fallback_name) if fallback_name and fallback_name != primary.name else None)
     return RuleModel(), None

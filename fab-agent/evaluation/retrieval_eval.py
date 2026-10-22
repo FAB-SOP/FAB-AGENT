@@ -34,9 +34,9 @@ def hit(item: dict, expect: dict) -> bool:
 
 def _rank(kb, query: str, corpus: str, expect: dict) -> int | None:
     items = kb.search(query, corpus, {}, DEPTH)
-    for i, it in enumerate(items):
-        c = kb.chunks[it["chunkId"]]
-        if hit({**it, "causeId": c.meta.get("causeId"), "documentId": c.meta.get("documentId")}, expect):
+    for i, item in enumerate(items):
+        chunk = kb.chunks[item["chunkId"]]
+        if hit({**item, "causeId": chunk.meta.get("causeId"), "documentId": chunk.meta.get("documentId")}, expect):
             return i + 1
     return None
 
@@ -45,20 +45,20 @@ def run(embedder: str, queries: list[dict]) -> list[dict]:
     os.environ["EMBEDDER"] = embedder
     from fab.rag.server import Knowledge
 
-    kb = Knowledge()
+    knowledge = Knowledge()
     rows = []
-    for q in queries:
-        items = kb.search(q["query"], CORPUS[q["tool"]], {}, DEPTH)
-        for it in items:  # 메타데이터 일부는 search 결과에 없으니 조각에서 채운다
-            c = kb.chunks[it["chunkId"]]
-            it.setdefault("causeId", c.meta.get("causeId"))
-            it.setdefault("documentId", c.meta.get("documentId"))
-        rank = next((i + 1 for i, it in enumerate(items) if hit(it, q["expect"])), None)
-        rows.append({**q, "rank": rank, "top": [it["chunkId"] for it in items[:3]], "model": kb.index_info["embedModel"]})
-        if q.get("agentQuery"):  # 같은 뜻을 영어 용어와 함께 쓴 질의 — 따로 센다
-            rows.append({**q, "id": q["id"] + "a", "query": q["agentQuery"], "variant": "agent",
-                         "rank": _rank(kb, q["agentQuery"], CORPUS[q["tool"]], q["expect"]), "top": [],
-                         "model": kb.index_info["embedModel"]})
+    for query in queries:
+        items = knowledge.search(query["query"], CORPUS[query["tool"]], {}, DEPTH)
+        for item in items:  # 메타데이터 일부는 search 결과에 없으니 조각에서 채운다
+            chunk = knowledge.chunks[item["chunkId"]]
+            item.setdefault("causeId", chunk.meta.get("causeId"))
+            item.setdefault("documentId", chunk.meta.get("documentId"))
+        rank = next((i + 1 for i, item in enumerate(items) if hit(item, query["expect"])), None)
+        rows.append({**query, "rank": rank, "top": [item["chunkId"] for item in items[:3]], "model": knowledge.index_info["embedModel"]})
+        if query.get("agentQuery"):  # 같은 뜻을 영어 용어와 함께 쓴 질의 — 따로 센다
+            rows.append({**query, "id": query["id"] + "a", "query": query["agentQuery"], "variant": "agent",
+                         "rank": _rank(knowledge, query["agentQuery"], CORPUS[query["tool"]], query["expect"]), "top": [],
+                         "model": knowledge.index_info["embedModel"]})
     return rows
 
 
@@ -66,27 +66,27 @@ def table(results: dict[str, list[dict]]) -> str:
     out = ["| 도구 | 임베더 | 질의 | Hit@3 | MRR | 바꿔 쓴 질의 Hit@3 |", "|---|---|---|---|---|---|"]
     for tool in CORPUS:
         for emb, rows in results.items():
-            rs = [r for r in rows if r["tool"] == tool and not r.get("variant")]
-            para = [r for r in rs if r.get("paraphrase")]
-            h3 = sum(1 for r in rs if r["rank"] and r["rank"] <= 3) / len(rs)
-            mrr = sum(1 / r["rank"] for r in rs if r["rank"]) / len(rs)
-            ph = f"{sum(1 for r in para if r['rank'] and r['rank'] <= 3)}/{len(para)}" if para else "—"
-            out.append(f"| {tool} | {rs[0]['model']} | {len(rs)} | {h3:.2f} | {mrr:.3f} | {ph} |")
-            ag = [r for r in rows if r["tool"] == tool and r.get("variant") == "agent"]
-            if ag:
-                h3 = sum(1 for r in ag if r["rank"] and r["rank"] <= 3) / len(ag)
-                mrr = sum(1 / r["rank"] for r in ag if r["rank"]) / len(ag)
-                out.append(f"| └ 영어 병기(agentQuery) | {rs[0]['model']} | {len(ag)} | {h3:.2f} | {mrr:.3f} | — |")
+            base_rows = [row for row in rows if row["tool"] == tool and not row.get("variant")]
+            para = [row for row in base_rows if row.get("paraphrase")]
+            hit_at_3 = sum(1 for row in base_rows if row["rank"] and row["rank"] <= 3) / len(base_rows)
+            mrr = sum(1 / row["rank"] for row in base_rows if row["rank"]) / len(base_rows)
+            paraphrase_hits = f"{sum(1 for row in para if row['rank'] and row['rank'] <= 3)}/{len(para)}" if para else "—"
+            out.append(f"| {tool} | {base_rows[0]['model']} | {len(base_rows)} | {hit_at_3:.2f} | {mrr:.3f} | {paraphrase_hits} |")
+            agent_rows = [row for row in rows if row["tool"] == tool and row.get("variant") == "agent"]
+            if agent_rows:
+                hit_at_3 = sum(1 for row in agent_rows if row["rank"] and row["rank"] <= 3) / len(agent_rows)
+                mrr = sum(1 / row["rank"] for row in agent_rows if row["rank"]) / len(agent_rows)
+                out.append(f"| └ 영어 병기(agentQuery) | {base_rows[0]['model']} | {len(agent_rows)} | {hit_at_3:.2f} | {mrr:.3f} | — |")
     return "\n".join(out)
 
 
 def main() -> None:
     from fab.common.env import load_env
 
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--embedder", nargs="+", default=["hash", "openai"], choices=["hash", "openai"])
-    ap.add_argument("--details", action="store_true")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--embedder", nargs="+", default=["hash", "openai"], choices=["hash", "openai"])
+    parser.add_argument("--details", action="store_true")
+    args = parser.parse_args()
     load_env()
     os.environ.pop("PG_DSN", None)
     queries = json.loads(QUERIES.read_text(encoding="utf-8"))["queries"]
@@ -104,9 +104,9 @@ def main() -> None:
     if args.details:
         for emb, rows in results.items():
             print(f"\n### {emb}")
-            for r in rows:
-                mark = "✔" if r["rank"] and r["rank"] <= 3 else "✘"
-                print(f"{mark} {r['id']} 순위 {r['rank'] or '10위 밖'}  {r['query']}  → {', '.join(r['top'])}")
+            for row in rows:
+                mark = "✔" if row["rank"] and row["rank"] <= 3 else "✘"
+                print(f"{mark} {row['id']} 순위 {row['rank'] or '10위 밖'}  {row['query']}  → {', '.join(row['top'])}")
 
 
 if __name__ == "__main__":

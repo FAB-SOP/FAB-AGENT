@@ -10,18 +10,18 @@ from fab.agent.graph.state import AgentState
 
 
 def build_graph(checkpointer):
-    g = StateGraph(AgentState)
-    for name, fn in [("start", start), ("required_evidence", required_evidence), ("agent", agent),
-                     ("request_brief", request_brief), ("tools", tools), ("approval_wait", approval_wait), ("reply_wait", reply_wait),
-                     ("finalize", finalize)]:
-        g.add_node(name, fn)
-    g.add_edge(START, "start")
-    g.add_edge("start", "required_evidence")
-    g.add_edge("required_evidence", "agent")
-    g.add_conditional_edges("agent", route_agent, ["request_brief", "tools", "finalize", "agent"])
-    g.add_edge("request_brief", "tools")
-    g.add_conditional_edges("tools", route_tools, ["approval_wait", "finalize", "agent"])
-    g.add_conditional_edges("approval_wait", route_approval, ["reply_wait", "agent"])
-    g.add_edge("reply_wait", "agent")
-    g.add_edge("finalize", END)
-    return g.compile(checkpointer=checkpointer)
+    graph = StateGraph(AgentState)
+    for name, node_function in [("start", start), ("required_evidence", required_evidence), ("agent", agent),
+                                ("request_brief", request_brief), ("tools", tools), ("approval_wait", approval_wait),
+                                ("reply_wait", reply_wait), ("finalize", finalize)]:
+        graph.add_node(name, node_function)
+    graph.add_edge(START, "start")
+    graph.add_edge("start", "required_evidence")
+    graph.add_edge("required_evidence", "agent")
+    graph.add_conditional_edges("agent", route_agent, ["request_brief", "tools", "finalize", "agent"])
+    graph.add_edge("request_brief", "tools")
+    graph.add_conditional_edges("tools", route_tools, ["approval_wait", "finalize", "agent"])
+    graph.add_conditional_edges("approval_wait", route_approval, ["reply_wait", "agent"])
+    graph.add_edge("reply_wait", "agent")
+    graph.add_edge("finalize", END)
+    return graph.compile(checkpointer=checkpointer)

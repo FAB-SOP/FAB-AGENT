@@ -37,14 +37,14 @@ class Toolbox:
     async def __aenter__(self):
         self._stack = AsyncExitStack()
         for name, target in self._targets.items():
-            c = await self._stack.enter_async_context(Client(target, timeout=LIMITS.mcp_timeout))
-            self._clients[name] = c
-            for t in await c.list_tools():
-                self.tool_server[t.name] = name
-                if t.name in WRITE_TOOLS:
+            client = await self._stack.enter_async_context(Client(target, timeout=LIMITS.mcp_timeout))
+            self._clients[name] = client
+            for tool in await client.list_tools():
+                self.tool_server[tool.name] = name
+                if tool.name in WRITE_TOOLS:
                     continue  # 모델에게 보이지 않는다
                 self.specs.append({"type": "function", "function": {
-                    "name": t.name, "description": t.description or "", "parameters": t.input_schema}})
+                    "name": tool.name, "description": tool.description or "", "parameters": tool.input_schema}})
         return self
 
     async def __aexit__(self, *exc):
@@ -52,7 +52,7 @@ class Toolbox:
 
     def model_tools(self, mode: str) -> list[dict]:
         allowed = {"REPORT": {"submit_report"}, "BASIC": {"submit_result"}}.get(mode, {"submit_result", *PROPOSALS})
-        return self.specs + [t for t in HARNESS_TOOLS if t["function"]["name"] in allowed]
+        return self.specs + [tool for tool in HARNESS_TOOLS if tool["function"]["name"] in allowed]
 
     async def call(self, name: str, args: dict, tracer, *, allow_write: bool = False) -> dict:
         if name in WRITE_TOOLS and not allow_write:
@@ -71,9 +71,9 @@ class Toolbox:
                     res = None
                     err_text, code = f"[TIMEOUT] {name}가 {LIMITS.mcp_timeout}초 안에 응답하지 않았습니다.", "TIMEOUT"
             if res is not None and not res.is_error:
-                return mask(res.structured_content or {"text": "".join(getattr(b, "text", "") for b in res.content)})
+                return mask(res.structured_content or {"text": "".join(getattr(block, "text", "") for block in res.content)})
             if res is not None:
-                err_text = "".join(getattr(b, "text", "") for b in res.content)
+                err_text = "".join(getattr(block, "text", "") for block in res.content)
                 code = parse_error_code(err_text)
             retryable = code in RETRYABLE_CODES
             if not retryable or attempt > LIMITS.llm_retries:

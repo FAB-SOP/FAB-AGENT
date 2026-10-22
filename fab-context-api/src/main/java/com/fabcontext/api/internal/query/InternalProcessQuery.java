@@ -107,61 +107,89 @@ public class InternalProcessQuery {
 	/** get_sensor_trace — 원시 시계열을 구간 평균으로 줄여 돌려준다(최대 MAX_TRACE_POINTS점) */
 	public Map<String, Object> trace(String runId, String sensorId, String step, Integer maxPoints) {
 		faults.maybeFail("get_sensor_trace");
-		RouteRun r = loadRun(runId);
-		requireRunEnded(r);
-		Trace t = pack.trace(runId, sensorId).orElseThrow(() -> InternalError.notFound(
+		RouteRun run = loadRun(runId);
+		requireRunEnded(run);
+		Trace trace = pack.trace(runId, sensorId).orElseThrow(() -> InternalError.notFound(
 			"run " + runId + "의 " + sensorId + " 원시 시계열이 없습니다.",
-			"BASELINE run은 원시 시계열 없이 특징만 있습니다(get_run_features). 가능한 센서: " + sensorList(r)));
-		int n = Math.max(10, Math.min(InternalViews.MAX_TRACE_POINTS, maxPoints == null ? 60 : maxPoints));
-		long readyMs = r.getReadySeconds() * 1000L;
-		long processEndMs = readyMs + r.getProcessSeconds() * 1000L;
-		List<double[]> picked = new ArrayList<>(); // [ms, value]
-		for (int i = 0; i < t.values().length; i++) {
-			long ms = i * t.intervalMs();
-			String s = ms < readyMs ? "READY" : ms < processEndMs ? "PROCESS" : "END";
-			if ((step == null || step.equalsIgnoreCase(s)) && !Double.isNaN(t.values()[i])) {
-				picked.add(new double[] {ms, t.values()[i]});
-			}
-		}
-		List<Map<String, Object>> points = new ArrayList<>();
-		int bucket = Math.max(1, (int) Math.ceil(picked.size() / (double) n));
-		for (int i = 0; i < picked.size(); i += bucket) {
-			List<double[]> part = picked.subList(i, Math.min(picked.size(), i + bucket));
-			double mean = part.stream().mapToDouble(p -> p[1]).average().orElse(Double.NaN);
-			points.add(Map.of("tMs", (long) part.getFirst()[0], "mean", ProcessEvidenceService.round(mean, 4), "n", part.size()));
-		}
-		var stats = picked.stream().mapToDouble(p -> p[1]).summaryStatistics();
-		Map<String, Object> data = new LinkedHashMap<>();
-		data.put("runId", runId);
-		data.put("sensorId", sensorId);
-		data.put("unit", t.unit());
-		data.put("t0", iso(t.t0()));
-		data.put("sourceIntervalMs", t.intervalMs());
-		data.put("step", step == null ? "ALL" : step.toUpperCase());
-		data.put("phases", Map.of("readyMs", readyMs, "processEndMs", processEndMs, "note", "PROCESS 시작 후 2초는 초기 전이"));
-		data.put("setpointProfile", t.setpointProfile());
-		data.put("sampleCount", picked.size());
-		data.put("summary", picked.isEmpty() ? Map.of() : Map.of("mean", ProcessEvidenceService.round(stats.getAverage(), 4),
-			"min", stats.getMin(), "max", stats.getMax()));
-		data.put("points", points);
-		data.put("quality", t.quality());
+			"BASELINE run은 원시 시계열 없이 특징만 있습니다(get_run_features). 가능한 센서: " + sensorList(run)));
+		int pointCount = Math.max(10, Math.min(InternalViews.MAX_TRACE_POINTS, maxPoints == null ? 60 : maxPoints));
+		List<double[]> picked = pickSamples(run, trace, step);
+		Map<String, Object> data = traceSummary(run, trace, runId, sensorId, step, picked, pointCount);
 		// 지속 편차 구간(DEMO-SEGMENT-V2) — 시계열 참조 범위(sensorEnvelope)로 찾은 관측. 고장 시점 · 원인 확정이 아니다
-		Map<String, Object> envelope = pack.envelope(r.getProcessCode(), sensorId).orElse(null);
-		List<Map<String, Object>> segments = SegmentDetector.detect(r, t, envelope);
+		Map<String, Object> envelope = pack.envelope(run.getProcessCode(), sensorId).orElse(null);
+		List<Map<String, Object>> segments = SegmentDetector.detect(run, trace, envelope);
 		data.put("sensorEnvelope", envelope);
 		data.put("segments", segments);
 		data.put("segmentRule", Map.of("ruleVersion", SegmentDetector.RULE_VERSION, "timeBase", "run 시작(t0)부터 잰 초",
 			"note", "PROCESS 처음 2초 · READY · END 제외, 2초 이동평균이 sensorEnvelope 밖으로 5초 이상 — 4σ · 2초 · 5초는 시연 선택값"));
+		return views.env(data, traceRefs(runId, sensorId, segments), traceWarnings(envelope));
+	}
+
+	/** 고른 단계(없으면 전체)의 결측 아닌 원시 점 — [ms, value] */
+	private static List<double[]> pickSamples(RouteRun run, Trace trace, String step) {
+		long readyMs = run.getReadySeconds() * 1000L;
+		long processEndMs = readyMs + run.getProcessSeconds() * 1000L;
+		List<double[]> picked = new ArrayList<>();
+		for (int i = 0; i < trace.values().length; i++) {
+			long ms = i * trace.intervalMs();
+			String phase = ms < readyMs ? "READY" : ms < processEndMs ? "PROCESS" : "END";
+			if ((step == null || step.equalsIgnoreCase(phase)) && !Double.isNaN(trace.values()[i])) {
+				picked.add(new double[] {ms, trace.values()[i]});
+			}
+		}
+		return picked;
+	}
+
+	/** 원시 점을 최대 pointCount개의 구간 평균으로 줄인다 */
+	private static List<Map<String, Object>> downsample(List<double[]> picked, int pointCount) {
+		List<Map<String, Object>> points = new ArrayList<>();
+		int bucket = Math.max(1, (int) Math.ceil(picked.size() / (double) pointCount));
+		for (int i = 0; i < picked.size(); i += bucket) {
+			List<double[]> part = picked.subList(i, Math.min(picked.size(), i + bucket));
+			double mean = part.stream().mapToDouble(sample -> sample[1]).average().orElse(Double.NaN);
+			points.add(Map.of("tMs", (long) part.getFirst()[0], "mean", ProcessEvidenceService.round(mean, 4), "n", part.size()));
+		}
+		return points;
+	}
+
+	private Map<String, Object> traceSummary(RouteRun run, Trace trace, String runId, String sensorId, String step,
+			List<double[]> picked, int pointCount) {
+		long readyMs = run.getReadySeconds() * 1000L;
+		long processEndMs = readyMs + run.getProcessSeconds() * 1000L;
+		List<Map<String, Object>> points = downsample(picked, pointCount);
+		var stats = picked.stream().mapToDouble(sample -> sample[1]).summaryStatistics();
+		Map<String, Object> data = new LinkedHashMap<>();
+		data.put("runId", runId);
+		data.put("sensorId", sensorId);
+		data.put("unit", trace.unit());
+		data.put("t0", iso(trace.t0()));
+		data.put("sourceIntervalMs", trace.intervalMs());
+		data.put("step", step == null ? "ALL" : step.toUpperCase());
+		data.put("phases", Map.of("readyMs", readyMs, "processEndMs", processEndMs, "note", "PROCESS 시작 후 2초는 초기 전이"));
+		data.put("setpointProfile", trace.setpointProfile());
+		data.put("sampleCount", picked.size());
+		data.put("summary", picked.isEmpty() ? Map.of() : Map.of("mean", ProcessEvidenceService.round(stats.getAverage(), 4),
+			"min", stats.getMin(), "max", stats.getMax()));
+		data.put("points", points);
+		data.put("quality", trace.quality());
+		return data;
+	}
+
+	private List<Map<String, Object>> traceRefs(String runId, String sensorId, List<Map<String, Object>> segments) {
 		List<Map<String, Object>> refs = new ArrayList<>(List.of(views.ref("E-TRC-" + runId + "-" + sensorId, "SENSOR", runId + ":" + sensorId)));
 		if (!segments.isEmpty()) {
 			refs.add(views.ref("E-SEG-" + runId + "-" + sensorId, "SENSOR", runId + ":" + sensorId + ":segments"));
 		}
+		return refs;
+	}
+
+	private static List<String> traceWarnings(Map<String, Object> envelope) {
 		List<String> warnings = new ArrayList<>(List.of("구간 평균으로 줄인 값입니다. 원시 점은 독립된 정상 run이 아니며, 없는 고속 값을 보간하지 않았습니다."));
 		if (envelope != null) {
 			warnings.add("구간은 sensorEnvelope(center ± 4σ, 2초 이동평균, 5초 지속 — 팀 시연 선택값, calibratedForRealTool=false)로 찾은 관측입니다. "
 					+ "고장 발생 시점이나 원인 확정이 아닙니다.");
 		}
-		return views.env(data, refs, warnings);
+		return warnings;
 	}
 
 	/** get_frozen_limits — 동결 관리한계(I, R1)와 센서 특징 참고 범위 */

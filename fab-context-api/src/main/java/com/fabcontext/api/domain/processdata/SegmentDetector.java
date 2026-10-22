@@ -38,50 +38,46 @@ public final class SegmentDetector {
 		}
 		double lower = ((Number) envelope.get("lower")).doubleValue();
 		double upper = ((Number) envelope.get("upper")).doubleValue();
-		double win = ((Number) envelope.get("smoothingSeconds")).doubleValue();
-		double minDur = ((Number) envelope.get("minDurationSeconds")).doubleValue();
+		double minDuration = ((Number) envelope.get("minDurationSeconds")).doubleValue();
+		MovingWindow window = new MovingWindow(((Number) envelope.get("smoothingSeconds")).doubleValue());
 		double start = run.getReadySeconds() + STABILIZE_SECONDS;
 		double end = run.getReadySeconds() + run.getProcessSeconds();
-		Deque<double[]> buf = new ArrayDeque<>(); // [t, v]
-		double sum = 0;
-		Segment cur = null;
+		Segment current = null;
 		double[] values = trace.values();
 		for (int i = 0; i < values.length; i++) {
-			double t = i * trace.intervalMs() / 1000.0;
-			if (t < start - 1e-9 || t >= end - 1e-9) {
+			double seconds = i * trace.intervalMs() / 1000.0;
+			if (seconds < start - 1e-9 || seconds >= end - 1e-9) {
 				continue;
 			}
-			double v = values[i];
-			if (Double.isNaN(v)) { // 결측 — 구간과 창을 끊는다
-				cur = close(cur, out, minDur, trace, envelope);
-				buf.clear();
-				sum = 0;
+			double value = values[i];
+			if (Double.isNaN(value)) { // 결측 — 구간과 창을 끊는다
+				current = close(current, out, minDuration, trace, envelope);
+				window.clear();
 				continue;
 			}
-			buf.addLast(new double[] {t, v});
-			sum += v;
-			while (buf.peekFirst()[0] < t - win - 1e-9) {
-				sum -= buf.removeFirst()[1];
-			}
-			if (buf.peekLast()[0] - buf.peekFirst()[0] < win - 1e-9) {
+			window.add(seconds, value);
+			if (!window.isFull()) {
 				continue; // 창이 아직 2초를 채우지 않았다
 			}
-			double ma = sum / buf.size();
-			String dir = ma < lower ? "LOW" : ma > upper ? "HIGH" : null;
-			if (dir != null && cur != null && cur.direction.equals(dir)) {
-				cur.to = t;
-				cur.sum += v;
-				cur.n++;
-			}
-			else {
-				cur = close(cur, out, minDur, trace, envelope);
-				if (dir != null) {
-					cur = new Segment(dir, t, v);
-				}
-			}
+			double movingAverage = window.mean();
+			String direction = movingAverage < lower ? "LOW" : movingAverage > upper ? "HIGH" : null;
+			current = track(current, direction, seconds, value, out, minDuration, trace, envelope);
 		}
-		close(cur, out, minDur, trace, envelope);
+		close(current, out, minDuration, trace, envelope);
 		return out;
+	}
+
+	/** 같은 방향이 이어지면 구간을 늘리고, 아니면 지금 구간을 닫고 (밖이면) 새 구간을 연다 */
+	private static Segment track(Segment current, String direction, double seconds, double value,
+			List<Map<String, Object>> out, double minDuration, Trace trace, Map<String, Object> envelope) {
+		if (direction != null && current != null && current.direction.equals(direction)) {
+			current.to = seconds;
+			current.sum += value;
+			current.n++;
+			return current;
+		}
+		close(current, out, minDuration, trace, envelope);
+		return direction != null ? new Segment(direction, seconds, value) : null;
 	}
 
 	private static Segment close(Segment s, List<Map<String, Object>> out, double minDur, Trace trace, Map<String, Object> env) {
@@ -103,6 +99,41 @@ public final class SegmentDetector {
 
 	private static double round1(double v) {
 		return Math.round(v * 10) / 10.0;
+	}
+
+	/** 끝점을 포함한 직전 width초 이동평균 창 — 합계를 더하고 빼는 순서는 예전 계산 그대로 */
+	private static final class MovingWindow {
+
+		private final double width;
+
+		private final Deque<double[]> samples = new ArrayDeque<>(); // [t, v]
+
+		private double sum;
+
+		MovingWindow(double width) {
+			this.width = width;
+		}
+
+		void add(double seconds, double value) {
+			samples.addLast(new double[] {seconds, value});
+			sum += value;
+			while (samples.peekFirst()[0] < seconds - width - 1e-9) {
+				sum -= samples.removeFirst()[1];
+			}
+		}
+
+		boolean isFull() {
+			return samples.peekLast()[0] - samples.peekFirst()[0] >= width - 1e-9;
+		}
+
+		double mean() {
+			return sum / samples.size();
+		}
+
+		void clear() {
+			samples.clear();
+			sum = 0;
+		}
 	}
 
 	private static final class Segment {

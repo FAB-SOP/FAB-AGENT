@@ -1,0 +1,34 @@
+| 패키지 | 줄 | 의존하는 패키지 |
+|---|---|---|
+| (root) | 18 |  |
+| auth | 566 | common, config |
+| common | 557 |  |
+| common.stream | 94 | common |
+| config | 183 |  |
+| contract | 328 | common, domain.analysis, domain.approval, domain.incident, domain.job, domain.processdata |
+| domain.action | 534 | auth, common, common.stream, domain.analysis, domain.approval, domain.incident, domain.work |
+| domain.analysis | 222 | auth, common, domain.incident, domain.job |
+| domain.approval | 732 | auth, common, common.stream, config, domain.incident, domain.job |
+| domain.checkrequest | 779 | auth, common, common.stream, domain.approval, domain.incident, domain.job, domain.work |
+| domain.dashboard | 153 | auth, common, domain.approval, domain.checkrequest, domain.incident, domain.work |
+| domain.events | 142 | common, common.stream, domain.incident, domain.job, domain.processdata |
+| domain.incident | 498 | auth, common, common.stream |
+| domain.investigation | 142 | auth, common, common.stream, domain.incident, domain.job |
+| domain.job | 529 | auth, common, common.stream, domain.incident |
+| domain.knowledge | 320 | auth, common |
+| domain.monitoring | 197 | auth, common, domain.incident, domain.processdata |
+| domain.processdata | 1401 | auth, common, config, domain.incident |
+| domain.report | 807 | auth, common, common.stream, contract, domain.action, domain.analysis, domain.approval, domain.checkrequest, domain.incident, domain.job, domain.work |
+| domain.work | 371 | auth, common, common.stream, domain.action, domain.analysis, domain.approval, domain.checkrequest, domain.incident, domain.processdata |
+| internal | 303 | common, common.stream, contract, domain.analysis, domain.checkrequest, domain.incident, domain.job, domain.work |
+| internal.action | 109 | common, domain.action, domain.approval, domain.checkrequest, domain.report, internal, internal.view |
+| internal.job | 251 | auth, common, contract, domain.approval, domain.incident, domain.job, domain.report, internal, internal.query, internal.view |
+| internal.query | 526 | auth, common, domain.action, domain.checkrequest, domain.incident, domain.processdata, domain.report, domain.work, internal, internal.view |
+| internal.view | 180 | contract, domain.action, domain.approval, domain.checkrequest, domain.incident, domain.processdata, domain.report |
+| seed | 487 | auth, common, config, domain.action, domain.analysis, domain.approval, domain.incident, domain.job, domain.knowledge, domain.processdata, domain.report, simulator |
+| simulator | 458 | auth, common, common.stream, config, contract, domain.analysis, domain.approval, domain.checkrequest, domain.incident, domain.job, domain.processdata, domain.report |
+
+순환(강연결 요소): [['domain.action', 'domain.checkrequest', 'domain.work']]
+서로 의존하는 쌍:
+  domain.action ↔ domain.work:  ['ActionSourceResolver→WorkItem', 'ActionSourceResolver→WorkItemRepository', 'ActionSourceResolver→WorkOperation']  ||  ['WorkService.java']
+  domain.checkrequest ↔ domain.work:  ['CheckRequestService→WorkItemRepository']  ||  ['WorkController→CheckRequestDtos', 'WorkController→CheckRequestService', 'WorkService→CheckRequestRepositories']

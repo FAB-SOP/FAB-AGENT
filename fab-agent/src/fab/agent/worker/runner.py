@@ -57,14 +57,14 @@ class JobRunner:
         # sequence는 thread 안에서 늘 증가해야 한다. Worker가 재시작해도 줄지 않도록 ms 시각과 비교해 키운다.
         key = job["threadId"]
         self._seq[key] = max(self._seq.get(key, 0) + 1, int(time.time() * 1000))
-        ev = {"schemaVersion": "1.0", "eventId": f"EVT-{job['jobId']}-A{job['attempt']}-{self._seq[key]}",
-              "incidentId": job["incidentId"], "jobId": job["jobId"], "threadId": job["threadId"],
-              "sequence": self._seq[key], "type": etype, "at": _now(), "traceId": job["traceId"],
-              "payload": payload}
+        event = {"schemaVersion": "1.0", "eventId": f"EVT-{job['jobId']}-A{job['attempt']}-{self._seq[key]}",
+                 "incidentId": job["incidentId"], "jobId": job["jobId"], "threadId": job["threadId"],
+                 "sequence": self._seq[key], "type": etype, "at": _now(), "traceId": job["traceId"],
+                 "payload": payload}
         if metrics is not None:  # 작업을 끝내거나 멈추는 이벤트에만 — 이번 시도의 trace 요약(backend job.metrics)
-            ev["metrics"] = {**metrics, "attempt": job["attempt"]}
-        await self.sink.emit(ev)
-        return ev
+            event["metrics"] = {**metrics, "attempt": job["attempt"]}
+        await self.sink.emit(event)
+        return event
 
     async def _fail(self, job: dict, code: str, message: str, tracer: Tracer) -> dict:
         ref = f"analysis.jobs.dlq/{job['jobId']}/A{job['attempt']}"
@@ -91,8 +91,9 @@ class JobRunner:
         cfg = {"configurable": {"thread_id": job["threadId"]}, "recursion_limit": 60}
         await self._event(job, "JOB_STARTED", {"startedAt": _now()})
         try:
-            async with Toolbox(self.servers) as tb:
-                cfg["configurable"]["runtime"] = Runtime(tb, self.backend, self.primary, self.fallback, tracer, job_id=job["jobId"])
+            async with Toolbox(self.servers) as toolbox:
+                cfg["configurable"]["runtime"] = Runtime(toolbox, self.backend, self.primary, self.fallback, tracer,
+                                                         job_id=job["jobId"])
                 payload = await self._input(job, question, cfg)
                 async for chunk in self.graph.astream(payload, cfg, stream_mode="updates"):
                     for node in chunk:
@@ -116,34 +117,34 @@ class JobRunner:
     async def _retry(self, job: dict, code: str, message: str, tracer: Tracer) -> dict:
         if job["attempt"] >= LIMITS.job_attempts:
             return await self._fail(job, "RETRY_EXHAUSTED", f"[{code}] {message}", tracer)
-        at = (datetime.now(KST) + timedelta(seconds=5 * job["attempt"])).isoformat(timespec="seconds")
-        await self._event(job, "RETRY_SCHEDULED", {"nextAttempt": job["attempt"] + 1, "nextRetryAt": at,
+        retry_at = (datetime.now(KST) + timedelta(seconds=5 * job["attempt"])).isoformat(timespec="seconds")
+        await self._event(job, "RETRY_SCHEDULED", {"nextAttempt": job["attempt"] + 1, "nextRetryAt": retry_at,
                                                    "errorCode": code}, tracer.summary())
         return {"status": "RETRY_SCHEDULED", "errorCode": code, "error": message, "trace": tracer.summary()}
 
     async def _input(self, job: dict, question: str | None, cfg: dict):
         snap = await self.graph.aget_state(cfg)
         if job["kind"] == "RESUME":
-            r = job["resume"] or {}
+            resume_ref = job["resume"] or {}
             pending = (snap.values or {}).get("pending") if snap else None
-            if not snap or not snap.next or not pending or pending.get("interruptId") != r.get("interruptId"):
+            if not snap or not snap.next or not pending or pending.get("interruptId") != resume_ref.get("interruptId"):
                 raise PermanentJobError("대기 중인 interrupt와 재개 참조가 일치하지 않습니다.")
-            if r["reason"] == "APPROVAL_DECIDED":
-                if pending.get("approvalId") != r["refId"]:
+            if resume_ref["reason"] == "APPROVAL_DECIDED":
+                if pending.get("approvalId") != resume_ref["refId"]:
                     raise PermanentJobError("재개 참조의 승인 ID가 대기 중인 승인과 다릅니다.")
-                appr = await self.backend.get_approval(r["refId"])
+                appr = await self.backend.get_approval(resume_ref["refId"])
                 if appr["status"] not in ("APPROVED", "REJECTED"):
-                    raise PermanentJobError(f"승인 {r['refId']}가 아직 결정되지 않았습니다.")
+                    raise PermanentJobError(f"승인 {resume_ref['refId']}가 아직 결정되지 않았습니다.")
                 value = {"decision": "APPROVE" if appr["status"] == "APPROVED" else "REJECT",
                          "comment": appr.get("comment") or "", "approvalId": appr["approvalId"],
-                         "interruptId": r["interruptId"]}
+                         "interruptId": resume_ref["interruptId"]}
             else:
-                if pending.get("requestId") != r["refId"]:
+                if pending.get("requestId") != resume_ref["refId"]:
                     raise PermanentJobError("재개 참조의 요청 ID가 대기 중인 요청과 다릅니다.")
-                req = await self.backend.get_request(r["refId"])
+                req = await self.backend.get_request(resume_ref["refId"])
                 if not req.get("reply"):
-                    raise PermanentJobError(f"요청 {r['refId']}에 회신이 없습니다.")
-                value = {**req["reply"], "requestId": req["requestId"], "interruptId": r["interruptId"]}
+                    raise PermanentJobError(f"요청 {resume_ref['refId']}에 회신이 없습니다.")
+                value = {**req["reply"], "requestId": req["requestId"], "interruptId": resume_ref["interruptId"]}
             return Command(resume=value)
         if snap and snap.next and job["attempt"] > 1:  # 실패한 같은 작업의 재시도 — 멈춘 지점부터
             return None
@@ -155,21 +156,22 @@ class JobRunner:
     async def _outcome(self, job: dict, cfg: dict, tracer: Tracer) -> dict:
         snap = await self.graph.aget_state(cfg)
         trace = tracer.summary()
-        intr = [i.value for t in snap.tasks for i in (t.interrupts or [])]
-        if intr:
-            v = intr[0]
-            if v["kind"] == "APPROVAL":
-                await self._event(job, "APPROVAL_REQUIRED", {"approvalId": v["approvalId"],
-                                                              "approvalVersion": v["approvalVersion"],
-                                                              "interruptId": v["interruptId"]}, trace)
-                return {"status": "WAITING_APPROVAL", "interrupt": v, "trace": trace}
-            await self._event(job, "WAITING_REPLY", {"requestId": v["requestId"], "interruptId": v["interruptId"]}, trace)
-            return {"status": "WAITING_REPLY", "interrupt": v, "trace": trace}
-        st = snap.values
-        if st.get("mode") == "REPORT":
-            await self._event(job, "REPORT_DRAFT_READY", {"report": st["report"]}, trace)
-            return {"status": "DONE", "report": st["report"], "trace": trace}
-        result, analysis = st["result"], st.get("analysis") or {}
+        pending_interrupts = [i.value for task in snap.tasks for i in (task.interrupts or [])]
+        if pending_interrupts:
+            waiting = pending_interrupts[0]
+            if waiting["kind"] == "APPROVAL":
+                await self._event(job, "APPROVAL_REQUIRED", {"approvalId": waiting["approvalId"],
+                                                              "approvalVersion": waiting["approvalVersion"],
+                                                              "interruptId": waiting["interruptId"]}, trace)
+                return {"status": "WAITING_APPROVAL", "interrupt": waiting, "trace": trace}
+            await self._event(job, "WAITING_REPLY", {"requestId": waiting["requestId"],
+                                                     "interruptId": waiting["interruptId"]}, trace)
+            return {"status": "WAITING_REPLY", "interrupt": waiting, "trace": trace}
+        final_state = snap.values
+        if final_state.get("mode") == "REPORT":
+            await self._event(job, "REPORT_DRAFT_READY", {"report": final_state["report"]}, trace)
+            return {"status": "DONE", "report": final_state["report"], "trace": trace}
+        result, analysis = final_state["result"], final_state.get("analysis") or {}
         # 계약(AnalysisResult)은 추가 필드를 허용하지 않는다. nextStep 등은 계약 개정 전까지 옵션으로만 싣는다.
         payload = {**result, **analysis} if os.getenv("FAB_RESULT_EXTENSIONS") == "true" else result
         await self._event(job, "RESULT_READY", {"result": payload},
