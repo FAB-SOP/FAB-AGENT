@@ -12,8 +12,10 @@ Resource: doc://{chunkId} · case://{caseId} — 검색 결과의 전문과 메�
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastmcp import FastMCP
@@ -38,6 +40,32 @@ META_KEYS = ("title", "publisher", "documentId", "version", "originalPdfPage", "
              "figuresEquationsTablesRequireSourceCheck", "sourceUrl", "causeId", "candidate", "sensorIds", "causeIds",
              "resolutionStatus", "caseDate", "origin", "synthetic", "approvedForProductionAction")
 VERSION = "KNOWLEDGE-v2"
+TERMS_PATH = Path(__file__).with_name("terms.json")
+
+
+def load_terms(path: Path = TERMS_PATH) -> dict[str, str]:
+    """한국어 → 영어 용어 사전(terms.json). '_'로 시작하는 키는 설명이다."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {k: v for k, v in raw.items() if not k.startswith("_")}
+
+
+def augment_query(query: str, terms: dict[str, str]) -> str:
+    """실제 원문(영어) 검색용 질의 보강 — 한국어 용어 옆에 영어 용어를 괄호로 병기한다.
+
+    긴 용어부터 치환하고, 같은 영어가 이미 질의에 있으면 붙이지 않으며, 한 용어는 한 번만 붙인다.
+    한국어는 지우지 않는다(한국어 문서 검색에는 쓰지 않으므로 영향 없음). FAB_QUERY_AUGMENT=0이면 끈다.
+    """
+    if os.getenv("FAB_QUERY_AUGMENT", "1").lower() in ("0", "false", "no"):
+        return query
+    out = query
+    for ko in sorted(terms, key=len, reverse=True):
+        en = terms[ko]
+        if ko not in out or f"{ko}(" in out:
+            continue
+        if en.split()[0].lower() in out.lower():
+            continue
+        out = out.replace(ko, f"{ko}({en})", 1)
+    return out
 
 
 class Knowledge:
@@ -45,6 +73,7 @@ class Knowledge:
         self.chunks = {chunk.chunkId: chunk for chunk in load_corpora()}
         self.as_of = analysis_as_of()
         self.store = make_store(make_embedder())
+        self.terms = load_terms()
         self.index_info = self.store.index(list(self.chunks.values()))
         self.index_info["corpora"] = {k: sum(1 for chunk in self.chunks.values() if chunk.corpus == k)
                                       for k in ("TECH", "PLAYBOOK", "CASE")}
@@ -55,9 +84,13 @@ class Knowledge:
             raise FabToolError("NOT_FOUND", f"{key}가 색인에 없습니다.", hint="검색 결과의 resourceUri를 그대로 쓰세요.")
         return chunk
 
+    def augment(self, query: str, corpus: str) -> str:
+        """영어 원문(TECH)에만 한·영 용어 병기를 적용한다."""
+        return augment_query(query, self.terms) if corpus == "TECH" else query
+
     def search(self, query: str, corpus: str, filters: dict, top_k: int) -> list[dict]:
         items = []
-        for chunk, score in self.store.search(query, corpus, filters, top_k * 3):
+        for chunk, score in self.store.search(self.augment(query, corpus), corpus, filters, top_k * 3):
             if corpus == "CASE" and chunk.meta.get("availableAt") and chunk.meta["availableAt"] > self.as_of:
                 continue  # 분석 시점 이후 사례는 쓰지 않는다
             items.append({"chunkId": chunk.chunkId, "docId": chunk.docId, "corpus": chunk.corpus, "excerpt": chunk.text[:EXCERPT],
@@ -115,7 +148,11 @@ def _register_document_search_tools(mcp: FastMCP, kb: Knowledge) -> None:
         원문은 영어다 — 질의에 영어 용어 · 약어를 함께 쓰면 잘 찾는다(예: 질량유량제어기(MFC) calibration 오차)."""
         items = kb.search(query, "TECH", {"process": process, "retrievalTier": retrievalTier, "documentId": documentId,
                                           "version": version}, topK)
-        return _result(kb, query, items, ["실제 원문은 일반 원리의 근거이며 우리 장비의 허용값 · 조치 SOP가 아닙니다."], "TECH")
+        res = _result(kb, query, items, ["실제 원문은 일반 원리의 근거이며 우리 장비의 허용값 · 조치 SOP가 아닙니다."], "TECH")
+        augmented = kb.augment(query, "TECH")
+        if augmented != query:  # 서버가 한·영 용어를 병기해 검색했음을 모델에게 알린다
+            res["data"]["augmentedQuery"] = augmented
+        return res
 
     @mcp.tool(annotations=READ)
     def search_applicable_playbooks(
