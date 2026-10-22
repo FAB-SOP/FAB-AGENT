@@ -7,6 +7,14 @@ import {canManageInvestigation} from '../src/domain/permissions';
 import {type Session} from '../src/api/types';
 
 describe('investigation conversation',()=>{
+ it('shows a follow-up analysis that has no question record, without duplicating asked questions',()=>{
+  const timeline=[{type:'QUESTION_ASKED',ref:{type:'JOB',id:'job_q'},message:'추가 조사 질문: 앞 공정은?',at:'2026-10-22T02:00:00Z'}];
+  const history=[{kind:'BASIC',jobId:'job_b',createdAt:'2026-10-22T01:00:00Z'},{kind:'DEEP',jobId:'job_q',createdAt:'2026-10-22T02:01:00Z'},{kind:'DEEP',jobId:'job_f',createdAt:'2026-10-22T03:00:00Z'}];
+  const entries=conversationEntries(timeline,history);
+  expect(entries.map(entry=>entry.jobId)).toEqual(['job_b','job_q','job_f']);
+  expect(entries[2]).toMatchObject({kind:'DEEP',followup:true,question:'선택한 결과를 반영한 추가 분석'});
+  expect(entries[1].question).toBe('앞 공정은?');
+ });
  const timeline=[{at:'2026-10-21T01:00:00Z',type:'QUESTION_ASKED',message:'추가 조사 질문: 이전 공정 영향은?',ref:{type:'JOB',id:'q1'}},{at:'2026-10-21T02:00:00Z',type:'ANALYSIS_RERUN',ref:{type:'JOB',id:'b2'}}];
  const history=[{jobId:'b1',resultId:'r1',kind:'BASIC',createdAt:'2026-10-21T00:00:00Z',summary:'최초 분석 결과'},{jobId:'q1',resultId:'r2',kind:'DEEP',createdAt:'2026-10-21T01:01:00Z',summary:'이전 공정 확인 답변'}];
  it('orders the original analysis, each question and later reanalysis by request time',()=>{

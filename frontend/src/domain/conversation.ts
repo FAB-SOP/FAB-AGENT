@@ -16,6 +16,10 @@ export function conversationEntries(timeline:Obj[]=[],history:Obj[]=[],activeJob
   if(result.kind==='BASIC'&&!entries.has(result.jobId)){
    entries.set(result.jobId,{jobId:result.jobId,kind:'BASIC',createdAt:result.createdAt});
   }
+  // 결과 검토에서 요청한 추가 분석은 질문 기록이 없으므로 결과로 대화에 넣는다
+  if(result.kind==='DEEP'&&result.jobId&&!entries.has(result.jobId)){
+   entries.set(result.jobId,{jobId:result.jobId,kind:'DEEP',followup:true,question:'선택한 결과를 반영한 추가 분석',createdAt:result.createdAt});
+  }
  }
  if(activeJob?.kind==='BASIC'&&!entries.has(activeJob.jobId)){
   entries.set(activeJob.jobId,{

@@ -11,6 +11,7 @@ import {loadQuestionThread} from '../domain/questionThreads';
 import {incidentStage} from '../domain/actionSources';
 import {AnalysisRequestStatus} from '../components/AnalysisRequestStatus';
 import {ProposedWorkList} from '../components/WorkItems';
+import {ResultReview} from '../components/ResultReview';
 import {InvestigationConversation} from '../components/InvestigationConversation';
 import {conversationEntries} from '../domain/conversation';
 import {canManageInvestigation} from '../domain/permissions';
@@ -18,6 +19,7 @@ import {ErrorMessageIfFailed,useCommand} from './workflowShared';
 const IN_PROGRESS_STATES=['QUEUED','RUNNING','WAITING_APPROVAL','WAITING_REPLY'];
 const STREAM_EVENTS=[
  'snapshot','job.status','analysis.result','approval.created','approval.decided','check-request.replied',
+ 'check-request.created','check-request.decided',
  'action.recorded','action.verified','report.ready','report.confirmed','incident.updated','work-item.updated',
 ];
 const DETAIL_TABS=[['analysis','분석과 추가 질문'],['evidence','관측 근거'],['actions','검토·조치·효과'],['reports','보고서'],['timeline','조사 이력']];
@@ -241,6 +243,7 @@ function AnalysisTab(props:AnalysisTabProps){
   {proposal.error&&<ErrorMessage error={proposal.error}/>}
   <ProposedWorkList incident={incident} canManage={props.canManage}
    results={[...(latestAnalysis?[latestAnalysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])]}/>
+  <ResultReview incident={incident} canManage={props.canManage}/>
   <QuestionComposer
    canManage={props.canManage}
    blocked={props.blocked}
