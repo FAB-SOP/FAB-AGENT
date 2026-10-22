@@ -29,7 +29,14 @@ export interface Incident {
  activeJob?:Obj|null;
  jobStatus?:string;
  severity:string;
+ analysisPriority?:AnalysisPriority|null;
  timeline?:Obj[];
+}
+/** 조사 우선순위 — 서버(백엔드·AI)가 판정한 값. severity(입력 알림 심각도)와 별개다. 필드명은 협의안. */
+export interface AnalysisPriority {
+ status:'NOT_EVALUATED'|'PENDING'|'COMPLETED'|'FAILED';
+ level:'HIGH'|'MEDIUM'|'LOW'|null;
+ reason:string|null;
 }
 export interface SensorSample {
  sensorId:string;

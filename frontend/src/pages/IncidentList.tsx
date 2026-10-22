@@ -6,6 +6,7 @@ import {api} from '../api/client';
 import {labels,when,type Incident,type Page} from '../api/types';
 import {Badge,Empty,ErrorMessage,PageHeading,Panel} from '../components/ui';
 import {incidentStage} from '../domain/actionSources';
+import {priorityView} from '../domain/analysisPriority';
 export function IncidentList({process}:{process:string}){
  const [text,setText]=useState('');
  const [status,setStatus]=useState('');
@@ -45,11 +46,26 @@ function IncidentRow({incident,onOpen}:{incident:Incident;onOpen:(incidentId:str
   </td>
   <td>{incident.lotId.replace('CURRENT-','')}<span className="table-sub">{incident.equipmentId}</span></td>
   <td><Badge value={incidentStage(incident).code}>{incidentStage(incident).label}</Badge></td>
+  <td><PriorityBadge incident={incident}/></td>
   <td>{when(incident.detectedAt)}</td>
   <td>
    <Link aria-label={incident.displayId+' 조사 열기'} className="icon-button" to={'/incidents/'+incident.incidentId}><ArrowUpRight size={20}/></Link>
   </td>
  </tr>;
+}
+/** 서버 판정값만 표시한다. 사유는 마우스를 올리면 툴팁, 누르면 펼침(모바일). */
+function PriorityBadge({incident}:{incident:Incident}){
+ const [open,setOpen]=useState(false);
+ const view=priorityView(incident.analysisPriority);
+ return <span className="priority-cell">
+  <button type="button" className={'priority-badge '+view.tone} title={view.reason||undefined} aria-expanded={open}
+   aria-label={'우선순위 '+view.label+(view.reason?' · '+view.reason:'')}
+   onClick={event=>{event.stopPropagation();setOpen(value=>!value);}}
+   onKeyDown={event=>event.stopPropagation()}>
+   {view.bars>0&&<span className="priority-bars" aria-hidden="true">{'▮'.repeat(view.bars)}</span>}{view.label}
+  </button>
+  {open&&view.reason&&<span className="priority-reason">{view.reason}</span>}
+ </span>;
 }
 function IncidentTable({items}:{items:Incident[]}){
  const navigate=useNavigate();
@@ -62,6 +78,7 @@ function IncidentTable({items}:{items:Incident[]}){
      <th>사건 / 관측 내용</th>
      <th>로트 · 설비</th>
      <th>조사 상태</th>
+     <th>우선순위</th>
      <th>발견 시각</th>
      <th/>
     </tr>
