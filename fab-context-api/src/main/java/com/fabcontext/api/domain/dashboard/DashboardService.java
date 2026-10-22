@@ -60,68 +60,107 @@ public class DashboardService {
 	@Transactional(readOnly = true)
 	public Dashboard get(AuthUser user, String periodParam, String processCode) {
 		String period = periodParam == null ? "7d" : periodParam;
-		Duration span = switch (period) {
+		Duration span = periodSpan(period);
+		List<String> scopes = visibleScopes(user, processCode);
+		Instant to = Instant.now(clock);
+		Instant from = to.minus(span);
+		List<Incident> inScope = incidentRepository.findByProcessCodeInOrderByDetectedAtDesc(scopes);
+		List<Incident> inPeriod = inScope.stream().filter(incident -> !incident.getDetectedAt().isBefore(from)).toList();
+		Counts counts = counts(user, scopes, to, inScope, inPeriod);
+		boolean hourly = span.compareTo(Duration.ofHours(24)) <= 0;
+		return new Dashboard(period, processCode, from, to, hourly ? "HOUR" : "DAY", counts, statusCounts(inScope),
+			processCounts(scopes, inScope, inPeriod), equipmentCounts(inScope, from), trend(hourly, from, to, inPeriod),
+			"전역 실시간 스트림은 계약에 없습니다. 현황 갱신은 이 API를 다시 조회하세요.");
+	}
+
+	private static Duration periodSpan(String period) {
+		return switch (period) {
 			case "24h" -> Duration.ofHours(24);
 			case "7d" -> Duration.ofDays(7);
 			case "30d" -> Duration.ofDays(30);
 			default -> throw ApiException.badRequest("INVALID_PERIOD", "period는 24h · 7d · 30d 중 하나입니다.");
 		};
-		List<String> scopes = user.processScopes();
+	}
+
+	/** 공정을 지정하면 그 공정 권한을 확인하고 그 공정만, 아니면 사용자의 담당 공정 전체 */
+	private List<String> visibleScopes(AuthUser user, String processCode) {
 		if (processCode != null && !processCode.isBlank()) {
 			accessPolicy.requireScope(user, processCode);
-			scopes = List.of(processCode);
+			return List.of(processCode);
 		}
-		Instant to = Instant.now(clock);
-		Instant from = to.minus(span);
-		List<Incident> inScope = incidentRepository.findByProcessCodeInOrderByDetectedAtDesc(scopes);
-		List<Incident> inPeriod = inScope.stream().filter(i -> !i.getDetectedAt().isBefore(from)).toList();
+		return user.processScopes();
+	}
 
-		long pendingApprovals = approvalRepository.findByProcessCodeInOrderByCreatedAtDesc(scopes).stream()
-			.filter(a -> a.getStatus() == ApprovalStatus.PENDING && (a.getExpiresAt() == null || a.getExpiresAt().isAfter(to)))
-			.count();
-		List<String> visibleScopes=scopes;
-		pendingApprovals += workItems.findAll().stream().filter(w->visibleScopes.contains(w.getProcessCode())&&user.userId().equals(w.getApproverUserId())&&w.getStatus()==com.fabcontext.api.domain.work.WorkItem.Status.WAITING_MANAGER).count();
-		Counts counts = new Counts(inPeriod.size(),
+	private Counts counts(AuthUser user, List<String> scopes, Instant to, List<Incident> inScope, List<Incident> inPeriod) {
+		long pendingApprovals = pendingApprovals(user, scopes, to);
+		return new Counts(inPeriod.size(),
 			inScope.stream().filter(Incident::isActive).count(),
 			pendingApprovals,
 			checkRequestRepository.countByOwnerUserIdAndStatus(user.userId(), CheckRequestStatus.OPEN),
 			checkRequestRepository.countByRequesterUserIdAndStatus(user.userId(), CheckRequestStatus.OPEN),
-			inScope.stream().filter(i -> "QUEUED".equals(i.getLatestJobStatus()) || "RUNNING".equals(i.getLatestJobStatus()))
+			inScope.stream()
+				.filter(incident -> "QUEUED".equals(incident.getLatestJobStatus()) || "RUNNING".equals(incident.getLatestJobStatus()))
 				.count(),
-			inScope.stream().filter(i -> "FAILED".equals(i.getLatestJobStatus())).count());
+			inScope.stream().filter(incident -> "FAILED".equals(incident.getLatestJobStatus())).count());
+	}
 
+	/** 만료되지 않은 승인 대기 제안 + 내가 결재할 관리자 승인 대기 업무 */
+	private long pendingApprovals(AuthUser user, List<String> scopes, Instant to) {
+		long pendingProposals = approvalRepository.findByProcessCodeInOrderByCreatedAtDesc(scopes).stream()
+			.filter(approval -> approval.getStatus() == ApprovalStatus.PENDING
+				&& (approval.getExpiresAt() == null || approval.getExpiresAt().isAfter(to)))
+			.count();
+		long waitingManager = workItems.findAll().stream()
+			.filter(workItem -> scopes.contains(workItem.getProcessCode())
+				&& user.userId().equals(workItem.getApproverUserId())
+				&& workItem.getStatus() == com.fabcontext.api.domain.work.WorkItem.Status.WAITING_MANAGER)
+			.count();
+		return pendingProposals + waitingManager;
+	}
+
+	private static Map<String, Long> statusCounts(List<Incident> inScope) {
 		Map<String, Long> byStatus = new LinkedHashMap<>();
-		for (IncidentStatus s : IncidentStatus.values()) {
-			byStatus.put(s.name(), inScope.stream().filter(i -> i.getStatus() == s).count());
+		for (IncidentStatus status : IncidentStatus.values()) {
+			byStatus.put(status.name(), inScope.stream().filter(incident -> incident.getStatus() == status).count());
 		}
-		List<ProcessCount> byProcess = scopes.stream()
-			.map(p -> new ProcessCount(p, inPeriod.stream().filter(i -> p.equals(i.getProcessCode())).count(),
-				inScope.stream().filter(i -> p.equals(i.getProcessCode()) && i.isActive()).count()))
-			.toList();
-		Map<String, List<Incident>> byEquipmentMap = inScope.stream()
-			.collect(Collectors.groupingBy(i -> i.getProcessCode() + "|" + i.getEquipmentId() + "|" + i.getChamberId(),
-				TreeMap::new, Collectors.toList()));
-		List<EquipmentCount> byEquipment = byEquipmentMap.values().stream().map(list -> {
-			Incident first = list.getFirst();
-			return new EquipmentCount(first.getProcessCode(), first.getEquipmentId(), first.getChamberId(),
-				list.stream().filter(i -> !i.getDetectedAt().isBefore(from)).count(),
-				list.stream().filter(Incident::isActive).count());
-		}).toList();
+		return byStatus;
+	}
 
-		boolean hourly = span.compareTo(Duration.ofHours(24)) <= 0;
+	private static List<ProcessCount> processCounts(List<String> scopes, List<Incident> inScope, List<Incident> inPeriod) {
+		return scopes.stream()
+			.map(process -> new ProcessCount(process,
+				inPeriod.stream().filter(incident -> process.equals(incident.getProcessCode())).count(),
+				inScope.stream().filter(incident -> process.equals(incident.getProcessCode()) && incident.isActive()).count()))
+			.toList();
+	}
+
+	private static List<EquipmentCount> equipmentCounts(List<Incident> inScope, Instant from) {
+		Map<String, List<Incident>> byEquipment = inScope.stream()
+			.collect(Collectors.groupingBy(
+				incident -> incident.getProcessCode() + "|" + incident.getEquipmentId() + "|" + incident.getChamberId(),
+				TreeMap::new, Collectors.toList()));
+		return byEquipment.values().stream().map(incidents -> {
+			Incident first = incidents.getFirst();
+			return new EquipmentCount(first.getProcessCode(), first.getEquipmentId(), first.getChamberId(),
+				incidents.stream().filter(incident -> !incident.getDetectedAt().isBefore(from)).count(),
+				incidents.stream().filter(Incident::isActive).count());
+		}).toList();
+	}
+
+	/** 24시간 이하는 시간 단위, 그 밖은 KST 날짜 단위 구간별 사건 수 */
+	private static List<TrendBucket> trend(boolean hourly, Instant from, Instant to, List<Incident> inPeriod) {
 		ChronoUnit unit = hourly ? ChronoUnit.HOURS : ChronoUnit.DAYS;
 		Instant start = hourly ? from.truncatedTo(ChronoUnit.HOURS)
 			: from.atZone(KST).truncatedTo(ChronoUnit.DAYS).toInstant();
 		List<TrendBucket> trend = new ArrayList<>();
-		for (Instant b = start; b.isBefore(to); b = b.plus(1, unit)) {
-			Instant bStart = b;
-			Instant bEnd = b.plus(1, unit);
+		for (Instant bucketStart = start; bucketStart.isBefore(to); bucketStart = bucketStart.plus(1, unit)) {
+			Instant bucketEnd = bucketStart.plus(1, unit);
+			Instant currentStart = bucketStart;
 			List<Incident> bucket = inPeriod.stream()
-				.filter(i -> !i.getDetectedAt().isBefore(bStart) && i.getDetectedAt().isBefore(bEnd))
+				.filter(incident -> !incident.getDetectedAt().isBefore(currentStart) && incident.getDetectedAt().isBefore(bucketEnd))
 				.toList();
-			trend.add(new TrendBucket(bStart, bucket.size(), bucket.stream().filter(Incident::isActive).count()));
+			trend.add(new TrendBucket(currentStart, bucket.size(), bucket.stream().filter(Incident::isActive).count()));
 		}
-		return new Dashboard(period, processCode, from, to, hourly ? "HOUR" : "DAY", counts, byStatus, byProcess,
-			byEquipment, trend, "전역 실시간 스트림은 계약에 없습니다. 현황 갱신은 이 API를 다시 조회하세요.");
+		return trend;
 	}
 }

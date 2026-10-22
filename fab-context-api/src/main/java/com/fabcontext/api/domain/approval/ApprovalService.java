@@ -90,6 +90,24 @@ public class ApprovalService {
 		Approval approval = loadForUser(approvalId, user);
 		incidentService.loadForWrite(approval.getIncidentId(), user);
 		Instant now = Instant.now(clock);
+		requireDecidable(approval, body, now);
+		Incident incident = incidentRepository.findById(approval.getIncidentId()).orElseThrow();
+		Job waitingJob = approval.getJobId() == null ? null : jobService.load(approval.getJobId());
+		boolean agentWaiting = waitingJob != null && waitingJob.getStatus() == JobStatus.WAITING_APPROVAL
+				&& approvalId.equals(waitingJob.getWaitingRefId());
+
+		if ("REJECT".equals(body.decision())) {
+			return reject(approval, incident, user, body, now, agentWaiting ? waitingJob : null);
+		}
+		incident.requireNotClosed();
+		if (agentWaiting) {
+			return approveForAgent(approval, incident, user, body, now, waitingJob);
+		}
+		return approveAndExecute(approval, incident, user, body, now);
+	}
+
+	/** 결정 전 검사 — 만료 → 대기 상태 → 버전 → 실행 내용 해시 순서 */
+	private static void requireDecidable(Approval approval, ApprovalDecision body, Instant now) {
 		if (approval.expireIfDue(now)) {
 			throw ApiException.conflict("APPROVAL_EXPIRED", "만료된 제안입니다. 최신 내용을 확인하고 필요하면 새 제안을 만드세요.",
 				Map.of("status", approval.getStatus().name(), "currentVersion", approval.getVersion()));
@@ -100,48 +118,55 @@ public class ApprovalService {
 			throw ApiException.conflict("ACTION_HASH_MISMATCH", "검토한 내용과 저장된 실행 내용이 다릅니다. 다시 조회하세요.",
 				Map.of("actionHash", approval.getActionHash()));
 		}
-		Incident incident = incidentRepository.findById(approval.getIncidentId()).orElseThrow();
-		Job waitingJob = approval.getJobId() == null ? null : jobService.load(approval.getJobId());
-		boolean agentWaiting = waitingJob != null && waitingJob.getStatus() == JobStatus.WAITING_APPROVAL
-				&& approvalId.equals(waitingJob.getWaitingRefId());
+	}
 
-		if ("REJECT".equals(body.decision())) {
-			if (body.comment() == null || body.comment().isBlank()) {
-				throw ApiException.unprocessable("REJECT_REASON_REQUIRED", "거절 사유(comment)를 입력하세요.");
-			}
-			approval.reject(user.userId(), body.comment(), now);
-			String resumeJobId = null;
-			if (agentWaiting && properties.agent().external()) {
-				// 거절도 실행하지 않는다. 외부 Agent는 같은 thread로 재개해 거절 사유를 읽고 지금 근거로 결과를 정리한다
-				// (재개하지 않으면 Agent 체크포인트가 승인 대기에 남아 다음 질문을 받을 수 없다).
-				resumeJobId = jobService.resume(waitingJob, incident, user.userId(), resumeInput(approvalId, waitingJob))
-					.getJobId();
-			}
-			else if (agentWaiting) {
-				// 시뮬레이터: 거절 결과로 조사를 끝낸다
-				jobService.succeed(waitingJob, incident, new Ref("APPROVAL_REJECTED", approvalId));
-			}
-			incident.record(now, "APPROVAL_REJECTED", user.userId(),
-				approval.getActionType() + " 제안 거절: " + body.comment(), "APPROVAL", approvalId);
-			streamHub.publish(incident.getIncidentId(), "approval.decided",
-				Map.of("approvalId", approvalId, "decision", "REJECT"));
-			return new ApprovalDecisionResult(ApprovalView.from(approval), resumeJobId, null);
+	/** 거절 — 실행하지 않는다. waitingJob은 이 제안을 기다리는 Agent 작업(없으면 null) */
+	private ApprovalDecisionResult reject(Approval approval, Incident incident, AuthUser user, ApprovalDecision body,
+			Instant now, Job waitingJob) {
+		String approvalId = approval.getApprovalId();
+		if (body.comment() == null || body.comment().isBlank()) {
+			throw ApiException.unprocessable("REJECT_REASON_REQUIRED", "거절 사유(comment)를 입력하세요.");
 		}
-
-		incident.requireNotClosed();
-		if (agentWaiting) {
-			// Agent가 기다리는 제안: 승인은 기록만 한다. 실행은 재개된 Agent가 승인 ID로
-			// /internal/approved-actions/*를 불러 하고, 그때 상태 · 만료 · 저장된 payload를 다시 확인한다.
-			String resumeJobId = jobService.resume(waitingJob, incident, user.userId(), resumeInput(approvalId, waitingJob))
+		approval.reject(user.userId(), body.comment(), now);
+		String resumeJobId = null;
+		if (waitingJob != null && properties.agent().external()) {
+			// 거절도 실행하지 않는다. 외부 Agent는 같은 thread로 재개해 거절 사유를 읽고 지금 근거로 결과를 정리한다
+			// (재개하지 않으면 Agent 체크포인트가 승인 대기에 남아 다음 질문을 받을 수 없다).
+			resumeJobId = jobService.resume(waitingJob, incident, user.userId(), resumeInput(approvalId, waitingJob))
 				.getJobId();
-			approval.approve(user.userId(), body.comment(), null, resumeJobId, now);
-			incident.record(now, "APPROVAL_APPROVED", user.userId(), approval.getActionType() + " 제안 승인 → Agent 재개 후 실행",
-				"APPROVAL", approvalId);
-			streamHub.publish(incident.getIncidentId(), "approval.decided",
-				Map.of("approvalId", approvalId, "decision", "APPROVE", "resumeJobId", resumeJobId));
-			return new ApprovalDecisionResult(ApprovalView.from(approval), resumeJobId, null);
 		}
-		// 수동 제안: 기다리는 Agent가 없으므로 권한 · 만료 · 버전을 재검증한 뒤 저장된 payload를 바로 실행한다.
+		else if (waitingJob != null) {
+			// 시뮬레이터: 거절 결과로 조사를 끝낸다
+			jobService.succeed(waitingJob, incident, new Ref("APPROVAL_REJECTED", approvalId));
+		}
+		incident.record(now, "APPROVAL_REJECTED", user.userId(),
+			approval.getActionType() + " 제안 거절: " + body.comment(), "APPROVAL", approvalId);
+		streamHub.publish(incident.getIncidentId(), "approval.decided",
+			Map.of("approvalId", approvalId, "decision", "REJECT"));
+		return new ApprovalDecisionResult(ApprovalView.from(approval), resumeJobId, null);
+	}
+
+	/**
+	 * Agent가 기다리는 제안: 승인은 기록만 한다. 실행은 재개된 Agent가 승인 ID로
+	 * /internal/approved-actions/*를 불러 하고, 그때 상태 · 만료 · 저장된 payload를 다시 확인한다.
+	 */
+	private ApprovalDecisionResult approveForAgent(Approval approval, Incident incident, AuthUser user,
+			ApprovalDecision body, Instant now, Job waitingJob) {
+		String approvalId = approval.getApprovalId();
+		String resumeJobId = jobService.resume(waitingJob, incident, user.userId(), resumeInput(approvalId, waitingJob))
+			.getJobId();
+		approval.approve(user.userId(), body.comment(), null, resumeJobId, now);
+		incident.record(now, "APPROVAL_APPROVED", user.userId(), approval.getActionType() + " 제안 승인 → Agent 재개 후 실행",
+			"APPROVAL", approvalId);
+		streamHub.publish(incident.getIncidentId(), "approval.decided",
+			Map.of("approvalId", approvalId, "decision", "APPROVE", "resumeJobId", resumeJobId));
+		return new ApprovalDecisionResult(ApprovalView.from(approval), resumeJobId, null);
+	}
+
+	/** 수동 제안: 기다리는 Agent가 없으므로 권한 · 만료 · 버전을 재검증한 뒤 저장된 payload를 바로 실행한다. */
+	private ApprovalDecisionResult approveAndExecute(Approval approval, Incident incident, AuthUser user,
+			ApprovalDecision body, Instant now) {
+		String approvalId = approval.getApprovalId();
 		Ref execution = execute(approval, incident, user.userId(), null);
 		approval.approve(user.userId(), body.comment(), execution, null, now);
 		approval.markExecuted(execution, "decision:" + approvalId, now);

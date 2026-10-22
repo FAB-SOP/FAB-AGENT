@@ -115,56 +115,21 @@ public class CheckRequestService {
 	@Transactional
 	public ReplyResult reply(String requestId, AuthUser user, ReplyInput input) {
 		CheckRequest request = loadVisible(requestId, user);
-		if (!user.userId().equals(request.getOwnerUserId())) {
-			throw ApiException.forbidden("NOT_REQUEST_OWNER", "이 요청의 담당자만 회신할 수 있습니다.");
-		}
-		if (!Boolean.TRUE.equals(input.confirmedByUser())) {
-			throw ApiException.unprocessable("USER_CONFIRMATION_REQUIRED", "담당자가 직접 확인했음을 confirmedByUser=true로 표시해야 합니다.");
-		}
-		ApiException.checkVersion("checkRequest", input.expectedVersion(), request.getVersion());
+		requireReplyable(request, user, input);
 		Instant now = Instant.now(clock);
 		request.markReplied(now);
 		Incident incident = incidentRepository.findById(request.getIncidentId())
 			.orElseThrow(() -> ApiException.notFound("incident", request.getIncidentId()));
+		Reply reply = newReply(requestId, incident, user, input, now);
 
-		Reply reply = Reply.builder()
-			.replyId(Ids.next("rpl"))
-			.requestId(requestId)
-			.incidentId(incident.getIncidentId())
-			.findings(input.findings())
-			.evidenceIds(input.evidenceIds() == null ? List.of() : input.evidenceIds())
-			.authorUserId(user.userId())
-			.confirmedByUser(true)
-			.createdAt(now)
-			.build();
-
-		String resumeJobId = null;
-		if (request.getWaitingJobId() != null) {
-			Job waiting = jobRepository.findById(request.getWaitingJobId()).orElse(null);
-			if (waiting != null && waiting.getStatus() == JobStatus.WAITING_REPLY) {
-				Job resume = jobService.resume(waiting, incident, user.userId(),
-					resumeInput(waiting, requestId, reply.getReplyId()));
-				resumeJobId = resume.getJobId();
-			}
-		}
-		// 새 업무 요청은 중단된 Agent가 없으므로 회신을 반영하는 새 분석을 시작한다.
-		// 진행 중 분석이 있으면 회신 저장을 우선하고 그 분석의 조회 자료로 제공한다.
-		var linkedWork = workItems.findByRequestId(requestId);
-		if (resumeJobId == null && linkedWork.isPresent()
-				&& incident.getStatus() != IncidentStatus.CLOSED
-				&& !jobRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(),
-					java.util.EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING))) {
-			Job followup = jobService.enqueue(incident, com.fabcontext.api.domain.job.JobKind.DEEP,
-				request.getRequesterUserId(), "담당자 회신을 반영해 원인 후보와 후속 확인 사항을 다시 분석해 주세요. 요청: "
-					+ request.getQuestion() + " / 회신: " + input.findings(), "ALL",
-				Map.of("trigger", "WORK_REPLY", "requestId", requestId, "replyId", reply.getReplyId(),
-					"workItemId", linkedWork.get().getTaskId()), null, null);
-			resumeJobId = followup.getJobId();
+		String resumeJobId = resumeWaitingJob(request, incident, user, reply.getReplyId());
+		if (resumeJobId == null) {
+			resumeJobId = startFollowupAnalysis(request, incident, input, reply.getReplyId());
 		}
 		reply.setResumeJobId(resumeJobId);
 		reply = replyRepository.save(reply);
-		String savedReplyId=reply.getReplyId();
-		workItems.findByRequestId(requestId).ifPresent(w->w.completeFromReply(savedReplyId,now));
+		String savedReplyId = reply.getReplyId();
+		workItems.findByRequestId(requestId).ifPresent(workItem -> workItem.completeFromReply(savedReplyId, now));
 
 		if (incident.getStatus() == IncidentStatus.WAITING_REPLY
 				&& !requestRepository.existsByIncidentIdAndStatus(incident.getIncidentId(), CheckRequestStatus.OPEN)) {
@@ -176,6 +141,64 @@ public class CheckRequestService {
 			Map.of("requestId", requestId, "replyId", reply.getReplyId(), "resumeJobId", String.valueOf(resumeJobId)));
 		return new ReplyResult(reply.getReplyId(), requestId, reply.getFindings(), reply.getEvidenceIds(),
 			user.userId(), now, resumeJobId, request.getStatus(), request.getVersion());
+	}
+
+	/** 회신 전 검사 — 담당자 본인 → 직접 확인 표시 → 버전 순서 */
+	private static void requireReplyable(CheckRequest request, AuthUser user, ReplyInput input) {
+		if (!user.userId().equals(request.getOwnerUserId())) {
+			throw ApiException.forbidden("NOT_REQUEST_OWNER", "이 요청의 담당자만 회신할 수 있습니다.");
+		}
+		if (!Boolean.TRUE.equals(input.confirmedByUser())) {
+			throw ApiException.unprocessable("USER_CONFIRMATION_REQUIRED", "담당자가 직접 확인했음을 confirmedByUser=true로 표시해야 합니다.");
+		}
+		ApiException.checkVersion("checkRequest", input.expectedVersion(), request.getVersion());
+	}
+
+	private static Reply newReply(String requestId, Incident incident, AuthUser user, ReplyInput input, Instant now) {
+		return Reply.builder()
+			.replyId(Ids.next("rpl"))
+			.requestId(requestId)
+			.incidentId(incident.getIncidentId())
+			.findings(input.findings())
+			.evidenceIds(input.evidenceIds() == null ? List.of() : input.evidenceIds())
+			.authorUserId(user.userId())
+			.confirmedByUser(true)
+			.createdAt(now)
+			.build();
+	}
+
+	/** 회신을 기다리던 Agent 작업이 있으면 재개한다 — 재개한 작업 ID, 없으면 null */
+	private String resumeWaitingJob(CheckRequest request, Incident incident, AuthUser user, String replyId) {
+		if (request.getWaitingJobId() == null) {
+			return null;
+		}
+		Job waiting = jobRepository.findById(request.getWaitingJobId()).orElse(null);
+		if (waiting == null || waiting.getStatus() != JobStatus.WAITING_REPLY) {
+			return null;
+		}
+		return jobService.resume(waiting, incident, user.userId(), resumeInput(waiting, request.getRequestId(), replyId))
+			.getJobId();
+	}
+
+	/**
+	 * 새 업무 요청은 중단된 Agent가 없으므로 회신을 반영하는 새 분석을 시작한다 — 시작한 작업 ID, 없으면 null.
+	 * 진행 중 분석이 있으면 회신 저장을 우선하고 그 분석의 조회 자료로 제공한다.
+	 */
+	private String startFollowupAnalysis(CheckRequest request, Incident incident, ReplyInput input, String replyId) {
+		String requestId = request.getRequestId();
+		var linkedWork = workItems.findByRequestId(requestId);
+		if (linkedWork.isEmpty()
+				|| incident.getStatus() == IncidentStatus.CLOSED
+				|| jobRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(),
+					java.util.EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING))) {
+			return null;
+		}
+		Job followup = jobService.enqueue(incident, com.fabcontext.api.domain.job.JobKind.DEEP,
+			request.getRequesterUserId(), "담당자 회신을 반영해 원인 후보와 후속 확인 사항을 다시 분석해 주세요. 요청: "
+				+ request.getQuestion() + " / 회신: " + input.findings(), "ALL",
+			Map.of("trigger", "WORK_REPLY", "requestId", requestId, "replyId", replyId,
+				"workItemId", linkedWork.get().getTaskId()), null, null);
+		return followup.getJobId();
 	}
 
 	/** 요청자 · 담당자 · 사건 공정 권한이 있는 사용자만 조회 가능 */
