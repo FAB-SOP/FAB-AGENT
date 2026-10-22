@@ -61,7 +61,7 @@ async def test_full_flow_records_request_only_after_approval(spring_url, kb):
 
 
 async def test_basic_analysis_offers_work_candidates_only_as_proposals(spring_url, kb):
-    """C1(팀 TO-DO 8절) — 기본 분석은 답과 함께 업무 후보를 낸다. 후보는 PROPOSED로만 생기고 요청 · 승인은 생기지 않는다"""
+    """답과 함께 업무 후보(팀 TO-DO 「업무 협업 · Agent 범위」) — 기본 분석은 답과 함께 업무 후보를 낸다. 후보는 PROPOSED로만 생기고 요청 · 승인은 생기지 않는다"""
     import uuid
     import httpx
 
@@ -79,7 +79,7 @@ async def test_basic_analysis_offers_work_candidates_only_as_proposals(spring_ur
     result = next(item for item in processed if item["job"]["jobId"] == accepted["jobId"])
     assert result["status"] == "DONE"
     assert result["result"]["candidateCauses"]
-    stances = result["analysis"]["causeStances"]  # C4 — 1순위는 지지, 정상 변동인 앞 공정은 반증으로 남는다
+    stances = result["analysis"]["causeStances"]  # 원인 후보 판정 — 1순위는 지지, 정상 변동인 앞 공정은 반증으로 남는다
     assert stances[0] == "SUPPORTED" and "REFUTED" in stances[1:], stances
     event = next(e for e in runner.sink.events if e["jobId"] == accepted["jobId"] and e["type"] == "RESULT_READY")
     suggestions = event["payload"]["workSuggestions"]

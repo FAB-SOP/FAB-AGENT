@@ -1,4 +1,4 @@
-"""C1 — 답 + 업무 후보(workSuggestions). 후보는 결과에 함께 실리는 「다음에 할 일」이고 채택 · 승인 · 발송이 아니다.
+"""답 + 업무 후보(workSuggestions). 후보는 결과에 함께 실리는 「다음에 할 일」이고 채택 · 승인 · 발송이 아니다.
 세 갈래(내 할 일 · 상급자 허가 · 다른 팀 요청)는 operationCode가 정한다(backend WorkOperation.route)."""
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""C5 · C6 — 보고서 확정 뒤 AI 요약 작업. backend 없이 가짜 확정 스냅샷으로 돈다(계약: local 09-summary-contract.md v0.3).
+"""보고서 확정 뒤 AI 요약 작업. backend 없이 가짜 확정 스냅샷으로 돈다(계약: ai/contracts의 SUMMARY · SUMMARY_READY).
 
 요약 작업(SUMMARY)은 조사 그래프 · checkpointer를 쓰지 않는 별도 경로다 — 확정 스냅샷만 읽고 1~2줄을 SUMMARY_READY로 낸다.
 """
@@ -112,7 +112,7 @@ def _runner(model, backend=None):
 
 
 async def test_summary_job_emits_ready_and_touches_no_checkpoint():
-    """C6 — 요약 작업은 그래프를 돌지 않는다: checkpointer에 아무것도 쓰지 않는다"""
+    """요약 중 조사 대기 상태 불변 — 요약 작업은 그래프를 돌지 않는다: checkpointer에 아무것도 쓰지 않는다"""
     runner, saver, sink = _runner(ScriptModel((GOOD, ["E-RUN-ETCH"])))
     out = await runner.process(_job())
     assert out["status"] == "DONE", out

@@ -1,7 +1,7 @@
-"""C4 전후 비교 — 같은 입력 20건(시드 기본 분석 + 질문)으로 원인 후보 판정 · 검색 근거 읽기를 잰다.
+"""원인 후보 판정 전후 비교 — 같은 입력 20건(시드 기본 분석 + 질문)으로 원인 후보 판정 · 검색 근거 읽기를 잰다.
 
-  uv run python evaluation/compare_c4.py --label after                                        # 규칙 모델 · 해시 임베딩 — 비용 없음
-  PYTHONPATH=<이전 판 worktree>/ai/src uv run python evaluation/compare_c4.py --label before --llm openai --embedder openai
+  uv run python evaluation/compare_cause_stance.py --label after                                        # 규칙 모델 · 해시 임베딩 — 비용 없음
+  PYTHONPATH=<이전 판 worktree>/ai/src uv run python evaluation/compare_cause_stance.py --label before --llm openai --embedder openai
 
 이전 판은 PYTHONPATH로 그 판의 src를 앞에 둬서 같은 스크립트 · 같은 backend로 돈다(어느 판이 돌았는지 fab 경로를 남긴다).
 재는 것: 원인 후보 수 · 지지 · 반증 · 판정 보류(fab.agent.stance 규칙으로 두 판 모두 사후 계산) · 반대 근거가 evidenceRefs에서
@@ -153,7 +153,7 @@ def main() -> None:
     from dotenv import load_dotenv
 
     load_dotenv(eval_env.FAB_AGENT / ".env", override=False)  # 이 저장소의 ai/.env — 이전 판 worktree에는 .env가 없다
-    run_dir = eval_env.RUNS / (time.strftime("%Y%m%d-%H%M%S-") + f"c4-{options.label}-{options.llm}")
+    run_dir = eval_env.RUNS / (time.strftime("%Y%m%d-%H%M%S-") + f"stance-{options.label}-{options.llm}")
     run_dir.mkdir(parents=True, exist_ok=True)
     with eval_env.environment(run_dir) as spring:
         print("평가용 Spring", eval_env.BASE, "· JDBC", spring.start(), flush=True)

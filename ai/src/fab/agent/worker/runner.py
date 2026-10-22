@@ -95,7 +95,7 @@ class JobRunner:
         cfg = {"configurable": {"thread_id": job["threadId"]}, "recursion_limit": 60}
         await self._event(job, "JOB_STARTED", {"startedAt": _now()})
         try:
-            if job["kind"] == "SUMMARY":  # 조사 그래프 밖 — 체크포인트를 읽지도 쓰지도 않는다(C6)
+            if job["kind"] == "SUMMARY":  # 조사 그래프 밖 — 체크포인트를 읽지도 쓰지도 않는다(조사 대기 상태 불변)
                 return await self._summary(job, tracer)
             async with Toolbox(self.servers) as toolbox:
                 cfg["configurable"]["runtime"] = Runtime(toolbox, self.backend, self.primary, self.fallback, tracer,

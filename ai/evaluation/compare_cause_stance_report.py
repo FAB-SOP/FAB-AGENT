@@ -1,6 +1,6 @@
-"""C4 전후 비교 집계 — compare_c4.py의 out.json 둘을 같은 규칙(지금 판 fab.agent.stance)으로 센다.
+"""원인 후보 판정 전후 비교 집계 — compare_cause_stance.py의 out.json 둘을 같은 규칙(지금 판 fab.agent.stance)으로 센다.
 
-  uv run python evaluation/compare_c4_report.py runs/<before>/out.json runs/<after>/out.json > 비교.md
+  uv run python evaluation/compare_cause_stance_report.py runs/<before>/out.json runs/<after>/out.json > 비교.md
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def measure(out: dict) -> dict:
 def main() -> None:
     outs = [json.loads(Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:3]]
     before, after = (measure(out) for out in outs)
-    print("| 항목 | C4 이전 (6778906) | C4 뒤 (184ac83) |\n|---|---|---|")
+    print("| 항목 | 판정 추가 전 | 판정 추가 뒤 |\n|---|---|---|")
     for key in before:
         print(f"| {key} | {before[key]} | {after[key]} |")
     print(f"\n- 이전 판 소스: `{outs[0]['fab']}`\n- 지금 판 소스: `{outs[1]['fab']}`")

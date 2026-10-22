@@ -186,13 +186,13 @@ async def _incident_block(turn: _Turn, args: dict, action_type: str) -> str | No
         turn.rt.tracer.event("incident_rules_unavailable", error=e.text[:200])
         requests = []
     pending = state.get("pending") or {}
-    # 사건의 승인 기록은 사건 기록 조회(D9 · D12)가 붙어야 안다 — 그 전에는 이번 thread의 제안만 보고,
+    # 사건의 승인 기록은 사건 기록 조회(backend 내부 API)가 붙어야 안다 — 그 전에는 이번 thread의 제안만 보고,
     # 대기 중이 아닌 것은 요청(get_check_requests)으로 이미 세어진 것으로 본다(거절된 제안은 아직 모른다)
     approvals = [{"actionType": proposal["actionType"], "targetProcessCode": proposal.get("targetProcessCode"),
                   "status": "PENDING" if proposal.get("approvalId") == pending.get("approvalId") else "APPROVED"}
                  for proposal in state.get("proposals") or [] if isinstance(proposal, dict)]
     target = args.get("processCode") or (state.get("incidentProcess") if "MAINTENANCE" in action_type else None)
-    # 원인 분석이 언제 바뀌었는지는 사건 기록 조회(D12)가 붙어야 안다 — 그 전에는 「바뀌지 않음」으로 본다
+    # 원인 분석이 언제 바뀌었는지는 사건 기록 조회(backend 내부 API)가 붙어야 안다 — 그 전에는 「바뀌지 않음」으로 본다
     return incident_rules.proposal_block(action_type, target, requests, approvals, lambda _at: False,
                                          limits.LIMITS.max_proposals,
                                          human_requested=state.get("purpose") == purpose.REQUEST)

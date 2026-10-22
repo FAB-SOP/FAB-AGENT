@@ -1,4 +1,4 @@
-"""업무 후보(workSuggestions) — 답과 함께 내는 「다음에 할 일」 최대 5개. 채택 · 승인 · 발송 기록이 아니다(팀 TO-DO 8절).
+"""업무 후보(workSuggestions) — 답과 함께 내는 「다음에 할 일」 최대 5개. 채택 · 승인 · 발송 기록이 아니다(팀 TO-DO 「업무 협업 · Agent 범위」).
 
 세 갈래는 operationCode가 정한다(backend WorkOperation.route) — 작업자가 후보별로 수락 · 거절한다.
   내 할 일(SELF_CHECK)       REVIEW_SENSOR_DATA · REVIEW_PROCESS_HISTORY · COMPARE_METROLOGY
