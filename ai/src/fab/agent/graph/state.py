@@ -24,6 +24,7 @@ class AgentState(TypedDict, total=False):
     baseline: dict | None  # 사건의 가장 최근 원인 분석 — 결론 변경 검사의 기준(사건 기록 조회가 채운다)
     conclusion: dict | None  # 결론 변경 검사 결과 — changed · fields · reason · newEvidenceIds · adjusted
     question: str
+    selectedInputs: list | None  # 추가 분석에 작업자가 고른 조사 결과(fab.agent.followup) — 진술 근거로 등록한다
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: Annotated[dict, _merge]  # evidenceId -> ref
     dataVersion: str

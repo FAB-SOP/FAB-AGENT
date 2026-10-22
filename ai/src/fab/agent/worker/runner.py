@@ -23,7 +23,8 @@ from fab.agent.harness.limits import LIMITS
 from fab.agent.harness.retry import PermanentJobError, TransientJobError
 from fab.agent.harness.trace import Tracer
 from fab.agent.models import make_models
-from fab.agent.purpose import purpose_of
+from fab.agent.followup import split_question
+from fab.agent.purpose import FOLLOWUP, purpose_of
 from fab.agent.summary import make_summary
 from fab.agent.tools import Toolbox
 from fab.common.envelope import FabToolError
@@ -169,8 +170,10 @@ class JobRunner:
             return None
         if snap and snap.next:
             raise PermanentJobError("이 사건은 승인 또는 회신을 기다리는 중입니다. 대기를 먼저 해제하세요.")
+        question, selected = split_question(question)  # 추가 분석이면 질문 칸에 작업자가 고른 결과가 붙어 온다
         return {"incidentId": job["incidentId"], "threadId": job["threadId"], "jobId": job["jobId"],
-                "mode": job["kind"], "purpose": purpose_of(job["kind"], trigger), "question": question or ""}
+                "mode": job["kind"], "purpose": FOLLOWUP if selected is not None else purpose_of(job["kind"], trigger),
+                "question": question, "selectedInputs": selected}
 
     async def _outcome(self, job: dict, cfg: dict, tracer: Tracer) -> dict:
         snap = await self.graph.aget_state(cfg)

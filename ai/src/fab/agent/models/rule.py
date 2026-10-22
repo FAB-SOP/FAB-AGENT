@@ -314,6 +314,11 @@ def _submit(step, facts, headline, cause, support, counter=None, limitations=Non
         if reply_evidence_ids:
             facts.append({"text": "담당자 회신(진술)을 받았습니다. 원본 데이터로 교차 확인 전에는 원인 확정 근거가 아닙니다.",
                           "evidenceIds": reply_evidence_ids})
+    if "[작업자가 선택한 조사 결과" in notes:  # 추가 분석 — 고른 결과(진술)를 사실로 인용한다(backend가 실제 인용으로 센다)
+        selected = sorted(set(re.findall(r'"evidenceId": "(E-(?:REQ|ACT)-[^"]+)"', notes)))
+        if selected:
+            facts.append({"text": "작업자가 고른 조사 결과(진술)를 반영했습니다. 원본 데이터로 교차 확인 전에는 원인 확정 근거가 아닙니다.",
+                          "evidenceIds": selected})
     if not facts:
         facts = [{"text": headline, "evidenceIds": support[:1]}] if support else []
     return _call("submit_result", {

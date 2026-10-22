@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-ALIVE_REQUEST = "OPEN"
+ALIVE_REQUESTS = {"OPEN", "ACCEPTED"}  # 수락 전 · 수락 뒤 회신 전 — 둘 다 미해결(수락은 회신이 아니다)
 DONE_APPROVALS = {"APPROVED", "SUPERSEDED"}  # 승인된 것은 요청으로 세고, 대체된 것은 세지 않는다
 
 
@@ -32,13 +32,17 @@ def proposal_block(action_type: str, target_process: str | None, requests: list[
     requests = [request for request in requests if request.get("status") != "CANCELLED"]
     same_requests = [r for r in requests if (r.get("requestType"), r.get("targetProcessCode")) == key]
     same_approvals = [a for a in approvals if (_kind(a.get("actionType")), a.get("targetProcessCode")) == key]
-    if any(r.get("status") == ALIVE_REQUEST for r in same_requests) or any(a.get("status") == "PENDING" for a in same_approvals):
+    if any(r.get("status") in ALIVE_REQUESTS for r in same_requests) or any(a.get("status") == "PENDING" for a in same_approvals):
         return ("[REJECTED] 같은 담당 팀에 같은 종류의 요청이 이미 진행 중입니다(승인 대기 또는 회신 대기). "
                 "다시 제안하지 말고 지금 근거로 답하세요.")
     for request in [] if human_requested else same_requests:
         if request.get("status") == "REPLIED" and not cause_changed_after(_replied_at(request)):
             return ("[REJECTED] 같은 담당 팀에 같은 종류의 요청을 이미 보내 회신을 받았습니다. 그 회신(E-REQ 근거)으로 답하세요 — "
                     "회신 뒤 원인 분석이 바뀐 경우에만 다시 요청할 수 있습니다.")
+    for request in [] if human_requested else same_requests:  # 받는 사람의 거절 — 회신이 아니다, 거절된 승인처럼 본다
+        if request.get("status") == "REJECTED" and not cause_changed_after(request.get("decisionAt") or request.get("createdAt")):
+            return ("[REJECTED] 같은 담당 팀 · 종류의 요청을 받는 사람이 거절했습니다(거절 사유는 get_check_requests). "
+                    "원인 분석이 바뀐 뒤에만 다시 제안할 수 있습니다. 지금 근거로 답하세요.")
     for approval in [] if human_requested else same_approvals:
         if approval.get("status") == "REJECTED" and not cause_changed_after(approval.get("decidedAt")):
             return ("[REJECTED] 같은 담당 팀 · 종류의 요청은 거절됐습니다. 원인 분석이 바뀐 뒤에만 다시 제안할 수 있습니다. "

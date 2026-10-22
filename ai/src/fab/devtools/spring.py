@@ -119,15 +119,36 @@ async def _decide_approval(engineer: User, interrupt: dict, reject: bool, say) -
     return proposal | {"actionType": internal_action(proposal["actionType"]), "publicActionType": proposal["actionType"]}
 
 
-async def _reply_as_owner(interrupt: dict, base: str | None, say) -> None:
-    """회신 대기 — 요청 받은 담당자로 로그인해 시연 회신을 남긴다"""
+async def _reply_as_owner(interrupt: dict, base: str | None, say, engineer: User | None = None,
+                          display_id: str | None = None) -> None:
+    """회신 대기 — 받는 담당자가 요청을 수락하고 시연 회신을 남긴다. 회신은 저장만 되고 분석을 열지 않으므로,
+    engineer가 있으면 작업자로서 그 회신을 골라 추가 분석을 요청한다(같은 thread · interrupt의 RESUME)"""
     request = (await internal("GET", f"/internal/check-requests/{interrupt['requestId']}", base))["data"]
     owner = await User(LOGIN[request["ownerUserId"]], base).login()
     say(f"  회신 대기 {request['requestType']} → {owner.username}")
-    await owner.post(f"/api/check-requests/{request['requestId']}/replies", {
+    path = f"/api/check-requests/{request['requestId']}"
+    status, decided = await owner.post(f"{path}/decisions", {"decision": "ACCEPT", "comment": None,
+                                                             "expectedVersion": request["version"]})
+    if status != 200:
+        raise RuntimeError(f"요청 수락 실패 {status}: {decided}")
+    status, reply = await owner.post(f"{path}/replies", {
         "findings": "확인했습니다. 해당 run 전후 정비 · 시즈닝 기록과 모니터 결과를 첨부합니다(시연 회신).",
-        "evidenceIds": [], "confirmedByUser": True, "expectedVersion": request["version"]})
+        "evidenceIds": [], "confirmedByUser": True, "expectedVersion": decided["data"]["version"]})
     await owner.close()
+    if status != 201:
+        raise RuntimeError(f"회신 등록 실패 {status}: {reply}")
+    if engineer is not None and display_id is not None:
+        await request_followup(engineer, display_id, [{"type": "REPLY", "id": reply["data"]["replyId"]}])
+
+
+async def request_followup(engineer: User, display_id: str, source_refs: list[dict], question: str | None = None) -> dict:
+    """작업자가 고른 결과(회신 · 내 작업 결과)로 추가 분석을 요청한다 — 회신 대기 중이면 RESUME, 아니면 새 DEEP"""
+    incident = await engineer.incident(display_id)
+    status, accepted = await engineer.post(f"/api/incidents/{incident['incidentId']}/followup-analysis-jobs", {
+        "sourceRefs": source_refs, "question": question, "expectedIncidentVersion": incident["version"]})
+    if status != 202:
+        raise RuntimeError(f"추가 분석 요청 실패 {status}: {accepted}")
+    return accepted["data"]
 
 
 async def _draft_report(engineer: User, display_id: str, runner: JobRunner, backend: HttpBackend, say) -> dict:
@@ -156,7 +177,7 @@ async def drive(display_id: str, question: str, *, reject: bool = False, kb=None
         if outcome["status"] == "WAITING_APPROVAL":
             proposals.append(await _decide_approval(engineer, outcome["interrupt"], reject, say))
         else:
-            await _reply_as_owner(outcome["interrupt"], base, say)
+            await _reply_as_owner(outcome["interrupt"], base, say, engineer, display_id)
         outcome = (await poll_once(runner, backend))[-1]
         say(f"  재개 → {outcome['status']}")
     result, analysis = outcome.get("result") or {}, outcome.get("analysis") or {}
