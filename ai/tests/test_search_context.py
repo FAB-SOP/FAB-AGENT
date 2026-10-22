@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from fab.agent.harness.context import fit_budget, to_tool_text
@@ -19,6 +20,8 @@ def _search(kb, tool: str, corpus: str, query: str, top_k: int = 5, **filters) -
 def test_five_document_chunks_fit_without_losing_ids(kb):
     """topK=5 원문 조각은 그대로 직렬화하면 약 7,000자라 6,000자 한도에서 다섯째 근거 ID와 경고가 잘렸다"""
     result = _search(kb, "search_technical_documents", "TECH", "CMP removal rate head_pressure pressure slurry", process="CMP")
+    if len(result["data"]["items"]) < 5:  # 실제 원문 조각(rag/source-chunks.jsonl)은 git 밖이라 새로 받은 저장소에는 없다
+        pytest.skip("실제 원문 조각이 없어 원문 검색 결과가 비었습니다 — data/fab-rag-real-documents-v1/rag/source-chunks.jsonl")
     assert len(json.dumps(result, ensure_ascii=False, separators=(",", ":"))) > LIMITS.max_tool_result_chars
     text = to_tool_text(result, "search_technical_documents")
     assert len(text) <= LIMITS.max_tool_result_chars
