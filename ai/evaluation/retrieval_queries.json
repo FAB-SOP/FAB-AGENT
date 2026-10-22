@@ -1,5 +1,5 @@
 {
- "about": "지식 MCP 검색 평가 질의셋 — 한국어 위주. 기대 조각은 knowledge/cause-matrix · 팀 점검 문서 · 원문 조각 내용을 보고 정했다(정답 파일 · 시나리오 문서는 쓰지 않았다). paraphrase=true는 문서와 겹치는 낱말을 일부러 피한 질의다. agentQuery는 Agent 프롬프트가 권하는 꼴(한국어 + 영어 용어 · 약어)로 같은 뜻을 쓴 질의다 — 원문(영어) 검색에만 둔다. 2026-10-22 확장(25→50): 기술 문서 +10(문서별 1~2개, 전부 agentQuery 짝), 점검 문서 +12(원인 15개 전부 포함, sensorQuery=true는 센서 ID로 묻는 질의 5개), 가상 사례 +3(004·005 추가). 기대 조각은 원문 조각의 용어 분포와 점검 문서·사례 본문을 보고 정했다.",
+ "about": "지식 MCP 검색 평가 질의셋 — 한국어 위주. 기대 조각은 knowledge/cause-matrix · 팀 점검 문서 · 원문 조각 내용을 보고 정했다(정답 파일 · 시나리오 문서는 쓰지 않았다). paraphrase=true는 문서와 겹치는 낱말을 일부러 피한 질의다. agentQuery는 Agent 프롬프트가 권하는 꼴(한국어 + 영어 용어 · 약어)로 같은 뜻을 쓴 질의다 — 원문(영어) 검색에만 둔다. 2026-10-22 확장(25→50): 기술 문서 +10(문서별 1~2개, 전부 agentQuery 짝), 점검 문서 +12(원인 15개 전부 포함, sensorQuery=true는 센서 ID로 묻는 질의 5개), 가상 사례 +3(004·005 추가). 기대 조각은 원문 조각의 용어 분포와 점검 문서·사례 본문을 보고 정했다. heldout=true(H01~H15, 2026-10-22)는 용어 사전(terms.json) 작성 뒤 사전을 보지 않고 원문 절 이름·내용만 보고 쓴 한국어 일상어 질의다. 영어 병기 짝을 두지 않는다. 사전 일반화 측정용.",
  "metrics": "Hit@3 = 기대 조각이 상위 3개 안에 있는 비율, MRR = 첫 기대 조각 순위의 역수 평균(상위 10개까지)",
  "queries": [
   {
@@ -537,6 +537,171 @@
     ]
    },
    "paraphrase": true
+  },
+  {
+   "id": "H01",
+   "tool": "search_technical_documents",
+   "query": "연마 중에 언제 멈춰야 하는지 센서가 알려주는 방식",
+   "expect": {
+    "documentId": [
+     "DOC01"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H02",
+   "tool": "search_technical_documents",
+   "query": "회로가 빽빽한 곳과 성긴 곳이 다르게 깎이는 현상",
+   "expect": {
+    "documentId": [
+     "DOC01"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H03",
+   "tool": "search_technical_documents",
+   "query": "RF 반사파가 늘었을 때 정합기 상태를 보는 이유",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H04",
+   "tool": "search_technical_documents",
+   "query": "웨이퍼 뒷면에 넣는 헬륨 압력이 하는 일",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H05",
+   "tool": "search_technical_documents",
+   "query": "식각 중에 실시간으로 이상을 잡아내는 실험 방법",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H06",
+   "tool": "search_technical_documents",
+   "query": "설정한 유량과 실제 흐르는 양이 다른 원인",
+   "expect": {
+    "documentId": [
+     "DOC03"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H07",
+   "tool": "search_technical_documents",
+   "query": "압력을 일정하게 유지하는 밸브 제어 방식",
+   "expect": {
+    "documentId": [
+     "DOC03"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H08",
+   "tool": "search_technical_documents",
+   "query": "반응 가스가 기판 위에 닿기 전에 거치는 과정",
+   "expect": {
+    "documentId": [
+     "DOC04"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H09",
+   "tool": "search_technical_documents",
+   "query": "증착이 끝난 뒤 생기는 부산물 가스는 어떻게 빠져나가나",
+   "expect": {
+    "documentId": [
+     "DOC04"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H10",
+   "tool": "search_technical_documents",
+   "query": "ICP 장비에서 압력을 바꿀 때 주의할 점",
+   "expect": {
+    "documentId": [
+     "DOC05"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H11",
+   "tool": "search_technical_documents",
+   "query": "같은 시편을 여러 번 재면 값이 얼마나 흔들리나",
+   "expect": {
+    "documentId": [
+     "DOC06"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H12",
+   "tool": "search_technical_documents",
+   "query": "두 층으로 된 막의 두께를 계산하는 모델",
+   "expect": {
+    "documentId": [
+     "DOC06"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H13",
+   "tool": "search_technical_documents",
+   "query": "관리 상태인데도 제품이 규격을 못 맞추는 경우",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H14",
+   "tool": "search_technical_documents",
+   "query": "부분군으로 나눠서 변동을 보는 방법",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H15",
+   "tool": "search_technical_documents",
+   "query": "한 점이 튀었을 때 공정이 바뀐 건지 우연인지 구분하는 기준",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "heldout": true
   }
  ]
 }
