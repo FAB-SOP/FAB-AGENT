@@ -265,6 +265,14 @@ class NotificationApiTest extends ApiTestSupport {
 		getAs(cvd, "/api/notifications?size=0").andExpect(status().isBadRequest());
 	}
 
+	@Test
+	void swaggerDocumentsNotificationOperationsAndSseRecovery() throws Exception {
+		String docs = mvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse()
+			.getContentAsString(StandardCharsets.UTF_8);
+		assertThat(docs).contains("\"listNotifications\"", "\"getUnreadNotificationCount\"", "\"markNotificationRead\"",
+			"\"notificationStream\"", "Last-Event-ID", "notification.resync", "NOTIFICATION_NOT_FOUND");
+	}
+
 	// --- 도움 함수 ---
 
 	private static NotificationDraft draft(String source) {
