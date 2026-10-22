@@ -17,6 +17,14 @@ public interface ApprovedActionHandler {
 	Map<String, Object> normalize(Map<String, Object> raw, Incident incident);
 
 	/**
+	 * 승인자가 승인(APPROVE)할 때 함께 입력한 값 검사 · 정규화 — 승인 기록에 저장되고 실행 때 이 값만 쓴다.
+	 * 기본은 입력을 받지 않는다(null). 승인 때 사람이 정할 값이 있는 종류만 재정의한다(예: 보고서 확정의 원인 분류).
+	 */
+	default Map<String, Object> normalizeDecisionInput(Map<String, Object> raw, Incident incident) {
+		return null;
+	}
+
+	/**
 	 * 승인된 payload를 실행하고 만든 것을 가리킨다.
 	 * @param actorId 실행 주체(승인한 사람)
 	 * @param threadId 재개된 Agent가 실행할 때 그 작업의 thread(수동 승인 실행이면 null)

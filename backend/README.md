@@ -103,10 +103,10 @@ compose의 `backend` 컨테이너가 떠 있으면 먼저 끈다(`docker compose
 
 비밀번호는 모두 `fab1234!`. 이벤트 접수 서비스 토큰은 `X-Service-Token: dev-simulator-token`, 내부 API 토큰은 `Authorization: Bearer dev-service-token`(`SERVICE_TOKEN`).
 
-## 검증 (2026-10-21 — smoke-test는 2026-10-20)
+## 검증 (2026-10-22)
 
 ```bash
-./gradlew test                     # 122개 — Testcontainers Postgres(pgvector/pgvector:pg16, compose와 같은 이미지). Docker 필요
+./gradlew test                     # 134개 — Testcontainers Postgres(pgvector/pgvector:pg16, compose와 같은 이미지). Docker 필요
 ./scripts/smoke-test.sh http://localhost:8090   # 107개 — 시뮬레이터 모드 서버에 curl 전체 흐름 (jq 필요)
 python3 ../ops/tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-docs ↔ 프론트 계약 차이 표
 ```

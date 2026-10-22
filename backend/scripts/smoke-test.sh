@@ -159,7 +159,7 @@ BAD=$(echo "$SECTIONS" | jq '[.[1], .[0], .[2], .[3], .[4]]')
 req etch PATCH "/api/reports/$RPT" "{\"sections\":$BAD,\"expectedContentRevision\":1}"; expect 422 "editReport rejects reordered sections"
 req etch PATCH "/api/reports/$RPT" "{\"sections\":$EDITED,\"expectedContentRevision\":1}"; expect 200 "editReport"
 req etch POST "/api/reports/$RPT/confirmations" '{"expectedContentRevision":2,"reviewConfirmed":false}' -H "Idempotency-Key: $(key)"; expect 422 "confirm without review"
-req etch POST "/api/reports/$RPT/confirmations" '{"expectedContentRevision":2,"reviewConfirmed":true}' -H "Idempotency-Key: $(key)"; expect 200 "confirmReport"
+req etch POST "/api/reports/$RPT/confirmations" '{"expectedContentRevision":2,"reviewConfirmed":true,"classification":{"category":"METHOD"}}' -H "Idempotency-Key: $(key)"; expect 200 "confirmReport"
 req etch PATCH "/api/reports/$RPT" "{\"sections\":$EDITED,\"expectedContentRevision\":2}"; expect 409 "edit confirmed report"
 req etch GET "/api/reports/$RPT/export?format=markdown" ""; expect 200 "exportReport"
 grep -qi "content-disposition: attachment" <<<"$HEADERS" && head -c 1 <<<"$BODY" | grep -q "#" && ok "markdown attachment" || bad "markdown attachment"

@@ -3,6 +3,7 @@ package com.fabcontext.api.domain.report;
 import static com.fabcontext.api.domain.approval.ApprovalPayloads.requireString;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import com.fabcontext.api.common.ApiException;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Component;
 class ConfirmReportHandler implements ApprovedActionHandler {
 
 	private final ReportService reportService;
+	private final CauseClassificationPolicy classificationPolicy;
 
 	@Override
 	public ApprovalActionType type() {
@@ -40,8 +42,31 @@ class ConfirmReportHandler implements ApprovedActionHandler {
 		return p;
 	}
 
+	/** 승인자가 고른 원인 분류 — 없으면 승인할 수 없다(422). 정규화한 {category, equipmentParameters}만 저장된다 */
+	@Override
+	public Map<String, Object> normalizeDecisionInput(Map<String, Object> raw, Incident incident) {
+		ReportCauseClassification classification = classificationPolicy.validate(toInput(raw),
+			incident.getProcessCode(), null, null);
+		Map<String, Object> normalized = new LinkedHashMap<>();
+		normalized.put("category", classification.getCauseCategory().name());
+		normalized.put("equipmentParameters", classification.getCauseEquipmentParameters());
+		return normalized;
+	}
+
 	@Override
 	public Ref execute(Approval approval, Incident incident, String actorId, String threadId) {
-		return new Ref("REPORT", reportService.confirmFromApproval(incident, approval.getPayload(), actorId).getReportId());
+		return new Ref("REPORT", reportService.confirmFromApproval(incident, approval.getPayload(), actorId,
+			toInput(approval.getDecisionInput())).getReportId());
+	}
+
+	private static CauseClassificationInput toInput(Map<String, Object> raw) {
+		if (raw == null) {
+			return null;
+		}
+		Object category = raw.get("category");
+		List<String> equipmentParameters = raw.get("equipmentParameters") instanceof List<?> list
+				? list.stream().map(String::valueOf).toList()
+				: List.of();
+		return new CauseClassificationInput(category == null ? null : String.valueOf(category), equipmentParameters);
 	}
 }

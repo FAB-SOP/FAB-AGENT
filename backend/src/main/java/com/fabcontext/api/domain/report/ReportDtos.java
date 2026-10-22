@@ -15,11 +15,24 @@ public final class ReportDtos {
 	}
 
 	public record ReportSummary(String reportId, int version, ReportStatus status, String title,
-			long contentRevision, Instant createdAt, Instant confirmedAt) {
+			long contentRevision, Instant createdAt, Instant confirmedAt, ClassificationView classification) {
 
 		static ReportSummary from(Report r) {
 			return new ReportSummary(r.getReportId(), r.getVersion(), r.getStatus(), r.getTitle(),
-				r.getContentRevision(), r.getCreatedAt(), r.getConfirmedAt());
+				r.getContentRevision(), r.getCreatedAt(), r.getConfirmedAt(), ClassificationView.from(r.getClassification()));
+		}
+	}
+
+	/** 확정할 때 고른 원인 분류 — 없으면(초안 · 도입 전 확정본) 응답에서 null */
+	public record ClassificationView(ReportCauseCategory category, List<String> equipmentParameters,
+			String classifiedBy, Instant classifiedAt) {
+
+		static ClassificationView from(ReportCauseClassification c) {
+			if (c == null || c.getCauseCategory() == null) {
+				return null;
+			}
+			return new ClassificationView(c.getCauseCategory(), c.getCauseEquipmentParameters(), c.getClassifiedBy(),
+				c.getClassifiedAt());
 		}
 	}
 
@@ -29,7 +42,8 @@ public final class ReportDtos {
 	public record ReportView(String reportId, String incidentId, int version, ReportStatus status, String title,
 			long contentRevision, long sourceRevision, List<ReportSection> sections, List<String> evidenceIds,
 			Integer baseReportVersion, String generatedByJobId, String snapshotRef, String createdBy,
-			Instant createdAt, String updatedBy, Instant updatedAt, String confirmedBy, Instant confirmedAt) {
+			Instant createdAt, String updatedBy, Instant updatedAt, String confirmedBy, Instant confirmedAt,
+			ClassificationView classification) {
 
 		public static ReportView from(Report r) {
 			return new ReportView(r.getReportId(), r.getIncidentId(), r.getVersion(), r.getStatus(), r.getTitle(),
@@ -38,7 +52,7 @@ public final class ReportDtos {
 					s.get("body") == null ? "" : String.valueOf(s.get("body")))).toList(),
 				List.copyOf(r.getEvidenceIds()), r.getBaseReportVersion(), r.getGeneratedByJobId(), r.getSnapshotRef(),
 				r.getCreatedBy(), r.getCreatedAt(), r.getUpdatedBy(), r.getUpdatedAt(), r.getConfirmedBy(),
-				r.getConfirmedAt());
+				r.getConfirmedAt(), ClassificationView.from(r.getClassification()));
 		}
 	}
 
@@ -50,6 +64,8 @@ public final class ReportDtos {
 			@NotNull Long expectedContentRevision) {
 	}
 
-	public record ReportConfirm(@NotNull Long expectedContentRevision, @NotNull Boolean reviewConfirmed) {
+	/** classification은 서버가 검사한다({@link CauseClassificationPolicy}) — 누락이면 422 */
+	public record ReportConfirm(@NotNull Long expectedContentRevision, @NotNull Boolean reviewConfirmed,
+			@Valid CauseClassificationInput classification) {
 	}
 }

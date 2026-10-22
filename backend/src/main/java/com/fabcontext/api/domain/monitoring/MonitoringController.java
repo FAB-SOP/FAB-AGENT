@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 모니터링 GET 3개 — 정상 LOT · PM 조회 (프론트 계약 data/backend-handoff-v2/combined.openapi.json의 모니터링 경로, 응답 예시 backend-handoff-v2/examples) */
+/** 모니터링 GET 4개 — 정상 LOT · PM 조회 (프론트 계약 data/backend-handoff-v2/combined.openapi.json의 모니터링 경로, 응답 예시 backend-handoff-v2/examples) */
 @Tag(name = "monitoring")
 @RestController
 @RequiredArgsConstructor
@@ -33,6 +33,13 @@ public class MonitoringController {
 	public ApiResponse<Map<String, Object>> summary(@AuthenticationPrincipal AuthUser user, @PathVariable String lotId,
 			@RequestParam(required = false) String processCode) {
 		return ApiResponse.of(service.summary(user, lotId, processCode));
+	}
+
+	@Operation(operationId = "listSensorDefinitions", summary = "공정의 센서 정의 목록 — 센서 시계열과 같은 목록")
+	@GetMapping("/api/monitoring/sensor-definitions")
+	public ApiResponse<Map<String, Object>> sensorDefinitions(@AuthenticationPrincipal AuthUser user,
+			@RequestParam(required = false) String processCode) {
+		return ApiResponse.of(service.sensorDefinitions(user, processCode));
 	}
 
 	@Operation(operationId = "getRunSensorData", summary = "run 하나 · 센서 하나의 원시 시계열")

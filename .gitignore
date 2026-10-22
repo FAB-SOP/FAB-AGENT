@@ -9,6 +9,7 @@
 local/
 
 # ── 생성물
+.specify
 **/.venv/
 **/__pycache__/
 *.py[oc]

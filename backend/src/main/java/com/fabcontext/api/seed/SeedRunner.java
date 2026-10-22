@@ -34,6 +34,7 @@ import com.fabcontext.api.domain.processdata.DataVersion;
 import com.fabcontext.api.domain.processdata.PackStore;
 import com.fabcontext.api.domain.processdata.ProcessEvidenceService;
 import com.fabcontext.api.domain.processdata.RouteRun;
+import com.fabcontext.api.domain.report.CauseClassificationInput;
 import com.fabcontext.api.domain.report.Report;
 import com.fabcontext.api.domain.report.ReportDtos.ReportConfirm;
 import com.fabcontext.api.domain.report.ReportService;
@@ -200,7 +201,9 @@ public class SeedRunner implements ApplicationRunner {
 		Report report = reportService.createDraft(incident, reportJob);
 		jobService.succeed(reportJob, incident, new Ref("REPORT", report.getReportId()));
 		at(d.plus(Duration.ofHours(22)));
-		reportService.confirm(report.getReportId(), engineer, new ReportConfirm(report.getContentRevision(), true));
+		// 원인 분류는 기록된 조치(슬러리 공급 라인 점검 · 필터 교체)에 맞춘다
+		reportService.confirm(report.getReportId(), engineer, new ReportConfirm(report.getContentRevision(), true,
+			new CauseClassificationInput("MACHINE", List.of("slurry_flow"))));
 		close(incident, manager, d.plus(Duration.ofHours(23)), "조치 효과 확인 및 보고서 v1 확정");
 	}
 

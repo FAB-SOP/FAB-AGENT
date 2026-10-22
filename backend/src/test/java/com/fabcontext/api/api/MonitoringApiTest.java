@@ -199,4 +199,24 @@ class MonitoringApiTest extends ApiTestSupport {
 			.andExpect(jsonPath("$.data.samples", hasSize(100))).andExpect(jsonPath("$.data.truncated").value(true))
 			.andExpect(jsonPath("$.data.totalCount").value(3201));
 	}
+
+	@Test
+	void sensorDefinitionsAreTheSensorTimeSeriesListPerProcess() throws Exception {
+		mvc.perform(get("/api/monitoring/sensor-definitions").param("processCode", "CMP"))
+			.andExpect(status().isUnauthorized());
+		// 설비정비팀은 세 공정 조회 범위를 가진다 — 보고서 원인 분류의 장비 파라미터 선택지
+		Session maintenance = login("mnt.jung");
+		getAs(maintenance, "/api/monitoring/sensor-definitions?processCode=CMP")
+			.andExpect(jsonPath("$.data.processCode").value("CMP"))
+			.andExpect(jsonPath("$.data.items", hasSize(5)))
+			.andExpect(jsonPath("$.data.items[*].process", everyItem(is("CMP"))))
+			.andExpect(jsonPath("$.data.items[*].sensorId", hasItems("head_pressure", "slurry_flow")));
+		getAs(maintenance, "/api/monitoring/sensor-definitions?processCode=ETCH").andExpect(jsonPath("$.data.items", hasSize(9)));
+		getAs(maintenance, "/api/monitoring/sensor-definitions?processCode=CVD").andExpect(jsonPath("$.data.items", hasSize(6)));
+		Session cmp = cmp();
+		getAs(cmp, "/api/monitoring/sensor-definitions?processCode=ETCH").andExpect(status().isForbidden());
+		getAs(cmp, "/api/monitoring/sensor-definitions?processCode=PHOTO").andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("INVALID_PROCESS_CODE"));
+		getAs(cmp, "/api/monitoring/sensor-definitions").andExpect(status().isUnprocessableEntity());
+	}
 }

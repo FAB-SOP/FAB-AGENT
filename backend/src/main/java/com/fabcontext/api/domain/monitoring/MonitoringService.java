@@ -89,6 +89,16 @@ public class MonitoringService {
 		return data;
 	}
 
+	/** 공정의 센서 정의 — 로트 요약의 sensorDefinitions와 같은 목록(보고서 원인 분류의 장비 파라미터 선택지) */
+	public Map<String, Object> sensorDefinitions(AuthUser user, String processCode) {
+		requireProcess(user, processCode);
+		Map<String, Object> data = new LinkedHashMap<>();
+		data.put("processCode", processCode);
+		data.put("items", byProcess(pack.sensors(), processCode));
+		data.put("dataVersion", dataVersion.current());
+		return data;
+	}
+
 	public Map<String, Object> sensorData(AuthUser user, String runId, String sensorId, Integer limitParam) {
 		if (sensorId == null || sensorId.isBlank()) {
 			throw ApiException.unprocessable("INVALID_SENSOR_ID", "sensorId가 필요합니다.");

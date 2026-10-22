@@ -1,0 +1,580 @@
+---
+name: "speckit-specify"
+description: "Create or update the feature specification from a natural language feature description."
+argument-hint: "Describe the feature you want to specify"
+compatibility: "Requires spec-kit project structure with .specify/ directory"
+metadata:
+  author: "github-spec-kit"
+  source: "templates/commands/specify.md"
+user-invocable: true
+disable-model-invocation: false
+---
+
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+You **MUST** consider the user input before proceeding (if not empty).
+
+## 산출물 위치 (프로젝트 규칙 — 아래 Outline의 경로보다 우선)
+
+speckit 명령이 만들거나 고치는 문서는 **별도 파일을 만들지 않고, 그 명령 스킬 폴더의 `SKILL.md` 끝
+「Feature Artifacts」 섹션 안에 블록으로** 저장한다. `<기능>`은 `NNN-short-name` 형식이며
+`.specify/feature.json`의 `feature_directory` 값과 같다.
+
+```markdown
+<!-- ARTIFACT:<기능>:<문서> BEGIN -->
+(문서 내용)
+<!-- ARTIFACT:<기능>:<문서> END -->
+```
+
+| 문서 | 저장할 SKILL.md |
+|------|-----------------|
+| 헌법 | `.claude/skills/speckit-constitution/SKILL.md`의 「Project Constitution」 섹션 (`CONSTITUTION:BEGIN/END` 표식) |
+| `spec.md` · `checklists/requirements.md` (`/speckit-specify`가 만들고 `/speckit-clarify`가 수정) | `.claude/skills/speckit-specify/SKILL.md` |
+| `plan.md` · `research.md` · `data-model.md` · `quickstart.md` · `contracts/<이름>.md` | `.claude/skills/speckit-plan/SKILL.md` |
+| `tasks.md` (`/speckit-converge`가 덧붙이고 `/speckit-implement`가 체크) | `.claude/skills/speckit-tasks/SKILL.md` |
+| `checklists/<도메인>.md` (`/speckit-checklist`) | `.claude/skills/speckit-checklist/SKILL.md` |
+| 분석 보고서를 남길 때 `analysis.md` (`/speckit-analyze`) | `.claude/skills/speckit-analyze/SKILL.md` |
+| 구현 메모를 남길 때 `implementation-notes.md` (`/speckit-implement`) | `.claude/skills/speckit-implement/SKILL.md` |
+
+- 스크립트 JSON의 `FEATURE_SPEC` · `IMPL_PLAN` · `TASKS` 등은 `<SKILL.md 절대 경로>#<기능>:<문서>` 형식의
+  **블록 참조**다. `#` 앞 파일을 열고 해당 BEGIN/END 표식 사이만 읽고 고친다. `FEATURE_DIR`는 기능 이름이다.
+- Outline의 `FEATURE_DIR/plan.md`, `FEATURE_DIR/tasks.md`, `FEATURE_DIR/checklists/` 같은 경로는 위 표의
+  블록으로 바꿔 읽는다. "파일을 만든다 · 쓴다"는 "블록이 없으면 SKILL.md 끝에 덧붙이고, 있으면 그 블록 안을
+  고친다"로 읽는다. 블록 밖(스킬 지침 · 다른 기능의 블록)은 고치지 않는다.
+- 블록이 없을 때는 「Feature Artifacts」 섹션 끝에 덧붙인다. 섹션이 없으면 파일 끝에 `---`와
+  `## Feature Artifacts`를 먼저 만든다.
+- 저장소 루트의 `specs/`와 `.specify/memory/constitution.md`는 더 이상 쓰지 않는다.
+
+## Pre-Execution Checks
+
+**Check for extension hooks (before specification)**:
+- Check if `.specify/extensions.yml` exists in the project root.
+- If it exists, read it and look for entries under the `hooks.before_specify` key
+- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
+- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
+- For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
+  - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
+  - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
+- When constructing slash commands from hook command names, replace dots (`.`) with hyphens (`-`). For example, `speckit.git.commit` → `/speckit-git-commit`.
+- For each executable hook, output the following based on its `optional` flag:
+  - **Optional hook** (`optional: true`):
+    ```
+    ## Extension Hooks
+
+    **Optional Pre-Hook**: {extension}
+    Command: `/{command}`
+    Description: {description}
+
+    Prompt: {prompt}
+    To execute: `/{command}`
+    ```
+  - **Mandatory hook** (`optional: false`):
+    ```
+    ## Extension Hooks
+
+    **Automatic Pre-Hook**: {extension}
+    Executing: `/{command}`
+    EXECUTE_COMMAND: {command}
+
+    Wait for the result of the hook command before proceeding to the Outline.
+    ```
+    After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
+- If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+
+## Outline
+
+The text the user typed after `/speckit-specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
+
+Given that feature description, do this:
+
+1. **Generate a concise short name** (2-4 words) for the feature:
+   - Analyze the feature description and extract the most meaningful keywords
+   - Create a 2-4 word short name that captures the essence of the feature
+   - Use action-noun format when possible (e.g., "add-user-auth", "fix-payment-bug")
+   - Preserve technical terms and acronyms (OAuth2, API, JWT, etc.)
+   - Keep it concise but descriptive enough to understand the feature at a glance
+   - Examples:
+     - "I want to add user authentication" → "user-auth"
+     - "Implement OAuth2 integration for the API" → "oauth2-api-integration"
+     - "Create a dashboard for analytics" → "analytics-dashboard"
+     - "Fix payment processing timeout bug" → "fix-payment-timeout"
+
+2. **Branch creation** (optional, via hook):
+
+   If a `before_specify` hook ran successfully in the Pre-Execution Checks above, it will have created/switched to a git branch and output JSON containing `BRANCH_NAME` and `FEATURE_NUM`. Note these values for reference, but the branch name does **not** dictate the spec directory name.
+
+   If the user explicitly provided `GIT_BRANCH_NAME`, pass it through to the hook so the branch script uses the exact value as the branch name (bypassing all prefix/suffix generation).
+
+3. **Create the spec block** (프로젝트 규칙 — spec은 이 SKILL.md 끝 「Feature Artifacts」 섹션의 블록이다):
+
+   Run `.specify/scripts/bash/create-new-feature.sh --json --short-name "<short-name>" "<feature description>"`
+   from repo root (add `--timestamp` when `.specify/init-options.json` has `feature_numbering: "timestamp"`;
+   add `--number N` only if the user asked for a number). The script:
+   - picks the next feature name `<prefix>-<short-name>` (e.g., `003-user-auth`) by scanning existing
+     `<!-- ARTIFACT:<기능>:spec.md BEGIN -->` markers in `.claude/skills/speckit-specify/SKILL.md`
+   - appends a block `<!-- ARTIFACT:<기능>:spec.md BEGIN -->` … `END -->` containing the resolved `spec-template`
+   - persists the feature name to `.specify/feature.json` as `{"feature_directory": "<기능>"}`
+   - prints JSON with `BRANCH_NAME` (= feature name) and `SPEC_FILE` (= block reference
+     `<SKILL.md 절대 경로>#<기능>:spec.md`)
+
+   Set `SPECIFY_FEATURE_DIRECTORY` to the feature name and `SPEC_FILE` to the block reference.
+   If the user explicitly provided `SPECIFY_FEATURE_DIRECTORY`, use its last path segment as the feature name and
+   pass it via `--short-name`/`--number` so the block gets that name.
+   If `branch_numbering` was used in init-options.json (and `feature_numbering` was absent), emit a one-line
+   warning: "⚠️ `branch_numbering` in init-options.json is deprecated. Rename to `feature_numbering`."
+
+   **IMPORTANT**:
+   - You must only create one feature per `/speckit-specify` invocation
+   - The feature name and the git branch name are independent — they may be the same but that is the user's choice
+   - The spec block is always created by this command, never by the hook
+
+4. Load the resolved active `spec-template` file to understand required sections.
+
+5. **IF EXISTS**: Load `.claude/skills/speckit-constitution/SKILL.md`의 「Project Constitution」 섹션 for project principles and governance constraints.
+
+6. Follow this execution flow:
+    1. Parse user description from arguments
+       If empty: ERROR "No feature description provided"
+    2. Extract key concepts from description
+       Identify: actors, actions, data, constraints
+    3. For unclear aspects:
+       - Make informed guesses based on context and industry standards
+       - Only mark with [NEEDS CLARIFICATION: specific question] if:
+         - The choice significantly impacts feature scope or user experience
+         - Multiple reasonable interpretations exist with different implications
+         - No reasonable default exists
+       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
+       - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
+    4. Fill User Scenarios & Testing section
+       If no clear user flow: ERROR "Cannot determine user scenarios"
+    5. Generate Functional Requirements
+       Each requirement must be testable
+       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
+    6. Define Success Criteria
+       Create measurable, technology-agnostic outcomes
+       Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
+       Each criterion must be verifiable without implementation details
+    7. Identify Key Entities (if data involved)
+    8. Return: SUCCESS (spec ready for planning)
+
+6. Write the specification into the SPEC_FILE block (between its BEGIN/END markers only) using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
+
+7. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
+
+   a. **Create Spec Quality Checklist**: Generate a checklist block `<!-- ARTIFACT:<기능>:checklists/requirements.md BEGIN/END -->` in this SKILL.md (`.claude/skills/speckit-specify/SKILL.md`, 「Feature Artifacts」 섹션) using the checklist template structure with these validation items:
+
+      ```markdown
+      # Specification Quality Checklist: [FEATURE NAME]
+
+      **Purpose**: Validate specification completeness and quality before proceeding to planning
+      **Created**: [DATE]
+      **Feature**: [Link to spec.md]
+
+      ## Content Quality
+
+      - [ ] No implementation details (languages, frameworks, APIs)
+      - [ ] Focused on user value and business needs
+      - [ ] Written for non-technical stakeholders
+      - [ ] All mandatory sections completed
+
+      ## Requirement Completeness
+
+      - [ ] No [NEEDS CLARIFICATION] markers remain
+      - [ ] Requirements are testable and unambiguous
+      - [ ] Success criteria are measurable
+      - [ ] Success criteria are technology-agnostic (no implementation details)
+      - [ ] All acceptance scenarios are defined
+      - [ ] Edge cases are identified
+      - [ ] Scope is clearly bounded
+      - [ ] Dependencies and assumptions identified
+
+      ## Feature Readiness
+
+      - [ ] All functional requirements have clear acceptance criteria
+      - [ ] User scenarios cover primary flows
+      - [ ] Feature meets measurable outcomes defined in Success Criteria
+      - [ ] No implementation details leak into specification
+
+      ## Notes
+
+      - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
+      ```
+
+   b. **Run Validation Check**: Review the spec against each checklist item:
+      - For each item, determine if it passes or fails
+      - Document specific issues found (quote relevant spec sections)
+
+   c. **Handle Validation Results**:
+
+      - **If all items pass**: Mark checklist complete and proceed to the Mandatory Post-Execution Hooks section
+
+      - **If items fail (excluding [NEEDS CLARIFICATION])**:
+        1. List the failing items and specific issues
+        2. Update the spec to address each issue
+        3. Re-run validation until all items pass (max 3 iterations)
+        4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
+
+      - **If [NEEDS CLARIFICATION] markers remain**:
+        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
+        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
+        3. For each clarification needed (max 3), present options to user in this format:
+
+           ```markdown
+           ## Question [N]: [Topic]
+
+           **Context**: [Quote relevant spec section]
+
+           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
+
+           **Suggested Answers**:
+
+           | Option | Answer | Implications |
+           |--------|--------|--------------|
+           | A      | [First suggested answer] | [What this means for the feature] |
+           | B      | [Second suggested answer] | [What this means for the feature] |
+           | C      | [Third suggested answer] | [What this means for the feature] |
+           | Custom | Provide your own answer | [Explain how to provide custom input] |
+
+           **Your choice**: _[Wait for user response]_
+           ```
+
+        4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
+           - Use consistent spacing with pipes aligned
+           - Each cell should have spaces around content: `| Content |` not `|Content|`
+           - Header separator must have at least 3 dashes: `|--------|`
+           - Test that the table renders correctly in markdown preview
+        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
+        6. Present all questions together before waiting for responses
+        7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
+        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
+        9. Re-run validation after all clarifications are resolved
+
+   d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
+
+## Mandatory Post-Execution Hooks
+
+**You MUST complete this section before reporting completion to the user.**
+
+Check if `.specify/extensions.yml` exists in the project root.
+- If it does not exist, or no hooks are registered under `hooks.after_specify`, skip to the Completion Report.
+- If it exists, read it and look for entries under the `hooks.after_specify` key.
+- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue to the Completion Report.
+- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
+- For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
+  - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
+  - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
+- When constructing slash commands from hook command names, replace dots (`.`) with hyphens (`-`). For example, `speckit.git.commit` → `/speckit-git-commit`.
+- For each executable hook, output the following based on its `optional` flag:
+  - **Mandatory hook** (`optional: false`) — **You MUST emit `EXECUTE_COMMAND:` for each mandatory hook**:
+    ```
+    ## Extension Hooks
+
+    **Automatic Hook**: {extension}
+    Executing: `/{command}`
+    EXECUTE_COMMAND: {command}
+    ```
+    After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
+  - **Optional hook** (`optional: true`):
+    ```
+    ## Extension Hooks
+
+    **Optional Hook**: {extension}
+    Command: `/{command}`
+    Description: {description}
+
+    Prompt: {prompt}
+    To execute: `/{command}`
+    ```
+
+## Completion Report
+
+Report completion to the user with:
+- `SPECIFY_FEATURE_DIRECTORY` — the feature name (e.g., `003-user-auth`)
+- `SPEC_FILE` — the spec block reference (`<SKILL.md>#<기능>:spec.md`)
+- Checklist results summary
+- Readiness for the next phase (`/speckit-clarify` or `/speckit-plan`)
+
+**NOTE:** Branch creation is handled by the `before_specify` hook (git extension). Spec block creation (in this SKILL.md) is always handled by this core command.
+
+## Quick Guidelines
+
+- Focus on **WHAT** users need and **WHY**.
+- Avoid HOW to implement (no tech stack, APIs, code structure).
+- Written for business stakeholders, not developers.
+- DO NOT create any checklists that are embedded in the spec. That will be a separate command.
+
+### Section Requirements
+
+- **Mandatory sections**: Must be completed for every feature
+- **Optional sections**: Include only when relevant to the feature
+- When a section doesn't apply, remove it entirely (don't leave as "N/A")
+
+### For AI Generation
+
+When creating this spec from a user prompt:
+
+1. **Make informed guesses**: Use context, industry standards, and common patterns to fill gaps
+2. **Document assumptions**: Record reasonable defaults in the Assumptions section
+3. **Limit clarifications**: Maximum 3 [NEEDS CLARIFICATION] markers - use only for critical decisions that:
+   - Significantly impact feature scope or user experience
+   - Have multiple reasonable interpretations with different implications
+   - Lack any reasonable default
+4. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
+5. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
+6. **Common areas needing clarification** (only if no reasonable default exists):
+   - Feature scope and boundaries (include/exclude specific use cases)
+   - User types and permissions (if multiple conflicting interpretations possible)
+   - Security/compliance requirements (when legally/financially significant)
+
+**Examples of reasonable defaults** (don't ask about these):
+
+- Data retention: Industry-standard practices for the domain
+- Performance targets: Standard web/mobile app expectations unless specified
+- Error handling: User-friendly messages with appropriate fallbacks
+- Authentication method: Standard session-based or OAuth2 for web apps
+- Integration patterns: Use project-appropriate patterns (REST/GraphQL for web services, function calls for libraries, CLI args for tools, etc.)
+
+### Success Criteria Guidelines
+
+Success criteria must be:
+
+1. **Measurable**: Include specific metrics (time, percentage, count, rate)
+2. **Technology-agnostic**: No mention of frameworks, languages, databases, or tools
+3. **User-focused**: Describe outcomes from user/business perspective, not system internals
+4. **Verifiable**: Can be tested/validated without knowing implementation details
+
+**Good examples**:
+
+- "Users can complete checkout in under 3 minutes"
+- "System supports 10,000 concurrent users"
+- "95% of searches return results in under 1 second"
+- "Task completion rate improves by 40%"
+
+**Bad examples** (implementation-focused):
+
+- "API response time is under 200ms" (too technical, use "Users see results instantly")
+- "Database can handle 1000 TPS" (implementation detail, use user-facing metric)
+- "React components render efficiently" (framework-specific)
+- "Redis cache hit rate above 80%" (technology-specific)
+
+## Done When
+
+- [ ] Specification written to `SPEC_FILE` and validated against quality checklist
+- [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
+- [ ] Completion reported to user with feature name, spec block reference, and checklist results
+
+---
+
+## Feature Artifacts
+
+speckit 명령이 만든 산출물이다. 블록은 `<!-- ARTIFACT:<기능>:<문서> BEGIN/END -->` 표식으로 구분한다.
+
+<!-- ARTIFACT:001-report-4m-classification:spec.md BEGIN -->
+# Feature Specification: 조사 보고서 4M 원인 분류
+
+**Feature**: `001-report-4m-classification`
+**Created**: 2026-10-22
+**Status**: Draft
+**Input**: 사용자 설명: "이상조사와 보고서 작성 기능의 실행 순서를 파악하고, 보고서 초안의 「검토 후 확정」 단계에
+4M(Material · Man · Method · Machine) 분류 드롭다운을 추가한다. Machine이면 공정(CMP · Etch · CVD)별 장비
+파라미터를 고를 수 있고, 목록은 공정 대시보드 「센서 시계열」의 센서 목록을 참조한다. 장비 엔지니어(PM 진행)와
+공정 관리자가 각자의 시각으로 보고서를 분류해 볼 수 있게 하는 것이 목적이다."
+
+## 현재 실행 순서 (As-Is, 조사 결과)
+
+이 기능은 아래 흐름의 마지막 단계(⑧ 확정)에 분류를 덧붙인다. ①–⑦의 동작은 바꾸지 않는다.
+
+1. **이상 감지 · 사건 생성** — 공정 데이터에서 이상이 감지되면 사건(공정 · 설비 · 챔버 · 로트 · 웨이퍼 · 관련 센서)이 만들어진다.
+2. **조사 질문** — 공정 담당자가 사건 화면에서 Agent에게 질문하면 조사 작업이 시작된다.
+3. **Agent 조사** — Agent가 서버가 계산한 공정 근거(센서 시계열 · 계측 · 문서)를 조회해 관측 사실 · 원인 후보 · 한계를 정리한다.
+4. **요청 제안 · 승인** — Agent는 다른 공정 담당자 · 설비정비팀에게 보낼 확인 요청을 제안만 하고, 사람이 승인한 뒤에만 실행된다.
+5. **회신 · 조치 기록** — 받는 사람이 회신하고, 조치와 확인 결과가 사건 이력에 쌓인다.
+6. **보고서 초안 생성 요청** — 사건 화면 「보고서」에서 「초안 생성 요청」을 누르면 보고서 작업이 대기열에 들어간다(사건 발생 시 자동 생성 없음, 동시에 하나만).
+7. **초안 작성 · 편집** — 작업이 사건 기록을 모아 새 판본의 초안(개요 · 조사 내용 · 요청과 회신 · 조치와 검증 · 미해결 사항 다섯 섹션)을 만든다. 담당자는 「조사 보고서 검토」 화면에서 제목 · 섹션을 고치고 저장한다(수정 판본 번호로 충돌을 막는다).
+8. **검토 후 확정** — 「보고서 내용을 검토했습니다」를 체크하고 「검토한 버전 확정」을 누르면 보고서가 확정된다. 확정 시점 내용이 스냅샷으로 보존되고 이후 내려받기는 스냅샷을 준다. 확정은 Agent 제안 → 승인 경로로도 실행될 수 있다.
+
+## Clarifications
+
+### Session 2026-10-22
+
+- Q: 보고서 하나에 4M 분류를 몇 개까지 지정하나? → A: 주 분류 하나만 선택한다. 장비 파라미터만 여러 개 선택할 수 있다.
+- Q: 타사 장비 엔지니어는 보고서를 어떻게 보나? → A: 새 역할 없이 MAINTENANCE(설비정비팀) 계정으로 기존 권한 안에서 본다. 외부 업체에는 사람이 기존 Markdown 내려받기로 확정본을 받아 직접 전달하며, 별도 공유 · PDF 기능은 만들지 않는다.
+- Q: 분류는 언제, 누가 정하나? → A: 보고서를 확정하는 시점에 사람이 정한다. 직접 확정은 「검토 후 확정」에서, Agent가 제안한 보고서 확정은 승인자가 승인할 때 같은 드롭다운으로 정한다. 초안 단계에는 분류를 저장하지 않는다.
+- Q: 주기별 보고서 조회를 범위에 넣나? → A: 넣는다. 보고서 목록에 「이상 발생 기간」(시작일~종료일) 필터를 추가하며, 기준은 사건(이상)이 감지된 날이다. 분류 필터와 함께 쓴다.
+- Q: 4M 중 어디에도 확정할 수 없으면? → A: 다섯 번째 선택지 「보류 (원인 미확정)」을 고를 수 있다. 장비 파라미터는 고르지 않으며, 사건 상태 「보류」와는 별개다.
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - 확정할 때 4M 원인 분류를 지정한다 (Priority: P1)
+
+공정 담당자가 보고서 초안을 검토한 뒤 확정하기 전에, 이 사건의 이상 원인이 4M 중 어디에 해당하는지
+(Material · Man · Method · Machine) 드롭다운에서 고른다. 조사 결과로 4M 중 하나로 확정할 수 없으면
+「보류 (원인 미확정)」을 고른다. 분류는 확정된 보고서와 함께 보존된다.
+
+**Why this priority**: 분류가 기록되지 않으면 이후 시각별 조회가 불가능하다. 이 기능의 최소 가치 단위다.
+
+**Independent Test**: 초안 하나를 열어 분류를 Method로 고르고 확정한 뒤, 보고서를 다시 열었을 때 분류가 Method로
+보이고 내려받은 보고서에도 분류가 적혀 있으면 통과.
+
+**Acceptance Scenarios**:
+
+1. **Given** 검토 가능한 초안, **When** 담당자가 검토 체크를 하고 원인 분류를 고르지 않은 채 확정하려 하면, **Then** 확정 버튼이 비활성이고 "원인 분류를 선택해 주세요" 안내가 보인다.
+2. **Given** 검토 체크와 분류(Material · Man · Method 중 하나)를 마친 초안, **When** 확정하면, **Then** 보고서가 확정되고 보고서 화면 · 목록 · 내려받은 문서에 선택한 분류가 표시된다.
+3. **Given** 확정된 보고서, **When** 누구든 다시 열면, **Then** 분류는 읽기 전용으로 보이고 바꿀 수 없다.
+4. **Given** 원인을 4M 중 하나로 정할 수 없는 초안, **When** 담당자가 「보류 (원인 미확정)」을 고르고 확정하면, **Then** 장비 파라미터 선택 없이 확정되고 보고서 화면 · 목록 · 내려받은 문서에 「보류 (원인 미확정)」으로 표시된다.
+
+---
+
+### User Story 2 - Machine이면 공정별 장비 파라미터를 고른다 (Priority: P1)
+
+원인이 설비 쪽이라고 판단되면 담당자는 Machine을 고르고, 이어서 나타나는 두 번째 드롭다운에서 관련 장비
+파라미터를 고른다. 선택지는 그 사건 공정의 「센서 시계열」에서 볼 수 있는 센서 목록과 같다
+(예: CMP는 헤드 압력 · 플래튼 회전속도 · 슬러리 유량 등, Etch는 소스 · 바이어스 RF · CF₄ 유량 · 척 온도 등,
+CVD는 챔버 압력 · 히터 온도 · SiH₄ 공급 유량 · RF 전력 등).
+
+**Why this priority**: 타사 장비 엔지니어가 PM 때 볼 보고서를 고르려면 "어느 장비 파라미터 문제인가"까지 알아야 한다.
+
+**Independent Test**: CMP 사건 보고서에서 Machine을 고르면 CMP 센서만 선택지로 나오고, Etch · CVD 센서는 나오지 않으면 통과.
+
+**Acceptance Scenarios**:
+
+1. **Given** CVD 사건의 초안, **When** 분류를 Machine으로 고르면, **Then** CVD 공정 센서 목록이 사람이 읽는 이름(단위 포함)으로 나타난다.
+2. **Given** 분류가 Machine이고 파라미터를 하나도 고르지 않은 상태, **When** 확정하려 하면, **Then** 확정할 수 없고 "장비 파라미터를 하나 이상 선택해 주세요" 안내가 보인다.
+3. **Given** Machine과 파라미터를 고른 상태, **When** 분류를 Method로 바꾸면, **Then** 파라미터 드롭다운이 사라지고 고른 파라미터는 확정 내용에 들어가지 않는다.
+4. **Given** 사건에 관련 센서가 지정되어 있음, **When** 파라미터 목록을 열면, **Then** 그 센서들이 목록 위쪽에 「사건 관련」으로 표시된다(선택은 담당자가 한다).
+
+**Acceptance Scenarios (Agent 제안 경로)**:
+
+5. **Given** Agent가 제안한 「보고서 확정」 승인 대기 건, **When** 승인자가 승인 화면을 열면, **Then** 확정 경로와 같은 원인 분류 드롭다운(4M · 보류, Machine이면 파라미터 선택 포함)이 보이고, 분류를 고르기 전에는 승인할 수 없다.
+6. **Given** 승인자가 분류를 Machine · 헤드 압력으로 고르고 승인, **When** 확정이 실행되면, **Then** 확정된 보고서의 분류는 승인자가 고른 Machine · 헤드 압력이며, 승인 기록에도 같은 분류와 승인자가 남는다.
+7. **Given** 같은 승인 대기 건, **When** 승인자가 거절하면, **Then** 분류 입력 없이 거절되고 보고서는 초안으로 남는다.
+
+---
+
+### User Story 3 - 분류 · 이상 발생 기간으로 보고서를 골라 본다 (Priority: P2)
+
+장비 엔지니어는 Machine · 특정 파라미터로, 공정 관리자는 Material · Man · Method로 보고서 목록을 걸러서
+자신의 시각에 맞는 보고서만 본다. 「이상 발생 기간」을 함께 지정해 PM 주기 같은 기간 단위로 모아 본다.
+
+**Why this priority**: 분류를 남기는 이유가 "시각별 조회"이므로 목록 필터가 있어야 가치가 완성된다. 다만 P1만으로도 분류 기록은 쌓인다.
+
+**Independent Test**: 분류가 서로 다른 확정 보고서 3건이 있을 때 목록에서 Machine을 고르면 Machine 보고서만, 파라미터까지 고르면 그 파라미터가 포함된 보고서만 남으면 통과.
+
+**Acceptance Scenarios**:
+
+1. **Given** 여러 분류의 확정 보고서, **When** 목록에서 분류 필터를 Machine으로 고르면, **Then** Machine 보고서만 보인다.
+2. **Given** 분류 필터 Machine, **When** 장비 파라미터 필터를 고르면, **Then** 그 파라미터를 포함한 보고서만 보인다.
+3. **Given** 분류가 없는 이전 확정 보고서, **When** 필터를 「분류 없음」으로 고르면, **Then** 그 보고서들이 보이며, 「전체」에서는 모든 보고서가 기존처럼 보인다.
+4. **Given** 10월 1일 · 10월 15일 · 11월 2일에 감지된 사건의 Machine 보고서, **When** 분류 Machine과 이상 발생 기간 10월 1일~10월 31일을 함께 지정하면, **Then** 10월 1일 · 10월 15일 사건의 보고서만 보인다(보고서 확정일과 무관).
+5. **Given** 이상 발생 기간을 비워 둠, **When** 목록을 보면, **Then** 기간 제한 없이 기존처럼 모든 기간의 보고서가 보인다.
+
+---
+
+### Edge Cases
+
+- 기능 도입 전에 확정된 보고서는 분류가 없다 — 「분류 없음」으로 표시하고 오류 없이 열린다. 확정본은 고칠 수 없으므로 소급 분류하지 않는다.
+- 센서 목록을 불러오지 못하면 Machine 파라미터를 고를 수 없으므로, 안내를 보이고 Machine 확정만 막는다(Material · Man · Method 확정은 가능).
+- 담당자가 분류를 고른 뒤 다른 사람이 초안을 수정해 판본이 바뀌면 기존처럼 확정이 거부되고, 새로 불러온 화면에서 분류를 다시 고른다.
+- Agent 제안 → 승인 경로로 확정할 때는 Agent가 분류를 정하지 않는다 — 승인자가 승인 시점에 고른 분류가 승인 기록에 저장되고, 확정 실행은 그 저장된 분류만 쓴다(헌법 원칙 I · II).
+- 승인 뒤 실행 전에 초안이 수정되어 판본이 바뀌면 기존처럼 실행이 거부된다.
+- 장비 파라미터는 그 사건 공정의 센서여야 한다 — 다른 공정 센서나 목록에 없는 값이 들어오면 서버가 거부한다.
+- 같은 확정 요청이 두 번 들어와도 한 번만 확정된다(기존 멱등성 유지).
+- 「보류 (원인 미확정)」으로 확정한 뒤 원인이 밝혀지면, 확정본은 바꾸지 않고 기존 「초안 생성 요청」으로 새 판본을 만들어 그 판본을 4M 중 하나로 분류해 확정한다. 목록은 판본마다 그 판본의 분류로 거른다.
+- 「보류 (원인 미확정)」은 사건 상태 「보류」(MANAGER의 상태 전이)와 별개다 — 분류로 보류를 골라도 사건 상태는 바뀌지 않고, 사건이 보류 상태여도 분류 선택지는 같다.
+- 이상 발생 기간의 시작일이 종료일보다 늦으면 안내를 보이고 필터를 적용하지 않는다. 시작일 · 종료일 중 하나만 지정하면 그쪽 경계만 적용한다. 날짜는 화면 표시와 같은 한국 시간 기준이며 종료일 당일을 포함한다.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: 「검토 후 확정」 영역에는 기존 검토 체크와 함께 원인 분류 드롭다운이 있어야 한다. 선택지는 4M(Material · Man · Method · Machine)과 「보류 (원인 미확정)」 다섯 가지이며, 보고서 판본당 **하나만** 고를 수 있어야 한다(복수 선택 없음). 보조 원인은 본문 섹션에 적는다.
+- **FR-001a**: 「보류 (원인 미확정)」은 조사 결과로 원인을 4M 중 하나로 확정할 수 없을 때 고르는 값이며, 장비 파라미터를 갖지 않는다. 사건 상태(보류 · 종료)를 바꾸지 않는다.
+- **FR-002**: 분류가 Machine이면 장비 파라미터 선택 드롭다운이 나타나야 하며, 하나 이상 고를 수 있어야 한다.
+- **FR-003**: 장비 파라미터 선택지는 해당 사건 공정의 센서 목록이며, 공정 대시보드 「센서 시계열」이 보여 주는 센서 목록과 같은 출처 · 같은 표시 이름을 써야 한다.
+- **FR-004**: 사건에 관련 센서가 지정되어 있으면 파라미터 목록에서 구분해 먼저 보여야 한다. 자동 선택은 하지 않는다.
+- **FR-005**: 검토 체크와 분류(Machine이면 파라미터 1개 이상까지)가 모두 갖춰져야 확정할 수 있어야 한다. 화면과 서버 모두 검사한다.
+- **FR-006**: 서버는 분류 값이 다섯 가지(4M · 보류) 중 하나인지, 장비 파라미터가 그 사건 공정의 센서인지 검증하고, 아니면 확정을 거부하며 이유를 알려야 한다.
+- **FR-007**: 확정된 보고서는 분류 · 장비 파라미터 · 분류한 사람 · 시각을 함께 보존해야 하며, 확정 후에는 바꿀 수 없어야 한다.
+- **FR-008**: 보고서 화면 · 보고서 목록 · 내려받은 보고서(확정 스냅샷)에 분류와 장비 파라미터가 표시되어야 한다.
+- **FR-009**: 보고서 목록은 분류(전체 · Material · Man · Method · Machine · 보류 (원인 미확정) · 분류 없음)와, Machine일 때 장비 파라미터로 거를 수 있어야 한다.
+- **FR-009a**: 보고서 목록은 「이상 발생 기간」(시작일~종료일, 종료일 포함)으로 거를 수 있어야 하며, 기준은 보고서가 속한 사건의 이상 감지일이다. 분류 · 파라미터 필터와 동시에 적용되고, 비워 두면 기간 제한이 없다. 목록 각 행에 이상 발생일이 보여야 한다.
+- **FR-010**: Agent가 제안한 보고서 확정을 **승인할 때** 승인자는 원인 분류(4M 또는 보류, Machine이면 장비 파라미터 1개 이상)를 함께 골라야 하며, 고르지 않으면 승인할 수 없다. 거절에는 분류가 필요 없다.
+- **FR-010a**: 승인자가 고른 분류는 승인 기록(승인자 · 시각)과 함께 저장되고, 확정 실행은 저장된 분류만 사용한다. Agent는 분류를 정하거나 제안하지 않으며, Agent가 제안한 내용(보고서 · 판본)의 기존 검증은 그대로 유지한다.
+- **FR-011**: 분류 기능 도입 전 확정 보고서와 기존 화면 · 내려받기 · 초안 생성 · 편집 동작은 그대로 동작해야 한다(헌법 원칙 X).
+- **FR-012**: 사건 이력의 보고서 확정 기록에 분류가 함께 남아야 한다.
+- **FR-013**: 분류 선택 · 확정 권한은 기존 보고서 확정 권한과 같다(사건 운영 권한이 있는 사용자만). 보고서 열람 범위는 바꾸지 않으며, 타사 장비 엔지니어는 MAINTENANCE(설비정비팀) 계정의 기존 권한으로 본다. 새 역할 · 계정을 만들지 않는다.
+- **FR-014**: 외부 업체 전달은 기존 Markdown 내려받기로 사람이 직접 한다. 외부 공유 링크 · 발송 · PDF 변환 기능은 만들지 않는다.
+
+### Key Entities
+
+- **원인 분류(4M Classification)**: 보고서 판본 하나에 붙는 분류. 범주 하나(Material · Man · Method · Machine · 보류 (원인 미확정) 중 택1), 장비 파라미터 목록(Machine일 때만), 분류한 사람, 분류 시각. 확정과 함께 고정된다.
+- **장비 파라미터(Equipment Parameter)**: 공정별 센서 목록의 한 항목. 센서 ID, 표시 이름, 단위, 소속 공정. 공정 대시보드 센서 시계열과 같은 목록을 쓴다.
+- **보고서(Report)**: 기존 엔티티. 판본 · 상태(초안 · 확정) · 섹션 · 확정 스냅샷에 원인 분류가 더해진다.
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: 기능 도입 후 새로 확정되는 보고서의 100%가 원인 분류(4M 또는 보류)를 가진다.
+- **SC-002**: 담당자는 기존 확정 절차 대비 30초 이내의 추가 시간으로 분류 · 파라미터 선택을 마친다.
+- **SC-003**: 장비 파라미터 선택지는 세 공정(CMP · Etch · CVD) 모두에서 공정 대시보드 센서 시계열의 센서 목록과 100% 일치한다(누락 · 타 공정 센서 0건).
+- **SC-004**: 장비 엔지니어는 보고서 목록에서 두 번 이하의 선택으로 Machine · 특정 파라미터 보고서만 걸러 볼 수 있고, 기간까지 지정해도 1분 안에 원하는 PM 주기의 보고서를 찾는다.
+- **SC-005**: 기능 도입 전 보고서 · 기존 확정 · 승인 흐름에서 회귀 오류 0건(기존 검증 · 스모크 전부 통과).
+
+## Assumptions
+
+- 설비정비팀(MAINTENANCE) 계정은 현재 세 공정(CVD · ETCH · CMP) 조회 범위를 가지므로, 새 권한 없이 보고서 목록 · 필터를 쓸 수 있다.
+- 주기별 조회는 「이상 발생 기간」 필터로 지원한다. 정기 발송 · 주기 자동 묶음 · 빠른 기간 버튼은 범위 밖이다.
+- 4M 라벨은 Material · Man · Method · Machine 영문 표기와 한글 설명(자재 · 사람 · 방법 · 설비)을 함께 보여 주고, 다섯 번째 선택지는 「보류 (원인 미확정)」으로 표시한다.
+- 센서 목록은 현재 데이터 팩의 공정별 센서 정의를 그대로 쓴다(새 센서를 만들지 않는다).
+
+## Dependencies
+
+- 공정별 센서 정의(공정 대시보드 「센서 시계열」이 쓰는 목록)
+- 기존 보고서 확정 · 승인(CONFIRM_REPORT) · 내려받기 · 사건 이력 기능
+- 공개 API 계약 변경은 계약 변경 기록과 계약 주인 확인이 필요하다(헌법 원칙 IV).
+<!-- ARTIFACT:001-report-4m-classification:spec.md END -->
+
+<!-- ARTIFACT:001-report-4m-classification:checklists/requirements.md BEGIN -->
+# Specification Quality Checklist: 조사 보고서 4M 원인 분류
+
+**Purpose**: Validate specification completeness and quality before proceeding to planning
+**Created**: 2026-10-22
+**Feature**: `001-report-4m-classification:spec.md` (이 SKILL.md의 spec 블록)
+
+## Content Quality
+
+- [x] No implementation details (languages, frameworks, APIs)
+- [x] Focused on user value and business needs
+- [x] Written for non-technical stakeholders
+- [x] All mandatory sections completed
+
+## Requirement Completeness
+
+- [x] No [NEEDS CLARIFICATION] markers remain
+- [x] Requirements are testable and unambiguous
+- [x] Success criteria are measurable
+- [x] Success criteria are technology-agnostic (no implementation details)
+- [x] All acceptance scenarios are defined
+- [x] Edge cases are identified
+- [x] Scope is clearly bounded
+- [x] Dependencies and assumptions identified
+
+## Feature Readiness
+
+- [x] All functional requirements have clear acceptance criteria
+- [x] User scenarios cover primary flows
+- [x] Feature meets measurable outcomes defined in Success Criteria
+- [x] No implementation details leak into specification
+
+## Notes
+
+- 1차 검증에서 FR-010의 "해시" 표현을 구현 세부로 보고 "승인 대상 내용"으로 고쳤다. 2차 검증 전 항목 통과.
+- 「현재 실행 순서 (As-Is)」 섹션은 사용자가 요청한 실행 순서 파악 결과로, 템플릿 외 추가 섹션이다.
+- 판단으로 정한 기본값은 Assumptions에 적었다. 바꾸려면 `/speckit-clarify`에서 다룬다.
+<!-- ARTIFACT:001-report-4m-classification:checklists/requirements.md END -->
