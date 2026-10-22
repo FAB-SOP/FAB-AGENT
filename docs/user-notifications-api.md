@@ -75,8 +75,17 @@
 - main `3ae5e24`를 `feat/user-notifications`에 병합했다.
 - 수락·거절 알림 연결, 회신 전 수락 절차, 승인자가 달라도 분석 요청자를 유지하는 경로, 회신만으로 분석이 실행되지 않는 경로를 검증했다.
 - 통합 대상 테스트 35건 통과.
-- `./gradlew test --offline`: 총 210건 중 208건 통과, 실패/오류 0건, 기존 Knowledge 테스트 2건 건너뜀.
+- `./gradlew test --offline`: 총 217건 중 215건 통과, 실패/오류 0건, 기존 Knowledge 테스트 2건 건너뜀.
 - `git diff --check` 통과. Testcontainers DB 사용. 실제 Python Agent·프론트/브라우저·배포 nginx 검증 및 서버 재배포는 하지 않았다.
 
 
 업무 채택으로 보내는 승인/팀 확인 요청의 brief 보완은 [work-request-brief-frontend.md](work-request-brief-frontend.md) 참고. 알림에는 해당 내용을 넣지 않고 대상 요청/업무의 상세 조회로 확인한다.
+
+
+## 실제 HTTP·nginx 추가 검증 — 2026-10-22
+
+- 별도 임시 Postgres와 Backend(prod 로그 프로필, simulator 모드), 배포 nginx 설정의 복사본을 사용했다. 복사본은 upstream 주소만 임시 Backend로 바꿨다. 기존 서버·DB·프론트 소스는 변경하지 않았다.
+- 실제 쿠키 로그인 후 HTTP SSE 클라이언트로 검증했다: ready 즉시 전달(3초 이내), 사건 접수 커밋 후 실시간 알림, 사용자 간 목록 격리와 타인 읽음 404, 읽음 SSE와 반복 호출 readAt 유지, Last-Event-ID 재연결 시 알림 재전송, 잘못된 기준점 resync. 모두 통과했다.
+- nginx를 통한 짧은 연결에서 버퍼링으로 인한 전달 지연은 관측되지 않았다. 30분 연결 만료·장시간 idle·실제 배포 네트워크는 검증 범위가 아니다.
+- 실제 브라우저 EventSource의 자동 재접속과 프론트 화면 이동·배지 갱신은 아직 검증하지 않았다. 프론트 연결 후 별도 확인한다.
+- 임시 검증 컨테이너와 Backend는 종료했다. 제품 코드 수정은 없으며 검증 결과만 기록했다.
