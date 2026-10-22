@@ -9,9 +9,9 @@ public enum NotificationType {
 	INCIDENT_CREATED("INCIDENT", "새 사건이 접수되었습니다"),
 	/** 새 업무·확인 요청 → 지정 수신자 */
 	CHECK_REQUEST_RECEIVED("CHECK_REQUEST", "확인 요청을 받았습니다"),
-	/** 요청 수락 → 요청자 (수락·거절 API가 main에 들어온 뒤 연결) */
+	/** 요청 수락 → 요청자 */
 	CHECK_REQUEST_ACCEPTED("CHECK_REQUEST", "보낸 요청이 수락되었습니다"),
-	/** 요청 거절 → 요청자 (수락·거절 API가 main에 들어온 뒤 연결) */
+	/** 요청 거절 → 요청자 */
 	CHECK_REQUEST_REJECTED("CHECK_REQUEST", "보낸 요청이 거절되었습니다"),
 	/** 결과 회신 → 요청자. 회신 도착 알림일 뿐 분석을 실행하지 않는다 */
 	CHECK_REQUEST_REPLIED("REPLY", "보낸 요청에 회신이 도착했습니다"),

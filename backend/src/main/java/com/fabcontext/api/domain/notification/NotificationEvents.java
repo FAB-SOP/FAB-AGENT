@@ -53,7 +53,7 @@ public class NotificationEvents {
 	}
 
 	/**
-	 * 요청 수락 · 거절 → 요청자. main에는 아직 수락 · 거절 흐름이 없다 — 그 결정 트랜잭션에서 부르도록 연결한다.
+	 * 요청 수락 · 거절 → 요청자. CheckRequestService.decide의 결정 트랜잭션에서 호출한다.
 	 * 결정마다 한 번(sourceKey = requestId)이며 거절 사유는 알림에 담지 않는다.
 	 */
 	public void checkRequestDecided(CheckRequest request, String deciderUserId, boolean accepted) {
@@ -103,6 +103,8 @@ public class NotificationEvents {
 		if (job.getKind() == JobKind.REPORT) {
 			return;
 		}
+		// 승인 거절/요청 발송만 끝난 작업을 분석 결과 완료로 알리지 않는다.
+		if(job.getStatus()==JobStatus.SUCCEEDED && !"ANALYSIS_RESULT".equals(job.getResultRefType())) return;
 		NotificationType type = job.getStatus() == JobStatus.SUCCEEDED ? NotificationType.ANALYSIS_SUCCEEDED
 			: job.getStatus() == JobStatus.FAILED ? NotificationType.ANALYSIS_FAILED : null;
 		if (type == null || job.getRequestedBy() == null) {

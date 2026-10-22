@@ -132,7 +132,9 @@ public class JobService {
 		Map<String,Object> merged=new java.util.LinkedHashMap<>(input);
 		for(String key:java.util.List.of("analysisRequestId","selectedInputs","followupQuestion"))
 			if(!merged.containsKey(key) && waitingJob.getInput().containsKey(key)) merged.put(key,waitingJob.getInput().get(key));
-		String requester=waitingJob.getInput().containsKey("analysisRequestId")?waitingJob.getRequestedBy():requestedBy;
+		// 승인 결정자는 재개 실행의 요청자가 아니다. 직접 추가 분석을 누른 경우만 새 요청자로 삼는다.
+		boolean keepRequester=waitingJob.getInput().containsKey("analysisRequestId") || "APPROVAL_DECIDED".equals(input.get("reason"));
+		String requester=keepRequester?waitingJob.getRequestedBy():requestedBy;
 		Job resume = enqueue(incident, JobKind.RESUME, requester, waitingJob.getQuestion(), waitingJob.getScope(),
 			merged, waitingJob.getThreadId(), waitingJob.getJobId());
 		waitingJob.succeed(new Ref("RESUME_JOB", resume.getJobId()), Instant.now(clock));

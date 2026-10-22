@@ -60,8 +60,9 @@ class NotificationIntegrationApiTest extends ApiTestSupport {
 		getAs(etch, "/api/check-requests/{id}", request).andExpect(status().isOk());
 		getAs(etch, "/api/incidents/{id}", incidentId).andExpect(status().isForbidden());
 
+		acceptRequest(etch,request);
 		String reply = json(postAs(etch, "/api/check-requests/{id}/replies",
-			"{\"findings\":\"처리 이력 확인 완료 — 비공개 메모\",\"confirmedByUser\":true,\"expectedVersion\":1}", request)
+			"{\"findings\":\"처리 이력 확인 완료 — 비공개 메모\",\"confirmedByUser\":true,\"expectedVersion\":2}", request)
 			.andExpect(status().isCreated()), "$.data.replyId");
 		List<Map<String, Object>> replied = notificationsFor(cmp, reply);
 		assertThat(replied).extracting(n -> n.get("type")).containsExactly("CHECK_REQUEST_REPLIED");
@@ -111,6 +112,78 @@ class NotificationIntegrationApiTest extends ApiTestSupport {
 		awaitJob(cmp, failed, "FAILED");
 		awaitNotification(cmp, failed, "ANALYSIS_FAILED");
 		assertThat(notificationsFor(cvd(), failed)).isEmpty();
+	}
+
+
+	@org.springframework.beans.factory.annotation.Autowired
+	com.fabcontext.api.domain.job.JobRepository jobs;
+
+	@Test
+	void requestDecisionsNotifySenderOnceAndDoNotRunAnalysis() throws Exception {
+		Session sender=cmp(), recipient=login("etch.lee");
+		for(boolean accept:List.of(true,false)) {
+			String incidentId=newIncident(sender,false).incidentId();
+			String task=propose(sender,incidentId,"UPSTREAM_CHECK","앞 공정 확인 요청 결정 알림");
+			String requestId=json(postAs(sender,"/api/work-items/{id}/adoptions",
+				"{\"expectedVersion\":1,\"ownerUserId\":\"USR-ETCH-01\",\"targetProcessCode\":\"ETCH\"}",task),"$.data.requestId");
+			long before=jobs.findByIncidentIdOrderByCreatedAtDesc(incidentId).size();
+			if(!accept) {
+				postAs(recipient,"/api/check-requests/{id}/decisions","{\"decision\":\"REJECT\",\"expectedVersion\":1}",requestId)
+					.andExpect(status().isUnprocessableEntity());
+				assertThat(notificationsFor(sender,requestId)).isEmpty();
+			}
+			String body="{\"decision\":\""+(accept?"ACCEPT":"REJECT")+"\",\"comment\":\"담당 범위 확인\",\"expectedVersion\":1}";
+			String key=java.util.UUID.randomUUID().toString();
+			postWithKey(recipient,key,"/api/check-requests/{id}/decisions",body,requestId).andExpect(status().isOk());
+			postWithKey(recipient,key,"/api/check-requests/{id}/decisions",body,requestId).andExpect(status().isOk());
+			assertThat(notificationsFor(sender,requestId)).extracting(n->n.get("type"))
+				.containsExactly(accept?"CHECK_REQUEST_ACCEPTED":"CHECK_REQUEST_REJECTED");
+			assertThat(jobs.findByIncidentIdOrderByCreatedAtDesc(incidentId)).hasSize((int)before);
+		}
+	}
+
+	@Test
+	void approvalByAnotherUserAndManualReplyAnalysisNotifyAnalysisRequester() throws Exception {
+		Session sender=cmp(), approver=manager(), recipient=login("etch.lee");
+		String incidentId=newIncident(sender,false).incidentId();
+		String job=json(postAs(sender,"/api/incidents/{id}/questions",
+			"{\"question\":\"앞 공정 영향 확인\",\"expectedIncidentVersion\":"+incidentVersion(sender,incidentId)+"}",incidentId)
+			.andExpect(status().isAccepted()),"$.data.jobId");
+		awaitJob(sender,job,"WAITING_APPROVAL");
+		String approvalId=waitingRefId(sender,job);
+		var approval=getAs(approver,"/api/approvals/{id}",approvalId);
+		String resumed=json(postAs(approver,"/api/approvals/{id}/decisions",
+			"{\"decision\":\"APPROVE\",\"expectedVersion\":"+number(approval,"$.data.version")+"}",approvalId)
+			.andExpect(status().isOk()),"$.data.resumeJobId");
+		getAs(sender,"/api/jobs/{id}",resumed).andExpect(jsonPath("$.data.requestedBy").value("USR-CMP-01"));
+		awaitJob(sender,resumed,"WAITING_REPLY");
+		String requestId=waitingRefId(sender,resumed);
+		acceptRequest(recipient,requestId);
+		long before=jobs.findByIncidentIdOrderByCreatedAtDesc(incidentId).size();
+		String reply=json(postAs(recipient,"/api/check-requests/{id}/replies",
+			"{\"findings\":\"장비 기록 확인 완료\",\"confirmedByUser\":true,\"expectedVersion\":2}",requestId)
+			.andExpect(status().isCreated()),"$.data.replyId");
+		assertThat(jobs.findByIncidentIdOrderByCreatedAtDesc(incidentId)).hasSize((int)before);
+		String followup=json(postAs(sender,"/api/incidents/{id}/followup-analysis-jobs",
+			"{\"sourceRefs\":[{\"type\":\"REPLY\",\"id\":\""+reply+"\"}],\"expectedIncidentVersion\":"+incidentVersion(sender,incidentId)+"}",incidentId)
+			.andExpect(status().isAccepted()),"$.data.jobId");
+		awaitJob(sender,followup,"SUCCEEDED");
+		awaitNotification(sender,followup,"ANALYSIS_SUCCEEDED");
+		assertThat(notificationsFor(approver,followup)).isEmpty();
+		assertThat(notificationsFor(recipient,followup)).isEmpty();
+	}
+
+	@Test
+	void approvalRejectionDoesNotPretendAnAnalysisResultIsReady() throws Exception {
+		Session sender=cmp();
+		String incidentId=newIncident(sender,false).incidentId();
+		String job=json(postAs(sender,"/api/incidents/{id}/questions",
+			"{\"question\":\"앞 공정 확인\",\"expectedIncidentVersion\":"+incidentVersion(sender,incidentId)+"}",incidentId),"$.data.jobId");
+		awaitJob(sender,job,"WAITING_APPROVAL");
+		String approvalId=waitingRefId(sender,job);
+		postAs(sender,"/api/approvals/{id}/decisions","{\"decision\":\"REJECT\",\"comment\":\"기존 확인과 중복\",\"expectedVersion\":1}",approvalId)
+			.andExpect(status().isOk());
+		assertThat(notificationsFor(sender,job)).isEmpty();
 	}
 
 	private void awaitNotification(Session s, String targetId, String type) throws Exception {

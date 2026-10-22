@@ -163,6 +163,7 @@ public class CheckRequestService {
 		Instant now=Instant.now(clock);
 		boolean accepted="ACCEPT".equals(input.decision());
 		request.decide(accepted,input.comment(),now);
+		notificationEvents.checkRequestDecided(request,user.userId(),accepted);
 		if (!accepted) workItems.findByRequestId(requestId).ifPresent(w->w.rejectFromRequest(input.comment(),now));
 		if (!accepted && incident.getStatus()==IncidentStatus.WAITING_REPLY && !hasPending(incident.getIncidentId())) incident.setStatus(IncidentStatus.INVESTIGATING);
 		incident.record(now,accepted?"REQUEST_ACCEPTED":"REQUEST_REJECTED",user.userId(),accepted?"확인 요청 수락":"확인 요청 거절: "+input.comment(),"CHECK_REQUEST",requestId);
