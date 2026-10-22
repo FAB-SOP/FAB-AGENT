@@ -24,12 +24,13 @@ async def approval_wait(state: AgentState, config) -> dict:
         job_runtime.tracer.event("approval", approvalId=pending["approvalId"], decision="REJECT")
         note = HumanMessage(content=f"[시스템 알림] 승인 결과: REJECT ({pending['approvalId']}). 사유: "
                                     + guard.untrusted("approval-comment", decision.get("comment", "")))
-        return {"pending": None, "messages": [note], "counters": limits.new_window()}
+        return {"pending": None, "messages": [note], "counters": limits.new_window(), "result": None,  # 답은 다시 정리
+                "previousResult": state.get("result")}
     res = await job_runtime.toolbox.call(pending.get("writeTool", "create_cross_process_check_request"),
                                          {"approvalId": pending["approvalId"], "idempotencyKey": f"{pending['approvalId']}:EXEC"},
                                          job_runtime.tracer, allow_write=True)
     req = res["data"]
     job_runtime.tracer.event("approval", approvalId=pending["approvalId"], decision="APPROVE", requestId=req["requestId"])
     note = HumanMessage(content=f"[시스템 알림] 승인 결과: APPROVE. 확인 요청 {req['requestId']}를 등록했습니다. 회신을 기다립니다.")
-    return {"messages": [note], "pending": {"kind": "REPLY", "requestId": req["requestId"],
+    return {"messages": [note], "result": None, "previousResult": state.get("result"), "pending": {"kind": "REPLY", "requestId": req["requestId"],
                                            "interruptId": f"INT-REPLY-{uuid.uuid4().hex[:8]}"}}

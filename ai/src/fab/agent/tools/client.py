@@ -50,8 +50,8 @@ class Toolbox:
     async def __aexit__(self, *exc):
         await self._stack.aclose()
 
-    def model_tools(self, mode: str) -> list[dict]:
-        allowed = {"REPORT": {"submit_report"}, "BASIC": {"submit_result"}}.get(mode, {"submit_result", *PROPOSALS})
+    def model_tools(self, mode: str, *, allow_proposals: bool) -> list[dict]:
+        allowed = {"submit_report"} if mode == "REPORT" else {"submit_result", *(PROPOSALS if allow_proposals else ())}
         return self.specs + [tool for tool in HARNESS_TOOLS if tool["function"]["name"] in allowed]
 
     async def call(self, name: str, args: dict, tracer, *, allow_write: bool = False) -> dict:

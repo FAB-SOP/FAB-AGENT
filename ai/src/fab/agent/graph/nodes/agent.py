@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage
 from fab.agent.graph.state import AgentState, runtime
 from fab.agent.harness import context, limits
 from fab.agent.harness.retry import call_with_recovery
+from fab.agent.purpose import may_propose
 
 
 async def agent(state: AgentState, config) -> dict:
@@ -17,7 +18,7 @@ async def agent(state: AgentState, config) -> dict:
         job_runtime.tracer.event("limit", reason=reason)
         return {"stopReason": reason}
     messages = context.fit_budget(state["messages"])
-    tools = job_runtime.toolbox.model_tools(state["mode"])
+    tools = job_runtime.toolbox.model_tools(state["mode"], allow_proposals=may_propose(state))
     with job_runtime.tracer.span("llm", node="agent") as span_record:
         reply, used = await call_with_recovery(job_runtime.primary, job_runtime.fallback, messages, tools, job_runtime.tracer)
         usage = getattr(reply, "usage_metadata", None) or {}

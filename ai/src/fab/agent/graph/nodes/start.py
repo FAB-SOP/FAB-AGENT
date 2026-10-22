@@ -21,5 +21,5 @@ async def start(state: AgentState, config) -> dict:
     }.get(state["mode"], "추가 조사를 해 주세요.")
     messages.append(HumanMessage(content=f"[작업 {state['jobId']} · 모드 {state['mode']} · 사건 {state['incidentId']}]\n{question}"))
     runtime(config).tracer.event("node", node="start", mode=state["mode"], promptVersion=prompt_version)
-    return {"messages": messages, "counters": limits.new_window(), "result": None, "analysis": None, "report": None,
+    return {"messages": messages, "counters": limits.new_window(), "result": None, "previousResult": None, "analysis": None, "report": None, "conclusion": None,
             "stopReason": None, "promptVersion": prompt_version}

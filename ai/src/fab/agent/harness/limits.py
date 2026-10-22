@@ -16,7 +16,7 @@ class Limits:
     mcp_timeout: float = float(os.getenv("FAB_MCP_TIMEOUT", "10"))
     llm_retries: int = 2  # 429 · 503 등 일시 오류만
     job_attempts: int = 3  # 최초 1회 + 자동 재시도 2회
-    max_proposals: int = int(os.getenv("FAB_MAX_PROPOSALS", "2"))  # 사건(thread)당 승인 요청 — 회신 뒤 남발 방지
+    max_proposals: int = int(os.getenv("FAB_MAX_PROPOSALS", "3"))  # 사건당 요청(대체됨 제외) — 회신 뒤 남발 방지
     max_tool_result_chars: int = 6000
     context_char_budget: int = 60000
 

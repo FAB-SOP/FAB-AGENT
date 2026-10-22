@@ -1,0 +1,56 @@
+{
+  "documentId": "FAB-INVESTIGATION-PRIORITY",
+  "version": "DEMO-1.2-DRAFT",
+  "status": "DRAFT",
+  "enabled": false,
+  "displayValues": [
+    "상",
+    "중",
+    "하"
+  ],
+  "detectorVersion": "DEMO-PRIORITY-SEGMENT-V1",
+  "windowSeconds": 1,
+  "windowBoundary": "inclusive [t-window,t], actual span must cover full window",
+  "steadyStartOffsetSeconds": 2,
+  "minimumDeviationSeconds": 1,
+  "persistentSeconds": 5,
+  "cooccurrenceMinimumOverlapSeconds": 1,
+  "relatedSensorGroups": [
+    {
+      "groupId": "CMP_ROTATION_PAIR",
+      "process": "CMP",
+      "sensorIds": [
+        "platen_speed",
+        "head_speed"
+      ],
+      "reason": "동일 CMP run의 플래튼·헤드 회전계 readback 동반 편차를 비교하는 시연용 그룹",
+      "synthetic": true,
+      "validatedForRealTool": false
+    }
+  ],
+  "repeatWindowRunCount": 3,
+  "repeatMinimumRunCount": 2,
+  "repeatIncludesCurrentRun": true,
+  "repeatMatchKeys": [
+    "process",
+    "equipmentId",
+    "recipeId",
+    "productId",
+    "layerId"
+  ],
+  "primaryMetric": {
+    "name": "WAFER_5_SITE_MEAN",
+    "processes": [
+      "CVD",
+      "ETCH",
+      "CMP"
+    ],
+    "normalRequiresAllRouteStages": true
+  },
+  "dataMissingPriority": "MEDIUM",
+  "featureWindow": "[readySeconds+2,readySeconds+processSeconds)",
+  "featureStd": "population",
+  "featureSlope": "OLS against source sample times",
+  "sourceCadenceMaxSeconds": 1,
+  "productionCalibrated": false
+}

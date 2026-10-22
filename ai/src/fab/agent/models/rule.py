@@ -16,6 +16,13 @@ def _call(name: str, args: dict) -> AIMessage:
     return AIMessage(content="", tool_calls=[{"id": f"call_{uuid.uuid4().hex[:10]}", "name": name, "args": args}])
 
 
+def _with_answer(proposal: AIMessage, answer: AIMessage) -> AIMessage:
+    """답 먼저 — 제안은 답과 같은 응답에서 낸다(Harness가 답을 먼저 접수한다). 담당자 조회가 먼저면 그것만"""
+    if proposal.tool_calls[0]["name"] == "get_process_owner":
+        return proposal
+    return AIMessage(content="", tool_calls=proposal.tool_calls + answer.tool_calls)
+
+
 class RuleModel:
     """도구 결과만 읽고 다음 행동을 고르는 결정적 정책(테스트 · 오프라인 시연용). 판정 순서:
     1) 현재 공정 run의 제거량이 정상 변동 밖이거나 센서가 참고 범위 밖 → CURRENT_CHECK (센서 → 점검 문서 causeId)
@@ -87,9 +94,10 @@ def _current_check_step(seen, mode, notes, process, current, features, outside) 
     segment_limitations = [SEGMENT_LIMITATION] if trace and (trace.get("data") or {}).get("segments") else []
     headline = (f"현재 공정 {current['equipmentId']} {cause['candidate'] if cause else '제거 조건 변화'} 후보"
                 f" — {sensor or '센서 이탈 없음'} 기준")
+    answer = _submit("CURRENT_CHECK", facts, headline, cause, support, limitations=segment_limitations, notes=notes)
     if mode == "DEEP" and _proposal_state(seen, notes) is None:
-        return _maintenance_proposal(seen, process, current, outside, sensor, cause, support)
-    return _submit("CURRENT_CHECK", facts, headline, cause, support, limitations=segment_limitations, notes=notes)
+        return _with_answer(_maintenance_proposal(seen, process, current, outside, sensor, cause, support), answer)
+    return answer
 
 
 def _maintenance_proposal(seen, process, current, outside, sensor, cause, support) -> AIMessage:
@@ -145,11 +153,12 @@ def _upstream_check_step(seen, mode, notes, incident_id, current, upstream, upst
     headline = f"앞 공정 {upstream['equipmentId']}의 제거량 변화 기여 — 부품 원인 미확인"
     if mode == "DEEP":
         proposal_state = _proposal_state(seen, notes)
-        if proposal_state is None:
-            return _cross_process_proposal(seen, current, upstream, cause, support)
         if proposal_state == "replied" and "get_check_requests" not in seen:
             return _call("get_check_requests", {"incidentId": incident_id})
-    return _submit("UPSTREAM_CHECK", facts, headline, cause, support, counter=[current["_ev"]], notes=notes, seen=seen)
+    answer = _submit("UPSTREAM_CHECK", facts, headline, cause, support, counter=[current["_ev"]], notes=notes, seen=seen)
+    if mode == "DEEP" and _proposal_state(seen, notes) is None:
+        return _with_answer(_cross_process_proposal(seen, current, upstream, cause, support), answer)
+    return answer
 
 
 def _cross_process_proposal(seen, current, upstream, cause, support) -> AIMessage:
