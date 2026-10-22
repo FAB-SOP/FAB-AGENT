@@ -22,8 +22,11 @@ public class WorkController {
 	public ApiResponse<?> policy() {return ApiResponse.of(service.policy());}
 	@GetMapping("/api/incidents/{id}/work-items")
 	public ApiResponse<?> list(@PathVariable String id,@AuthenticationPrincipal AuthUser user) {return ApiResponse.of(Map.of("items",service.list(id,user)));}
+	public record WorkInbox(java.util.List<WorkDtos.View> items,
+		java.util.List<com.fabcontext.api.domain.checkrequest.CheckRequestDtos.CheckRequestSummary> incomingRequests) {}
+	@io.swagger.v3.oas.annotations.Operation(summary="내 작업·승인·보낸 업무함", description="box=mine일 때 incomingRequests에 본인이 수락한 확인 요청을 별도 제공합니다. 기존 items와 requestId로 연결할 수 있습니다. 다른 box는 incomingRequests가 빈 배열입니다.")
 	@GetMapping("/api/work-items")
-	public ApiResponse<?> inbox(@AuthenticationPrincipal AuthUser user,@RequestParam(defaultValue="mine") String box) {return ApiResponse.of(Map.of("items",service.inbox(user,box)));}
+	public ApiResponse<WorkInbox> inbox(@AuthenticationPrincipal AuthUser user,@RequestParam(defaultValue="mine") String box) {return ApiResponse.of(new WorkInbox(service.inbox(user,box),"mine".equals(box)?requests.acceptedInbox(user):java.util.List.of()));}
 	@PostMapping("/api/incidents/{id}/work-items")
 	public ResponseEntity<?> propose(@PathVariable String id,@AuthenticationPrincipal AuthUser user,@RequestHeader(SecurityConfig.CSRF_HEADER) String csrf,
 		@RequestHeader(IdempotencyService.HEADER) String key,@Valid @RequestBody WorkDtos.Proposal body) {

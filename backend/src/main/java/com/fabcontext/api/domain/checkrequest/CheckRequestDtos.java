@@ -1,6 +1,8 @@
 package com.fabcontext.api.domain.checkrequest;
 
 import java.time.Instant;
+import com.fabcontext.api.common.Meta;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import java.util.Map;
 
@@ -16,12 +18,12 @@ public final class CheckRequestDtos {
 
 	public record CheckRequestSummary(String requestId, String incidentId, String incidentDisplayId,
 			String targetProcessCode, String question, CheckRequestStatus status, String requesterUserId,
-			String ownerUserId, long version, Instant dueAt, Instant createdAt, Instant repliedAt) {
+			String ownerUserId, long version, Instant dueAt, Instant createdAt, Instant repliedAt, Instant decisionAt, String decisionComment, List<String> allowedActions) {
 
-		static CheckRequestSummary from(CheckRequest r, String displayId) {
+		static CheckRequestSummary from(CheckRequest r, String displayId, String userId) {
 			return new CheckRequestSummary(r.getRequestId(), r.getIncidentId(), displayId, r.getTargetProcessCode(),
 				r.getQuestion(), r.getStatus(), r.getRequesterUserId(), r.getOwnerUserId(), r.getVersion(),
-				r.getDueAt(), r.getCreatedAt(), r.getRepliedAt());
+				r.getDueAt(), r.getCreatedAt(), r.getRepliedAt(), r.getDecisionAt(), r.getDecisionComment(), allowed(r,userId));
 		}
 	}
 
@@ -49,9 +51,20 @@ public final class CheckRequestDtos {
 			String targetProcessCode, String approvalId, String requestType, String equipmentId, String question,
 			Map<String, Object> brief, List<String> causeIds, List<String> evidenceIds,
 			String requesterUserId, String ownerUserId, CheckRequestStatus status, long version, String threadId,
-			String waitingJobId, Instant dueAt, Instant createdAt, Instant repliedAt, List<ReplyView> replies) {
+			String waitingJobId, Instant dueAt, Instant createdAt, Instant repliedAt, List<ReplyView> replies, Instant decisionAt, String decisionComment, List<String> allowedActions) {
 	}
 
+	@Schema(name="CheckRequestDecisionInput")
+	public record DecisionInput(@Schema(allowableValues={"ACCEPT","REJECT"}, example="ACCEPT") @NotBlank @jakarta.validation.constraints.Pattern(regexp="ACCEPT|REJECT") String decision,
+		@Size(max=2000) String comment, @NotNull Long expectedVersion) {}
+
+	static List<String> allowed(CheckRequest r, String userId) {
+		if (!userId.equals(r.getOwnerUserId())) return List.of();
+		return switch(r.getStatus()) { case OPEN -> List.of("ACCEPT","REJECT"); case ACCEPTED -> List.of("REPLY"); default -> List.of(); };
+	}
+
+	public record DecisionEnvelope(CheckRequestView data, Meta meta) {}
+	public record ReplyEnvelope(ReplyResult data, Meta meta) {}
 	public record ReplyInput(@NotBlank @Size(max = 4000) String findings, List<String> evidenceIds,
 			@NotNull Boolean confirmedByUser, @NotNull Long expectedVersion) {
 	}

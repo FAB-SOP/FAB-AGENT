@@ -99,6 +99,11 @@ public class CheckRequest {
 
 	private Instant repliedAt;
 
+	private Instant decisionAt;
+
+	@Column(length = 2000)
+	private String decisionComment;
+
 	@Version
 	private long rowVersion;
 
@@ -127,9 +132,16 @@ public class CheckRequest {
 		this.createdAt = createdAt;
 	}
 
+	void decide(boolean accept, String comment, Instant at) {
+		if (status != CheckRequestStatus.OPEN) throw ApiException.conflict("REQUEST_STATE_CONFLICT", "수락 대기 상태에서만 결정할 수 있습니다.", Map.of("status", status.name()));
+		if (!accept && (comment == null || comment.isBlank())) throw ApiException.unprocessable("REJECT_REASON_REQUIRED", "거절 사유를 입력하세요.");
+		status = accept ? CheckRequestStatus.ACCEPTED : CheckRequestStatus.REJECTED;
+		decisionAt = at; decisionComment = comment; version++;
+	}
+
 	void markReplied(Instant at) {
-		if (status != CheckRequestStatus.OPEN) {
-			throw ApiException.conflict("REQUEST_NOT_OPEN", "이미 처리된 요청입니다.",
+		if (status != CheckRequestStatus.ACCEPTED) {
+			throw ApiException.conflict("REQUEST_NOT_ACCEPTED", "수락한 요청에만 회신할 수 있습니다.",
 				Map.of("status", status.name(), "currentVersion", version));
 		}
 		status = CheckRequestStatus.REPLIED;

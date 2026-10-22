@@ -58,5 +58,6 @@ public class WorkItem {
 	}
 	void decide(boolean approved, String comment, Instant now) { status=approved?Status.APPROVED:Status.REJECTED; decisionComment=comment; updatedAt=now; }
 	void complete(String action, Instant now) { actionId=action; status=Status.COMPLETED; updatedAt=now; }
+	public void rejectFromRequest(String reason, Instant now) { status=Status.REJECTED; decisionComment=reason; updatedAt=now; }
 	public void completeFromReply(String reply, Instant now) { replyId=reply; status=Status.COMPLETED; updatedAt=now; }
 }
