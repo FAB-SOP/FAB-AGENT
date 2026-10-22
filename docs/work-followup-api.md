@@ -5,7 +5,7 @@
 
 ## 공통 약속
 
-- 제안 채택·요청 수락·상급자 승인은 코멘트 없이 가능. 거절·반려는 사유 필수.
+- 제안 채택·제안 미채택(DECLINE)·요청 수락·상급자 승인은 코멘트 없이 가능. 받은 요청 거절·상급자 반려는 사유 필수.
 - 업무 승인·요청 수락은 실제 수행 완료가 아니다. 수행 결과·회신 내용은 별도로 등록한다.
 - 내 작업 결과·다른 팀 회신은 저장만 한다. 사용자가 추가 분석을 요청할 때만 Agent를 실행한다.
 - 결과 검토 완료 API/상태는 없다. 조회·알림 읽음은 업무 처리·분석 반영과 별개다.
@@ -18,7 +18,7 @@
 | API | 처리 |
 |---|---|
 | POST /api/work-items/{id}/adoptions | 기존 채택. READY는 내 작업, WAITING_MANAGER는 지정 상급자 승인 대기, REQUESTED는 다른 팀 요청 발송 |
-| POST /api/work-items/{id}/decisions | APPROVE / REJECT / DECLINE. REJECT·DECLINE은 comment 필수 |
+| POST /api/work-items/{id}/decisions | APPROVE / REJECT / DECLINE. REJECT는 comment 필수, DECLINE은 선택 |
 | POST /api/work-items/{id}/completions | READY/APPROVED의 수행자가 실제 결과 등록. 자동 분석 없음 |
 | POST /api/approvals/{id}/decisions | 기존 Agent HITL 승인 유지. 이 API와 WorkItem 상급자 승인은 별개 |
 
@@ -136,7 +136,7 @@ citedInResult는 실제 결과 전에는 null. 입력에 전달했다는 이유�
 
 ## Frontend 작업 순서
 
-1. 기존 제안 카드 위치·승인됨/미수행 표시·필수 거절 사유 안내.
+1. 기존 제안 카드 위치·승인됨/미수행 표시. 제안 미채택은 사유 선택, 받은 요청 거절·상급자 반려는 사유 필수.
 2. 받은 요청 수락·거절 및 ACCEPTED 이후 회신 입력.
 3. 사건 결과 목록·복수 선택·추가 분석 요청·반영 이력 표시.
 4. 이후 개인 알림·C Graph 확장과 연결. 통계·보고서·SUMMARY는 이번 범위 밖.

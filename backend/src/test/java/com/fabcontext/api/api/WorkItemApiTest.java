@@ -51,6 +51,20 @@ class WorkItemApiTest extends ApiTestSupport {
 		getAs(s,"/api/incidents/{id}/actions",id).andExpect(jsonPath("$.data.items",hasSize(0)));
 	}
 	@Test
+	void declineWithoutReasonPreservesProposalInIncidentHistory() throws Exception {
+		Session s=cmp();
+		String id=newIncident(s,false).incidentId();
+		String task=propose(s,id,"REVIEW_SENSOR_DATA","압력 기록 확인");
+		postAs(s,"/api/work-items/{id}/decisions","{\"decision\":\"DECLINE\",\"expectedVersion\":1}",task)
+			.andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("DECLINED"));
+		getAs(s,"/api/incidents/{id}/work-items",id)
+			.andExpect(jsonPath("$.data.items",hasSize(1)))
+			.andExpect(jsonPath("$.data.items[0].taskId").value(task))
+			.andExpect(jsonPath("$.data.items[0].status").value("DECLINED"));
+		getAs(s,"/api/work-items?box=mine").andExpect(jsonPath("$.data.items[*].taskId",not(hasItem(task))));
+		postAs(s,"/api/work-items/{id}/adoptions","{\"expectedVersion\":2}",task).andExpect(status().isConflict());
+	}
+	@Test
 	void managerRejectionRequiresReasonAndDoesNotAllowCompletion() throws Exception {
 		Session s=cmp();String id=newIncident(s,false).incidentId();String task=propose(s,id,"CHANGE_RECIPE","레시피 변경 계획 검토");
 		var adopted=postAs(s,"/api/work-items/{id}/adoptions","{\"expectedVersion\":1}",task);

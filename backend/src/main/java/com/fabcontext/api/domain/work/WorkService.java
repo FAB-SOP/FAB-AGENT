@@ -134,7 +134,7 @@ public class WorkService {
 	public WorkDtos.View decide(String id,AuthUser user,WorkDtos.Decision body) {
 		WorkItem w=repository.lockById(id).orElseThrow(()->ApiException.notFound("workItem",id));
 		Incident i=incidents.loadForWrite(w.getIncidentId(),user);i.requireNotClosed();ApiException.checkVersion("workItem",body.expectedVersion(),w.getVersion());
-		if("DECLINE".equals(body.decision())) {if(body.comment()==null||body.comment().isBlank()) throw ApiException.unprocessable("REJECT_REASON_REQUIRED","거절 사유를 입력하세요.");require(w,WorkItem.Status.PROPOSED);w.decline(user.userId(),body.comment(),Instant.now(clock));}
+		if("DECLINE".equals(body.decision())) {require(w,WorkItem.Status.PROPOSED);w.decline(user.userId(),body.comment(),Instant.now(clock));}
 		else {
 			require(w,WorkItem.Status.WAITING_MANAGER);
 			if(!user.isManager()||!user.userId().equals(w.getApproverUserId())||user.userId().equals(w.getRequestedBy())) throw ApiException.forbidden("WORK_APPROVER_REQUIRED","지정된 관리자만 승인·반려할 수 있고 자기 승인은 허용되지 않습니다.");
