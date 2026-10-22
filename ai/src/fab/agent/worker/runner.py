@@ -3,6 +3,7 @@
 작업 의미(팀 계약):
   - BASIC / DEEP / REPORT : 같은 사건 thread에 새 입력
   - RESUME                : 같은 thread의 '정확한' interrupt만 해제(승인 결정 · 회신)
+  - SUMMARY               : 확정 보고서 요약 — 그래프 · checkpointer를 쓰지 않는 별도 경로(fab.agent.summary)
   - 일시 실패             : attempt < 3이면 RETRY_SCHEDULED, 아니면 JOB_FAILED + DLQ
 """
 
@@ -23,6 +24,7 @@ from fab.agent.harness.retry import PermanentJobError, TransientJobError
 from fab.agent.harness.trace import Tracer
 from fab.agent.models import make_models
 from fab.agent.purpose import purpose_of
+from fab.agent.summary import make_summary
 from fab.agent.tools import Toolbox
 from fab.common.envelope import FabToolError
 
@@ -60,7 +62,7 @@ class JobRunner:
         self._seq[key] = max(self._seq.get(key, 0) + 1, int(time.time() * 1000))
         event = {"schemaVersion": "1.0", "eventId": f"EVT-{job['jobId']}-A{job['attempt']}-{self._seq[key]}",
                  "incidentId": job["incidentId"], "jobId": job["jobId"], "threadId": job["threadId"],
-                 "sequence": self._seq[key], "type": etype, "at": _now(), "traceId": job["traceId"],
+                 "sequence": self._seq[key], "attempt": job["attempt"], "type": etype, "at": _now(), "traceId": job["traceId"],
                  "payload": payload}
         if metrics is not None:  # 작업을 끝내거나 멈추는 이벤트에만 — 이번 시도의 trace 요약(backend job.metrics)
             event["metrics"] = {**metrics, "attempt": job["attempt"]}
@@ -92,6 +94,8 @@ class JobRunner:
         cfg = {"configurable": {"thread_id": job["threadId"]}, "recursion_limit": 60}
         await self._event(job, "JOB_STARTED", {"startedAt": _now()})
         try:
+            if job["kind"] == "SUMMARY":  # 조사 그래프 밖 — 체크포인트를 읽지도 쓰지도 않는다(C6)
+                return await self._summary(job, tracer)
             async with Toolbox(self.servers) as toolbox:
                 cfg["configurable"]["runtime"] = Runtime(toolbox, self.backend, self.primary, self.fallback, tracer,
                                                          job_id=job["jobId"])
@@ -114,6 +118,20 @@ class JobRunner:
         except Exception as e:  # noqa: BLE001 — 예상 못 한 오류도 작업 실패로 끝낸다(Worker는 계속 돈다)
             tracer.event("unexpected_error", error=type(e).__name__, message=str(e)[:300])
             return await self._fail(job, "INTERNAL_ERROR", f"{type(e).__name__}: {e}", tracer)
+
+    async def _summary(self, job: dict, tracer: Tracer) -> dict:
+        """확정 스냅샷을 읽어 1~2줄 요약 → SUMMARY_READY. 입력이 확정 스냅샷과 어긋나면 요약하지 않고 실패로 끝낸다"""
+        ref = (job.get("input") or {}).get("summaryRef") or {}
+        if not ref.get("reportId") or not ref.get("snapshotRef"):
+            return await self._fail(job, "INVALID_SUMMARY_INPUT", "작업 입력에 summaryRef(reportId · snapshotRef)가 없습니다.", tracer)
+        snapshot = await self.backend.get_report_snapshot(ref["reportId"])
+        if snapshot.get("snapshotRef") != ref["snapshotRef"]:
+            return await self._fail(job, "SNAPSHOT_MISMATCH", f"작업의 snapshotRef({ref['snapshotRef']})가 확정 스냅샷"
+                                    f"({snapshot.get('snapshotRef')})과 다릅니다.", tracer)
+        summary = await make_summary(snapshot, self.primary, self.fallback, tracer)
+        await self._event(job, "SUMMARY_READY", {"reportId": ref["reportId"], "snapshotRef": ref["snapshotRef"],
+                                                 "summary": summary}, tracer.summary())
+        return {"status": "DONE", "summary": summary, "trace": tracer.summary()}
 
     async def _retry(self, job: dict, code: str, message: str, tracer: Tracer) -> dict:
         if job["attempt"] >= LIMITS.job_attempts:
