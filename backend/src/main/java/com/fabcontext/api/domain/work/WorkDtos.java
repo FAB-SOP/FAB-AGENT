@@ -12,6 +12,7 @@ public final class WorkDtos {
 	public record Adoption(@NotNull Long expectedVersion, String ownerUserId, String targetProcessCode) {}
 	@io.swagger.v3.oas.annotations.media.Schema(name="WorkDecision")
 	public record Decision(@NotBlank @Pattern(regexp="APPROVE|REJECT|DECLINE") String decision,
+		@io.swagger.v3.oas.annotations.media.Schema(description="DECLINE(제안 미채택)·APPROVE는 선택, REJECT(상급자 반려)는 사유 필수")
 		@Size(max=2000) String comment, @NotNull Long expectedVersion) {}
 	@io.swagger.v3.oas.annotations.media.Schema(name="WorkCompletion")
 	public record Completion(@NotBlank @Size(max=4000) String description, @NotNull Instant performedAt,

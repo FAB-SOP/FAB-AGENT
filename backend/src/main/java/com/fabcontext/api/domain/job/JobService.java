@@ -30,6 +30,7 @@ public class JobService {
 	private final IncidentStreamHub streamHub;
 	private final ApplicationEventPublisher events;
 	private final Clock clock;
+	private final jakarta.persistence.EntityManager entityManager;
 
 	@Transactional(readOnly = true)
 	public JobDtos.JobView get(String jobId, AuthUser user) {
@@ -56,6 +57,8 @@ public class JobService {
 	/** 작업을 QUEUED로 저장하고 커밋 후 Agent에 투입한다. */
 	public Job enqueue(Incident incident, JobKind kind, String requestedBy, String question, String scope,
 			Map<String, Object> input, String threadId, String parentJobId) {
+		entityManager.lock(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		if(kind!=JobKind.REPORT) assertNoRunningJob(incident);
 		int attempt = (int) jobRepository.countByIncidentIdAndKind(incident.getIncidentId(), kind) + 1;
 		Job job = Job.builder()
 			.jobId(Ids.next("job"))
@@ -121,8 +124,13 @@ public class JobService {
 
 	/** 대기 중이던 작업을 끝내고 같은 threadId로 RESUME 작업을 만든다. */
 	public Job resume(Job waitingJob, Incident incident, String requestedBy, Map<String, Object> input) {
-		Job resume = enqueue(incident, JobKind.RESUME, requestedBy, waitingJob.getQuestion(), waitingJob.getScope(),
-			input, waitingJob.getThreadId(), waitingJob.getJobId());
+		if (!waitingJob.getStatus().isWaiting()) throw ApiException.conflict("JOB_NOT_WAITING","이미 처리된 대기 작업입니다.",Map.of());
+		Map<String,Object> merged=new java.util.LinkedHashMap<>(input);
+		for(String key:java.util.List.of("analysisRequestId","selectedInputs","followupQuestion"))
+			if(!merged.containsKey(key) && waitingJob.getInput().containsKey(key)) merged.put(key,waitingJob.getInput().get(key));
+		String requester=waitingJob.getInput().containsKey("analysisRequestId")?waitingJob.getRequestedBy():requestedBy;
+		Job resume = enqueue(incident, JobKind.RESUME, requester, waitingJob.getQuestion(), waitingJob.getScope(),
+			merged, waitingJob.getThreadId(), waitingJob.getJobId());
 		waitingJob.succeed(new Ref("RESUME_JOB", resume.getJobId()), Instant.now(clock));
 		publish(waitingJob);
 		return resume;

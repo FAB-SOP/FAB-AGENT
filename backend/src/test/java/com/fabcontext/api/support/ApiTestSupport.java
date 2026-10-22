@@ -145,6 +145,10 @@ public abstract class ApiTestSupport {
 		return last;
 	}
 
+	protected void acceptRequest(Session recipient, String requestId) throws Exception {
+		postAs(recipient,"/api/check-requests/{id}/decisions","{\"decision\":\"ACCEPT\",\"expectedVersion\":1}",requestId).andExpect(status().isOk());
+	}
+
 	protected String waitingRefId(Session s, String jobId) throws Exception {
 		return json(getAs(s, "/api/jobs/{id}", jobId), "$.data.waitingRef.id");
 	}

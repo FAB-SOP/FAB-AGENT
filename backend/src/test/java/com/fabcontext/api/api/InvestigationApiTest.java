@@ -101,9 +101,14 @@ class InvestigationApiTest extends ApiTestSupport {
 			.andExpect(jsonPath("$.data.waitingJobId").value(resume1))
 			.andExpect(jsonPath("$.data.threadId").value(threadId))
 			.andExpect(jsonPath("$.data.incident.incidentId").value(id));
-		String resume2 = json(postAs(photo, "/api/check-requests/{id}/replies",
-				"{\"findings\":\"ETCH-PM2 정비 후 시즈닝 매수 부족 확인\",\"confirmedByUser\":true,\"expectedVersion\":1}", requestId)
-			.andExpect(status().isCreated()), "$.data.resumeJobId");
+		acceptRequest(photo,requestId);
+		String replyId = json(postAs(photo, "/api/check-requests/{id}/replies",
+				"{\"findings\":\"ETCH-PM2 정비 후 시즈닝 매수 부족 확인\",\"confirmedByUser\":true,\"expectedVersion\":2}", requestId)
+			.andExpect(status().isCreated()).andExpect(jsonPath("$.data.resumeJobId").doesNotExist()), "$.data.replyId");
+		getAs(etch,"/api/jobs/{id}",resume1).andExpect(jsonPath("$.data.status").value("WAITING_REPLY"));
+		String resume2=json(postAs(etch,"/api/incidents/{id}/followup-analysis-jobs",
+			"{\"sourceRefs\":[{\"type\":\"REPLY\",\"id\":\""+replyId+"\"}],\"expectedIncidentVersion\":"+incidentVersion(etch,id)+"}",id)
+			.andExpect(status().isAccepted()),"$.data.jobId");
 		awaitJob(etch, resume2, "SUCCEEDED");
 		getAs(etch, "/api/jobs/{id}", resume2).andExpect(jsonPath("$.data.threadId").value(threadId))
 			.andExpect(jsonPath("$.data.resultRef.type").value("ANALYSIS_RESULT"));
