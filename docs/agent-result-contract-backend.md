@@ -140,6 +140,6 @@
 - 기존 질문 결과 기본 조회 기대값은 합의에 맞춰 갱신하고 원인 분석 유지와 질문 이력 조회를 함께 검사했다.
 - 테스트는 격리된 Testcontainers DB를 사용하며 실제 서비스 DB·배포를 변경하지 않았다.
 
-- `cd ai && uv run --offline pytest -q`: 172건 통과, 자료가 없는 기존 4건 건너뜀. 기존 Python Agent와 실제 Backend API를 규칙 모델·별도 DB로 연결해 검증했다. AI 소스·테스트는 수정하지 않았다.
+- `cd ai && uv run --offline pytest -q`: 최신 main `1de7d64` 병합 후 176건 통과, 자료가 없는 기존 4건 건너뜀. 기존 Python Agent와 실제 Backend API를 규칙 모델·별도 DB로 연결해 검증했다. AI 소스·테스트는 수정하지 않았다.
 - 초기 검증에서 발견한 기본 흐름 강제 WAIT로 인한 C의 MANUAL 설정 덮어쓰기를 수정하고 위 두 전체 검증을 최종 코드로 재실행했다.
 - 브라우저 UI 및 C의 아직 미구현인 정식 v2 필드 전송까지 포함한 종단 간 검증은 수행하지 않았다. 신규 v2 수신은 Backend API 테스트로 검증했다.
