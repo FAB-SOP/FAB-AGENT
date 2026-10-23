@@ -45,7 +45,8 @@ public class IncidentController {
 		return ApiResponse.of(incidentService.detail(incidentId, user));
 	}
 
-	@Operation(operationId = "transitionIncident", summary = "사건 종료/보류/보류 재개 (MANAGER)")
+	@Operation(operationId = "transitionIncident", summary = "보류된 사건의 조사 재개 (MANAGER)",
+		description = "사건 종료는 보고서 확정으로만 일어난다. 허용: 현재 ON_HOLD → INVESTIGATING. targetStatus ON_HOLD · CLOSED는 409 TRANSITION_REMOVED, 그 밖의 전이는 409 INVALID_TRANSITION.")
 	@PostMapping("/{incidentId}/transitions")
 	public ApiResponse<IncidentDetail> transitionIncident(@AuthenticationPrincipal AuthUser user,
 			@PathVariable String incidentId, @RequestHeader(SecurityConfig.CSRF_HEADER) String csrf,

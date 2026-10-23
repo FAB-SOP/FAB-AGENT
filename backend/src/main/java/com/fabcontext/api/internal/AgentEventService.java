@@ -15,8 +15,10 @@ import com.fabcontext.api.domain.incident.IncidentRepository;
 import com.fabcontext.api.domain.incident.IncidentStatus;
 import com.fabcontext.api.common.stream.IncidentStreamHub;
 import com.fabcontext.api.domain.job.Job;
+import com.fabcontext.api.domain.job.JobKind;
 import com.fabcontext.api.domain.job.JobService;
 import com.fabcontext.api.domain.job.JobStatus;
+import com.fabcontext.api.domain.report.ReportAiSummaryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +39,7 @@ public class AgentEventService {
 	private final IncidentStreamHub streamHub;
 	private final AgentResultMapper mapper;
 	private final com.fabcontext.api.domain.work.WorkService work;
+	private final ReportAiSummaryService reportSummaries;
 	private final Clock clock;
 
 	@Transactional
@@ -54,7 +57,12 @@ public class AgentEventService {
 			job.recordMetrics((Map<String, Object>) metrics);
 		}
 		switch (type) {
-			case "JOB_STARTED", "ANALYSIS_PROGRESS" -> jobService.startExternal(job, incident);
+			case "JOB_STARTED", "ANALYSIS_PROGRESS" -> {
+				jobService.startExternal(job, incident);
+				if (job.getKind() == JobKind.SUMMARY) {
+					reportSummaries.markStarted(job);
+				}
+			}
 			case "APPROVAL_REQUIRED" -> {
 				job.putInput("interruptId", payload.get("interruptId"));
 				jobService.waitFor(job, incident, JobStatus.WAITING_APPROVAL, new Ref("APPROVAL", (String) payload.get("approvalId")));
@@ -65,6 +73,7 @@ public class AgentEventService {
 				Map<String, Object> report = (Map<String, Object>) payload.getOrDefault("report", Map.of());
 				jobService.succeed(job, incident, new Ref("REPORT", (String) report.get("reportId")));
 			}
+			case "SUMMARY_READY" -> reportSummaries.applyResult(job, incident, payload);
 			case "RETRY_SCHEDULED" -> jobService.requeueExternal(job, incident, ((Number) payload.get("nextAttempt")).intValue());
 			case "JOB_FAILED" -> recordFailure(job, incident, payload);
 			default -> throw InternalError.invalid("알 수 없는 이벤트 type: " + type, "");
@@ -96,6 +105,11 @@ public class AgentEventService {
 	}
 
 	private void recordFailure(Job job, Incident incident, Map<String, Object> payload) {
+		if (job.getKind() == JobKind.SUMMARY) {
+			// 요약 실패는 조사 이력에 남기지 않는다 — 보고서의 요약 상태와 확정자 알림으로만 보인다
+			reportSummaries.fail(job, incident, String.valueOf(payload.get("errorCode")), String.valueOf(payload.get("message")));
+			return;
+		}
 		jobService.failExternal(job, incident, String.valueOf(payload.get("errorCode")), String.valueOf(payload.get("message")));
 		incident.record(Instant.now(clock), "ANALYSIS_FAILED", "agent", job.getKind() + " 작업 실패: " + payload.get("message"),
 			"JOB", job.getJobId());

@@ -23,9 +23,7 @@ import com.fabcontext.api.domain.approval.ApprovalActionType;
 import com.fabcontext.api.domain.approval.ApprovalDtos.Proposal;
 import com.fabcontext.api.domain.approval.ApprovalService;
 import com.fabcontext.api.domain.incident.Incident;
-import com.fabcontext.api.domain.incident.IncidentDtos.IncidentTransition;
 import com.fabcontext.api.domain.incident.IncidentRepository;
-import com.fabcontext.api.domain.incident.IncidentService;
 import com.fabcontext.api.domain.incident.IncidentStatus;
 import com.fabcontext.api.domain.job.Job;
 import com.fabcontext.api.domain.job.JobKind;
@@ -64,7 +62,6 @@ public class SeedRunner implements ApplicationRunner {
 	private final TransactionTemplate tx;
 	private final UserAccountRepository userRepository;
 	private final IncidentRepository incidentRepository;
-	private final IncidentService incidentService;
 	private final JobRepository jobRepository;
 	private final JobService jobService;
 	private final AnalysisResultRepository resultRepository;
@@ -124,13 +121,12 @@ public class SeedRunner implements ApplicationRunner {
 	private void seedOpenHistory(Instant now, AuthUser cvd, AuthUser cmp, AuthUser manager) {
 		Instant d21 = now.minus(Duration.ofDays(3));
 		Incident ev1021 = incident(1021, "SLURRY_FLOW_DROP", "HIGH", "CMP", d21);
-		resolvedWithReport(ev1021, cmp, manager, d21);
+		resolvedWithReport(ev1021, cmp, d21);
 
 		Instant d22 = now.minus(Duration.ofDays(2));
 		Incident ev1022 = incident(1022, "PRESSURE_FLUCTUATION", "LOW", "CMP", d22);
-		at(d22.plus(Duration.ofHours(6)));
-		incidentService.transition(ev1022.getIncidentId(), manager, new IncidentTransition(IncidentStatus.ON_HOLD,
-			"압력 편차의 원인을 구분할 센서 교정 이력·공급 및 제어 계통 점검·독립 측정 자료가 부족하여 추가 확인 대기", List.of(), ev1022.getVersion()));
+		restoreLegacyStatus(ev1022, manager, d22.plus(Duration.ofHours(6)), IncidentStatus.ON_HOLD,
+			"압력 편차의 원인을 구분할 센서 교정 이력·공급 및 제어 계통 점검·독립 측정 자료가 부족하여 추가 확인 대기");
 
 		Instant d23 = now.minus(Duration.ofDays(1));
 		Incident ev1023 = incident(1023, "DEP_RATE_DRIFT", "MEDIUM", "CVD", d23);
@@ -181,7 +177,7 @@ public class SeedRunner implements ApplicationRunner {
 		return String.format(java.util.Locale.ROOT, "%,.1f", v);
 	}
 
-	private void resolvedWithReport(Incident incident, AuthUser engineer, AuthUser manager, Instant d) {
+	private void resolvedWithReport(Incident incident, AuthUser engineer, Instant d) {
 		at(d.plus(Duration.ofHours(2)));
 		var action = actionService.record(incident.getIncidentId(), engineer, new ActionInput("PART_CHECK",
 			"슬러리 공급 라인 점검 및 필터 교체", d.plus(Duration.ofMinutes(90)), List.of(), true, incident.getVersion()));
@@ -198,7 +194,7 @@ public class SeedRunner implements ApplicationRunner {
 		// 원인 분류는 기록된 조치(슬러리 공급 라인 점검 · 필터 교체)에 맞춘다
 		reportService.confirm(report.getReportId(), engineer, new ReportConfirm(report.getContentRevision(), true,
 			new CauseClassificationInput("MACHINE", List.of("slurry_flow"))));
-		close(incident, manager, d.plus(Duration.ofHours(23)), "조치 효과 확인 및 보고서 v1 확정");
+		// 확정이 사건 종료까지 한다 — 따로 닫지 않는다
 	}
 
 	private Incident incident(int seq, String type, String severity, String process, Instant detected) {
@@ -375,9 +371,20 @@ public class SeedRunner implements ApplicationRunner {
 	}
 
 	private void close(Incident incident, AuthUser manager, Instant at, String reason) {
+		restoreLegacyStatus(incident, manager, at, IncidentStatus.CLOSED, reason);
+	}
+
+	/**
+	 * 보고서 확정 전 규칙(관리자 보류 · 종료) 시절의 이력 데이터 — 지금 규칙에는 이런 상태를 만드는 API가 없어 시드만 직접 넣는다.
+	 * 이력 문구는 예전 관리자 전이와 같은 모양으로 남긴다.
+	 */
+	private void restoreLegacyStatus(Incident incident, AuthUser manager, Instant at, IncidentStatus status, String reason) {
 		at(at);
-		incidentService.transition(incident.getIncidentId(), manager,
-			new IncidentTransition(IncidentStatus.CLOSED, reason, List.of(), incident.getVersion()));
+		IncidentStatus from = incident.getStatus();
+		incident.setStatus(status);
+		incident.record(clock.instant(), "STATUS_CHANGED", manager.userId(), from + " → " + status + ": " + reason, "INCIDENT",
+			incident.getIncidentId());
+		incidentRepository.save(incident);
 	}
 
 	private AuthUser user(String userId) {

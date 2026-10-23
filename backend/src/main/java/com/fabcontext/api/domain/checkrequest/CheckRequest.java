@@ -104,6 +104,14 @@ public class CheckRequest {
 	@Column(length = 2000)
 	private String decisionComment;
 
+	/** 요청자 철회 — 회신이 오지 않은 요청을 사유와 함께 닫는다(상태 CANCELLED) */
+	private String withdrawnBy;
+
+	private Instant withdrawnAt;
+
+	@Column(length = 500)
+	private String withdrawReason;
+
 	@Version
 	private long rowVersion;
 
@@ -137,6 +145,18 @@ public class CheckRequest {
 		if (!accept && (comment == null || comment.isBlank())) throw ApiException.unprocessable("REJECT_REASON_REQUIRED", "거절 사유를 입력하세요.");
 		status = accept ? CheckRequestStatus.ACCEPTED : CheckRequestStatus.REJECTED;
 		decisionAt = at; decisionComment = comment; version++;
+	}
+
+	void withdraw(String actorId, String reason, Instant at) {
+		if (status != CheckRequestStatus.OPEN && status != CheckRequestStatus.ACCEPTED) {
+			throw ApiException.conflict("CHECK_REQUEST_NOT_WITHDRAWABLE", "회신이 오지 않은 요청(대기 · 수락됨)만 철회할 수 있습니다.",
+				Map.of("status", status.name()));
+		}
+		status = CheckRequestStatus.CANCELLED;
+		withdrawnBy = actorId;
+		withdrawnAt = at;
+		withdrawReason = reason.strip();
+		version++;
 	}
 
 	void markReplied(Instant at) {

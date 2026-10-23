@@ -68,6 +68,10 @@ public class AgentJobService {
 		msg.put("attempt", Math.max(1, Math.min(3, job.getAttempt())));
 		msg.put("contextRef", "job-context://" + jobId);
 		msg.put("resume", resume);
+		if (job.getKind() == JobKind.SUMMARY) {
+			// 팀 계약(job-message) — SUMMARY는 요약할 확정본(summaryRef)만 싣는다. job.input을 통째로 내보내지 않는다
+			msg.put("input", Map.of("summaryRef", job.getInput().get("summaryRef")));
+		}
 		msg.put("createdAt", iso(job.getCreatedAt()));
 		msg.put("traceId", "TRACE-" + jobId);
 		Map<String, Object> out = new LinkedHashMap<>();

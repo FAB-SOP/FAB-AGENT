@@ -60,7 +60,8 @@ public class JobService {
 	public Job enqueue(Incident incident, JobKind kind, String requestedBy, String question, String scope,
 			Map<String, Object> input, String threadId, String parentJobId) {
 		entityManager.lock(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-		if(kind!=JobKind.REPORT) assertNoRunningJob(incident);
+		// 요약은 조사와 따로 돈다 — 진행 중인 조사 작업이 있어도 막지 않고, 사건의 조사 상태를 바꾸지 않는다
+		if(kind!=JobKind.REPORT && kind.affectsInvestigationState()) assertNoRunningJob(incident);
 		int attempt = (int) jobRepository.countByIncidentIdAndKind(incident.getIncidentId(), kind) + 1;
 		Job job = Job.builder()
 			.jobId(Ids.next("job"))
@@ -76,10 +77,12 @@ public class JobService {
 			.createdAt(Instant.now(clock))
 			.build();
 		job = jobRepository.save(job);
-		if (kind != JobKind.REPORT) {
-			incident.setActiveJobId(job.getJobId());
+		if (kind.affectsInvestigationState()) {
+			if (kind != JobKind.REPORT) {
+				incident.setActiveJobId(job.getJobId());
+			}
+			incident.setLatestJobStatus(job.getStatus().name());
 		}
-		incident.setLatestJobStatus(job.getStatus().name());
 		events.publishEvent(new JobQueuedEvent(job.getJobId()));
 		publish(job);
 		return job;
@@ -112,13 +115,32 @@ public class JobService {
 			incident.setActiveJobId(null);
 		}
 		sync(job, incident);
-		notificationEvents.analysisFinished(job, incident);
+		if (job.getKind().affectsInvestigationState()) {
+			notificationEvents.analysisFinished(job, incident);
+		}
 	}
 
 	public void fail(Job job, Incident incident, String code, String message) {
 		job.fail(code, message, Instant.now(clock));
 		sync(job, incident);
-		notificationEvents.analysisFinished(job, incident);
+		if (job.getKind().affectsInvestigationState()) {
+			notificationEvents.analysisFinished(job, incident);
+		}
+	}
+
+	/**
+	 * 사건이 보고서 확정으로 닫힐 때 아직 대기 중인 조사 작업을 끝낸다(기다리던 요청은 이미 회신 · 거절 · 철회됨).
+	 * 분석이 끝난 것이 아니므로 분석 완료 알림은 보내지 않는다.
+	 */
+	public void finishWaitingOnIncidentClosed(Job job, Incident incident, Ref reportRef) {
+		if (!job.getStatus().isWaiting()) {
+			return;
+		}
+		job.succeed(reportRef, Instant.now(clock));
+		if (job.getJobId().equals(incident.getActiveJobId())) {
+			incident.setActiveJobId(null);
+		}
+		sync(job, incident);
 	}
 
 	public void waitFor(Job job, Incident incident, JobStatus waitingStatus, Ref ref) {
@@ -144,7 +166,7 @@ public class JobService {
 
 	private void sync(Job job, Incident incident) {
 		boolean isLatest = incident.getActiveJobId() == null || job.getJobId().equals(incident.getActiveJobId());
-		if (isLatest || job.getKind() == JobKind.REPORT) {
+		if (job.getKind().affectsInvestigationState() && (isLatest || job.getKind() == JobKind.REPORT)) {
 			incident.setLatestJobStatus(job.getStatus().name());
 		}
 		publish(job);
