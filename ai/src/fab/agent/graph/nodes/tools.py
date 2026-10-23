@@ -96,7 +96,8 @@ def _final_turn(turn: _Turn) -> bool:
 
 def _salvaged(turn: _Turn, args: dict) -> tuple[dict, list[str]]:
     """마지막 제출이 검사를 못 넘으면 넘지 못한 항목만 빼고 받는다 — 반려하면 한도로 빈 결과가 된다(실제 모델 평가에서 본 일).
-    빼는 것: 업무 후보, 근거가 없거나 조회하지 않은 근거만 가진 관측 사실, 원인 후보의 조회하지 않은 근거 ID"""
+    빼는 것: 업무 후보, 근거가 없거나 조회하지 않은 근거만 가진 관측 사실, 원인 후보의 조회하지 않은 근거 ID,
+    조회하지 않은 대상(로트 · 웨이퍼 · run)을 말하는 문장"""
     known, dropped = turn.known_ids(), []
     out = dict(args)
     if out.get("workSuggestions"):
@@ -109,7 +110,28 @@ def _salvaged(turn: _Turn, args: dict) -> tuple[dict, list[str]]:
     out["candidateCauses"] = [{**cause, "supportingEvidenceIds": [e for e in cause.get("supportingEvidenceIds") or [] if e in known],
                                "conflictingEvidenceIds": [e for e in cause.get("conflictingEvidenceIds") or [] if e in known]}
                               for cause in out.get("candidateCauses") or []]
-    return out, dropped
+    return _without_unseen_targets(turn, out, dropped)
+
+
+def _without_unseen_targets(turn: _Turn, out: dict, dropped: list[str]) -> tuple[dict, list[str]]:
+    """조회하지 않은 대상을 말하는 문장 — 답 · 관측 사실 · 원인 가설에서 빼고, 답 앞에 「조회되지 않음」을 붙인다"""
+    seen, unseen, count = _seen_text(turn), [], 0
+
+    def keep(text):
+        nonlocal count
+        kept, ids = guard.drop_unseen_sentences(str(text or ""), seen)
+        unseen.extend(i for i in ids if i not in unseen)
+        count += bool(ids)
+        return kept
+
+    answer = keep(out.get("answer"))
+    facts = [{**fact, "text": keep(fact.get("text"))} for fact in out.get("observedFacts") or []]
+    causes = [{**cause, "hypothesis": keep(cause.get("hypothesis"))} for cause in out.get("candidateCauses") or []]
+    if not unseen:
+        return out, dropped
+    out = {**out, "answer": f"{', '.join(unseen)}는 조회되지 않아 확인할 수 없습니다. {answer}".strip(),
+           "observedFacts": [fact for fact in facts if fact["text"]], "candidateCauses": [cause for cause in causes if cause["hypothesis"]]}
+    return out, [*dropped, f"조회하지 않은 대상 문장 {count}개"]
 
 
 def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = True) -> None:

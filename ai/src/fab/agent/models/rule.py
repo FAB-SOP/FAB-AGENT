@@ -31,7 +31,7 @@ class RuleModel:
 
     name = "rule-policy-v2"
 
-    async def ainvoke(self, messages, tools):
+    async def ainvoke(self, messages, tools, tool_choice: str | None = None):  # tool_choice는 받기만 한다(규칙 모델은 늘 도구로 답한다)
         tool_names = {tool["function"]["name"] for tool in tools}
         seen = tool_results(messages, keep_text=True)
         mode = "REPORT" if "submit_report" in tool_names else ("DEEP" if "propose_cross_process_check" in tool_names else "BASIC")

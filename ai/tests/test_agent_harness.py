@@ -158,7 +158,7 @@ class LoopingModel:
     """같은 도구만 계속 부르는 모델 — 한도가 멈춰야 한다."""
     name = "looping"
 
-    async def ainvoke(self, messages, tools):
+    async def ainvoke(self, messages, tools, tool_choice=None):  # 마지막 호출의 제출 강제도 무시하고 계속 조회한다
         return AIMessage(content="", tool_calls=[{"id": f"c{len(messages)}", "name": "get_frozen_limits", "args": {}}])
 
 
@@ -801,13 +801,14 @@ class LookupForeverModel:
 
     def __init__(self):
         self.last_tools: list[str] = []
+        self.last_choice: str | None = None
 
-    async def ainvoke(self, messages, tools):
+    async def ainvoke(self, messages, tools, tool_choice=None):
         from fab.agent.evidence import runs_by_process, tool_results
 
         names = [tool["function"]["name"] for tool in tools]
         if names == ["submit_result"]:
-            self.last_tools = names
+            self.last_tools, self.last_choice = names, tool_choice
             run = runs_by_process(tool_results(messages))["CMP"]
             return AIMessage(content="", tool_calls=[{"id": "c-last", "name": "submit_result", "args": {
                 "nextStep": "INSUFFICIENT_EVIDENCE", "observedFacts": [{"text": "CMP run 확인", "evidenceIds": [run["_ev"]]}],
@@ -824,4 +825,25 @@ async def test_last_model_call_offers_only_submit_so_the_job_ends_with_an_answer
     await _ask(spring_url, display, "추가로 볼 게 있어?")
     out = (await poll_once(runner, backend))[-1]
     assert model.last_tools == ["submit_result"], model.last_tools
+    assert model.last_choice == "submit_result"  # 도구 목록만 줄이면 실제 모델은 제출하지 않고 글로 답하곤 했다 — 제출을 강제한다
     assert out["status"] == "DONE" and out["result"]["answer"].startswith("지금 근거로는"), out
+
+
+async def test_openai_adapter_passes_tool_choice_to_bind_tools():
+    from fab.agent.models.openai import OpenAIModel
+
+    class _Bound:
+        async def ainvoke(self, messages):
+            return "reply"
+
+    class _LLM:
+        def bind_tools(self, tools, **kwargs):
+            self.kwargs = kwargs
+            return _Bound()
+
+    model = OpenAIModel.__new__(OpenAIModel)
+    model._llm = _LLM()
+    assert await model.ainvoke([], [], tool_choice="submit_result") == "reply"
+    assert model._llm.kwargs == {"tool_choice": "submit_result"}
+    await model.ainvoke([], [])
+    assert model._llm.kwargs == {}  # 평소에는 지금과 같다(모델이 고른다)

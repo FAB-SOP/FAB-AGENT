@@ -299,6 +299,18 @@ def not_found_limitation(ids: list[str]) -> str:
     return f"질문의 {', '.join(ids)}는 이번 조회 결과에 없어 확인하지 않았습니다(조회되지 않음)."
 
 
+def drop_unseen_sentences(text: str, seen_text: str) -> tuple[str, list[str]]:
+    """조회하지 않은 로트 · 웨이퍼 · run을 말하는 문장을 뺀다(「조회되지 않음」을 밝힌 문장은 둔다) — (남은 글, 뺀 대상 ID)"""
+    kept, ids = [], []
+    for sentence in re.findall(r"[^.。!?\n]+[.。!?]?\s*", text or ""):
+        unseen = [i for i in _TARGET_ID.findall(sentence) if i not in seen_text]
+        if unseen and not _NOT_FOUND.search(sentence):
+            ids += [i for i in unseen if i not in ids]
+            continue
+        kept.append(sentence)
+    return "".join(kept).strip(), ids
+
+
 def validate_seen_ids(result: dict, seen_text: str) -> list[str]:
     """조회하지 않은 대상 — 답 · 관측 사실 · 원인 가설에 나온 로트 · 웨이퍼 · run ID가 이번 작업의 도구 결과에 없으면 반려.
     없는 로트를 이번 사건과 같은 원인이라고 답한 일(평가셋 AE07) — 조회되지 않았다고 밝힌 문장은 받는다"""

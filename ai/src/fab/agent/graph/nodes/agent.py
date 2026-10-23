@@ -54,12 +54,15 @@ async def agent(state: AgentState, config) -> dict:
     messages = context.fit_budget(state["messages"])
     tools = job_runtime.toolbox.model_tools(state["mode"], allow_proposals=may_propose(state),
                                             answer_only=bool(state.get("answerOnly")))
+    tool_choice = None
     if _last_call(state, counters):  # 한도 직전 — 조회 대신 지금 근거로 답하게(빈 결과로 멈추지 않게)
         job_runtime.tracer.event("last_call", modelCalls=counters["modelCalls"])
         tools = [tool for tool in tools if tool["function"]["name"] in ("submit_result", "submit_report")]
         messages = [*messages, HumanMessage(content=LAST_CALL)]
+        tool_choice = "submit_result"  # 도구 목록만 줄이면 실제 모델은 제출하지 않고 글로 답하곤 했다(실제 모델 평가)
     with job_runtime.tracer.span("llm", node="agent") as span_record:
-        reply, used = await call_with_recovery(job_runtime.primary, job_runtime.fallback, messages, tools, job_runtime.tracer)
+        reply, used = await call_with_recovery(job_runtime.primary, job_runtime.fallback, messages, tools, job_runtime.tracer,
+                                                tool_choice=tool_choice)
         usage = getattr(reply, "usage_metadata", None) or {}
         name = getattr(job_runtime.primary if used == "primary" else job_runtime.fallback, "name", used)  # 우리가 고른 모델
         # API가 실제로 답한 모델(스냅샷 이름) — API를 부르지 않는 규칙 모델은 response_metadata가 비어 있어 고른 이름을 쓴다

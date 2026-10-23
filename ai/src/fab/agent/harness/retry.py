@@ -29,7 +29,8 @@ def is_transient(exc: BaseException) -> bool:
     return name in {"RateLimitError", "APITimeoutError", "APIConnectionError", "InternalServerError"}
 
 
-async def call_with_recovery(primary, fallback, messages, tools, tracer, timeout: float = LIMITS.llm_timeout):
+async def call_with_recovery(primary, fallback, messages, tools, tracer, timeout: float = LIMITS.llm_timeout,
+                             tool_choice: str | None = None):
     """primary를 재시도하고, 끝내 실패하면 fallback으로 한 번 더. 각 시도를 trace에 남긴다."""
     last: BaseException | None = None
     for model, label in ((primary, "primary"), (fallback, "fallback")):
@@ -38,7 +39,8 @@ async def call_with_recovery(primary, fallback, messages, tools, tracer, timeout
         tries = LIMITS.llm_retries + 1 if label == "primary" else 1
         for i in range(tries):
             try:
-                return await asyncio.wait_for(model.ainvoke(messages, tools), timeout=timeout), label
+                call = model.ainvoke(messages, tools, tool_choice=tool_choice) if tool_choice else model.ainvoke(messages, tools)
+                return await asyncio.wait_for(call, timeout=timeout), label
             except Exception as e:  # noqa: BLE001
                 last = e
                 tracer.event("llm_error", model=label, attempt=i + 1, error=type(e).__name__, transient=is_transient(e))
