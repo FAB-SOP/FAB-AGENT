@@ -81,7 +81,8 @@ async def test_document_question_is_sent_back_once_then_recorded_as_a_limitation
     assert status == 202
     out = (await poll_once(runner, backend))[-1]
     deep = [call for call in model.calls if call["deep"]]
-    assert len(deep) == 2 and "search_technical_documents" in deep[1]["rejected"][0]  # 한 번 돌려보내고
+    # 한 번 돌려보내고(두 번째 호출이 반려를 본다), 세 번째는 요청서가 없다는 안내 뒤의 호출이다
+    assert len(deep) == 3 and "search_technical_documents" in deep[1]["rejected"][0]
     assert out["status"] == "DONE" and any("문서 근거 미확인" in item for item in out["result"]["limitations"])  # 두 번째는 받는다
 
 

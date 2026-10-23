@@ -724,6 +724,51 @@ async def test_proposal_rejected_for_coming_before_the_answer_is_offered_again(s
     assert out["status"] == "WAITING_APPROVAL", out
 
 
+class WrongTypeAfterAnswerModel(ProposalBeforeAnswerModel):
+    """앞 공정만 정상 변동 밖인 사건에서 — 요청서 먼저(반려) → 답만 → 현재 공정 정비 요청(근거 없음으로 반려) → 안내대로 앞 공정 확인"""
+
+    async def ainvoke(self, messages, tools):
+        last = str(messages[-1].content) if messages else ""
+        if self.calls is not None and "다시 내세요" in last:
+            proposal, _ = self.calls
+            self.steps.append("wrong-type")
+            wrong = {"processCode": "CMP", "equipmentId": "CMP-PM3", "ownerUserId": "USR-MNT-01", "causeIds": ["CMP_PRESSURE"],
+                     "reason": "CMP 두께가 관리한계 위입니다.", "question": "CMP-PM3 헤드 압력 계통 점검 부탁드립니다.",
+                     "evidenceIds": proposal["args"].get("evidenceIds", []), "rationale": "현재 공정 확인"}
+            return AIMessage(content="", tool_calls=[{"id": "c-wrong", "name": "propose_maintenance_request", "args": wrong}])
+        if self.calls is not None and "propose_cross_process_check(processCode=" in last:
+            proposal, _ = self.calls
+            self.steps.append("follow-hint")
+            return AIMessage(content="", tool_calls=[{**proposal, "id": "c-hint"}])
+        return await super().ainvoke(messages, tools)
+
+
+async def test_wrong_request_type_after_answer_first_still_gets_its_own_retry(spring_url, kb):
+    """「답 먼저」 재시도는 요청서를 고치는 재시도 기회를 쓰지 않는다 — 다시 낸 요청서가 종류가 틀려 반려되면 안내를 보고
+    한 번 더 고칠 수 있다(평가셋 AE03 실제 모델 실행)"""
+    model = WrongTypeAfterAnswerModel()
+    runner, backend = make_runner(kb, models=(model, None), base=spring_url)
+    display = await fresh_incident("EV-1009", spring_url)
+    await poll_once(runner, backend)
+    await _ask(spring_url, display, "앞 공정 확인이 필요해?")
+    out = (await poll_once(runner, backend))[-1]
+    assert model.steps == ["propose-only", "submit-only", "wrong-type", "follow-hint"], model.steps
+    assert out["status"] == "WAITING_APPROVAL", out
+
+
+def test_baseless_maintenance_request_points_to_the_upstream_process():
+    from fab.agent.harness.guard import validate_proposal
+
+    def seen(etch_normal):
+        runs = [{"data": {"runId": f"R-{p}", "processCode": p, "equipmentId": f"{p}-PM2", "available": True,
+                          "amountWithinNormalVariation": p != "ETCH" or etch_normal}} for p in ("CVD", "ETCH", "CMP")]
+        return {"get_run_and_metrology": runs, "get_run_features": [{"data": {"runId": "R-CMP", "items": []}}]}
+    errors = validate_proposal("CREATE_MAINTENANCE_REQUEST", {"processCode": "CMP"}, seen(False), "CMP")
+    assert any("propose_cross_process_check(processCode=ETCH)" in e for e in errors), errors
+    errors = validate_proposal("CREATE_MAINTENANCE_REQUEST", {"processCode": "CMP"}, seen(True), "CMP")
+    assert errors and not any("propose_cross_process_check" in e for e in errors)
+
+
 async def test_fixable_proposal_rejection_gets_one_retry(spring_url, kb):
     """답은 접수됐는데 요청서가 고칠 수 있는 이유로 반려되면, 끝내지 않고 한 번 다시 낼 기회를 준다"""
     runner, backend = make_runner(kb, models=(FixProposalOnceModel(), None), base=spring_url)

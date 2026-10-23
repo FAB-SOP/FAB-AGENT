@@ -36,6 +36,7 @@ class _Turn:
         self.known = set(state.get("evidence", {}))
         self.submit_rejected = False  # 이 묶음의 답이 반려됐나 — 같은 묶음의 제안 반려 문장을 맞게 고른다
         self.fixable_proposal_reject = False  # 고칠 수 있는 이유(근거 · 브리프 · 담당자 · backend 검증)로 제안이 반려됐나
+        self.deferred_retry = False  # 답보다 먼저 와서 반려된 요청서를 답 접수 뒤 다시 낼 기회 — 위 재시도와 따로 센다
 
     def known_ids(self) -> set[str]:
         """이번 작업에서 조회한 근거 — 앞선 노드에서 모은 것 + 이 묶음에서 방금 받은 것"""
@@ -77,10 +78,13 @@ async def tools(state: AgentState, config) -> dict:
     order = {call["id"]: i for i, call in enumerate(reply.tool_calls)}
     turn.out.sort(key=lambda message: order.get(message.tool_call_id, len(order)))  # 도구 메시지는 원래 호출 순서로
     # 답은 접수됐는데 요청서가 고칠 수 있는 이유로 반려됐으면 한 번은 모델에게 돌려보낸다(답만 남기고 끝내지 않게)
-    retry = bool(turn.fixable_proposal_reject and turn.counters.get("proposalRetries", 0) < 1
-                 and (state.get("result") or turn.update.get("result")) and not turn.update.get("pending"))
-    if retry:
+    answered = bool(state.get("result") or turn.update.get("result")) and not turn.update.get("pending")
+    fix_retry = bool(turn.fixable_proposal_reject and turn.counters.get("proposalRetries", 0) < 1 and answered)
+    if fix_retry:
         turn.counters["proposalRetries"] = turn.counters.get("proposalRetries", 0) + 1
+    # 「답 먼저」 재시도는 순서만 틀린 것이라 요청서 내용을 고치는 재시도 기회를 쓰지 않는다 — 다시 낸 요청서가
+    # 내용 때문에 반려돼도 한 번 더 고칠 수 있게
+    retry = fix_retry or (turn.deferred_retry and answered)
     turn.update["retryProposal"] = retry
     return turn.result()
 
@@ -111,18 +115,41 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         turn.rt.tracer.event("guard_reject", tool=name, errors=errs)
         turn.say("[REJECTED] " + " / ".join(err.removeprefix("[REJECTED] ") for err in errs), cid, name)
     else:
-        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + _deferred_proposal_note(turn), cid, name)
+        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + (_deferred_proposal_note(turn) or _missing_proposal_note(turn, args)),
+                 cid, name)
         turn.update["result"] = args
 
 
 def _deferred_proposal_note(turn: _Turn) -> str:
     """답보다 먼저 와서 반려된 요청서 — 답이 접수된 지금 한 번 다시 낼 기회를 준다(고칠 수 있는 반려와 같은 재시도)"""
     deferred = turn.counters.pop("proposalBeforeAnswer", None)
-    if not deferred or turn.update.get("pending") or turn.counters.get("proposalRetries", 0) >= 1:
+    if not deferred or turn.update.get("pending") or turn.counters.get("deferredRetries", 0) >= 1:
         return ""
-    turn.fixable_proposal_reject = True
+    turn.counters["deferredRetries"] = 1
+    turn.deferred_retry = True
     return (f" 앞서 답보다 먼저 보낸 요청서 제안({deferred})은 반려됐습니다. 답이 접수됐으니 필요하면 같은 제안을 지금 다시 "
             "내세요(이번 답의 근거로).")
+
+
+def _missing_proposal_note(turn: _Turn, args: dict) -> str:
+    """질문 작업에서 원인 확인이 필요하다는 답(CURRENT_CHECK · UPSTREAM_CHECK)을 냈는데 요청서가 없으면 — 근거가 있는 요청을
+    낼지 한 번 알린다. 강제하지 않는다(필요 없다고 보면 그대로 끝난다). 실제 모델은 같은 질문에 요청서를 냈다 안 냈다 했다(평가셋 AE01)"""
+    state = turn.state
+    if (state.get("purpose") != purpose.QUESTION or args.get("nextStep") not in ("CURRENT_CHECK", "UPSTREAM_CHECK")
+            or not may_propose(state) or state.get("proposals") or turn.update.get("pending")
+            or turn.counters.get("proposalNudges", 0) >= 1):
+        return ""
+    reply = state["messages"][-1] if state.get("messages") else None
+    if any(call["name"] in PROPOSALS for call in getattr(reply, "tool_calls", None) or []):  # 같은 응답에 요청서가 있다
+        return ""
+    suggestion = guard.suggested_request(tool_results([*(state.get("messages") or []), *turn.out]),
+                                         state.get("incidentProcess"), args.get("nextStep"))
+    if suggestion is None:
+        return ""
+    turn.counters["proposalNudges"] = 1
+    turn.deferred_retry = True
+    return (f" 이 답은 {args['nextStep']}인데 요청서가 없습니다. 근거가 있는 요청을 낼지 정하세요 — {suggestion}. "
+            "필요 없다고 보면 그대로 두면 됩니다(다시 제출하지 않아도 이 답으로 끝납니다).")
 
 
 def _check_documents(turn: _Turn, args: dict) -> tuple[dict, str | None]:

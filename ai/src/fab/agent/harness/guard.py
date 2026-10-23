@@ -104,11 +104,9 @@ def _cause_rules(result: dict, incident_process: str | None) -> list[str]:
 OPEN_STEPS = {"INSUFFICIENT_EVIDENCE", "NEEDS_DEEP_ANALYSIS"}  # 불확실하다고 남기는 것은 늘 허용
 
 
-def evidence_next_steps(seen: dict, incident_process: str | None) -> tuple[set[str], str] | None:
-    """조회한 데이터가 허용하는 nextStep — 사건 웨이퍼의 실제 경로(Harness가 처음 조회한 lineage) run으로 정한다.
-    현재 공정 run이 정상 변동 밖이거나 센서가 참고 범위 밖 → CURRENT_CHECK(앞 공정도 밖이면 UPSTREAM_CHECK도),
-    현재 공정은 정상이고 앞 공정 run이 정상 변동 밖 → UPSTREAM_CHECK, 셋 다 정상 → OBSERVE. 실제 모델은 셋 다 정상인데
-    CURRENT_CHECK를 내거나(평가셋 AE09) 앞 공정만 밖인데 CURRENT_CHECK를 냈다(AE03). 경로 run을 다 보지 못했으면 판단하지 않는다"""
+def _route_state(seen: dict, incident_process: str | None):
+    """사건 웨이퍼의 실제 경로(Harness가 처음 조회한 lineage)로 본 상태 — (사건 공정 run, 참고 범위 밖 센서, 정상 변동 밖인 앞 공정 run).
+    경로 run을 다 보지 못했으면 None"""
     lineage = (seen.get("get_wafer_lineage") or [None])[0]
     steps = data(lineage).get("steps") or []
     if not steps or incident_process not in PROCESS_ORDER:
@@ -122,9 +120,39 @@ def evidence_next_steps(seen: dict, incident_process: str | None) -> tuple[set[s
         return None
     items = (data(features_of(seen, current["runId"])).get("items")) or []
     sensors = [item.get("sensorId") for item in items if item.get("outsideReferenceBand")]
+    upstream = [run | {"processCode": process} for process, run in route
+                if PROCESS_ORDER.index(process) < PROCESS_ORDER.index(incident_process) and run.get("amountWithinNormalVariation") is False]
+    return current, sensors, upstream
+
+
+def suggested_request(seen: dict, incident_process: str | None, next_step: str | None) -> str | None:
+    """답의 nextStep에 맞고 조회 데이터에 근거가 있는 요청 — 없으면 None(그때는 요청을 권하지 않는다)"""
+    state = _route_state(seen, incident_process)
+    if state is None:
+        return None
+    current, sensors, upstream = state
+    word = "증착량" if current.get("amountKind") == "DEPOSITED" else "제거량"
+    if next_step == "CURRENT_CHECK" and (current.get("amountWithinNormalVariation") is False or sensors):
+        why = f"센서 {', '.join(sensors)} 참고 범위 밖" if sensors else f"{word} 정상 변동 밖"
+        return (f"propose_maintenance_request(processCode={incident_process}) — {current.get('equipmentId')} run의 {why}")
+    if next_step == "UPSTREAM_CHECK" and upstream:
+        run = upstream[-1]
+        return (f"propose_cross_process_check(processCode={run['processCode']}) — {run.get('equipmentId')} run의 "
+                f"{'증착량' if run.get('amountKind') == 'DEPOSITED' else '제거량'} 정상 변동 밖")
+    return None
+
+
+def evidence_next_steps(seen: dict, incident_process: str | None) -> tuple[set[str], str] | None:
+    """조회한 데이터가 허용하는 nextStep — 사건 웨이퍼의 실제 경로(Harness가 처음 조회한 lineage) run으로 정한다.
+    현재 공정 run이 정상 변동 밖이거나 센서가 참고 범위 밖 → CURRENT_CHECK(앞 공정도 밖이면 UPSTREAM_CHECK도),
+    현재 공정은 정상이고 앞 공정 run이 정상 변동 밖 → UPSTREAM_CHECK, 셋 다 정상 → OBSERVE. 실제 모델은 셋 다 정상인데
+    CURRENT_CHECK를 내거나(평가셋 AE09) 앞 공정만 밖인데 CURRENT_CHECK를 냈다(AE03). 경로 run을 다 보지 못했으면 판단하지 않는다"""
+    state = _route_state(seen, incident_process)
+    if state is None:
+        return None
+    current, sensors, upstream_runs = state
     current_out = current.get("amountWithinNormalVariation") is False or bool(sensors)
-    upstream_out = [process for process, run in route if PROCESS_ORDER.index(process) < PROCESS_ORDER.index(incident_process)
-                    and run.get("amountWithinNormalVariation") is False]
+    upstream_out = [run["processCode"] for run in upstream_runs]
     if current_out:
         why = (f"사건 공정({incident_process}) run이 " + ("정상 변동 밖" if current.get("amountWithinNormalVariation") is False
                                                      else f"센서 {', '.join(sensors)} 참고 범위 밖"))
@@ -133,6 +161,19 @@ def evidence_next_steps(seen: dict, incident_process: str | None) -> tuple[set[s
         return {"UPSTREAM_CHECK"} | OPEN_STEPS, (f"사건 공정({incident_process}) run은 정상 변동 안 · 센서 정상이고, "
                                                  f"앞 공정 {', '.join(upstream_out)} run이 정상 변동 밖")
     return {"OBSERVE"} | OPEN_STEPS, "경로의 세 공정 run이 모두 정상 변동 안이고 사건 공정 센서도 정상 참고 범위 안"
+
+
+def _upstream_hint(runs: dict, target: str | None, word) -> str:
+    """근거 없는 정비 요청의 다음 할 일 — 정상 변동 밖인 앞 공정 run이 있으면 그 공정 확인 요청을 하라고 집어 준다.
+    실제 모델은 앞 공정만 정상 변동 밖인 사건에서 현재 공정 정비 요청을 거듭 냈다(평가셋 AE03)"""
+    upstream = [run for process, run in runs.items() if target in PROCESS_ORDER and process in PROCESS_ORDER
+                and PROCESS_ORDER.index(process) < PROCESS_ORDER.index(target) and run.get("amountWithinNormalVariation") is False]
+    if not upstream:
+        return "근거가 있는 공정을 보거나 요청 없이 submit_result로 정리하세요."
+    run = upstream[-1]  # 사건 공정에 가장 가까운 앞 공정
+    return (f"대신 앞 공정 {run['processCode']} {run.get('equipmentId')} run의 {word(run)}이 정상 변동 밖입니다 — "
+            f"propose_cross_process_check(processCode={run['processCode']})로 앞 공정 확인 요청을 내세요"
+            f"(causeIds는 {run['processCode']} 원인 ID).")
 
 
 def validate_proposal(action_type: str, args: dict, seen: dict, incident_process: str | None) -> list[str]:
@@ -156,7 +197,7 @@ def validate_proposal(action_type: str, args: dict, seen: dict, incident_process
             outside = [feature.get("sensorId") for feature in items if feature.get("outsideReferenceBand")]
             if run.get("amountWithinNormalVariation") is not False and not outside:
                 errors.append(f"{target} {run.get('equipmentId')} run의 {word(run)}이 정상 변동 안이고 센서도 정상 참고 범위 안입니다 — "
-                              "정비 요청의 근거가 없습니다. 근거가 있는 공정을 보거나 요청 없이 submit_result로 정리하세요.")
+                              "정비 요청의 근거가 없습니다. " + _upstream_hint(runs, target, word))
     elif action_type == "CREATE_CHECK_REQUEST":
         if incident_process in PROCESS_ORDER and (target not in PROCESS_ORDER
                                                   or PROCESS_ORDER.index(target) >= PROCESS_ORDER.index(incident_process)):

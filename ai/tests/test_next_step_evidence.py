@@ -93,3 +93,30 @@ def test_matching_or_uncertain_step_is_accepted():
         result = _submit(step) if step == "CURRENT_CHECK" else {**_submit(step), "candidateCauses": []}
         handle_submit(turn, "submit_result", result, "c1")
         assert str(turn.out[-1].content).startswith("[ACCEPTED]"), (step, turn.out[-1].content)
+
+
+def test_question_answer_without_request_gets_one_nudge_toward_the_backed_request():
+    """CURRENT_CHECK · UPSTREAM_CHECK 답에 요청서가 없으면 근거가 있는 요청을 한 번 알린다 — 강제하지 않는다(평가셋 AE01)"""
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    turn = _turn(_seen(outside={"ETCH"}))
+    result = {**_submit("UPSTREAM_CHECK"), "candidateCauses": [{**_submit("x")["candidateCauses"][0], "causeIds": ["ETCH_WALL"],
+                                                                "hypothesis": "ETCH 챔버 벽 오염"}]}
+    handle_submit(turn, "submit_result", result, "c1")
+    text = str(turn.out[-1].content)
+    assert text.startswith("[ACCEPTED]") and "propose_cross_process_check(processCode=ETCH)" in text and turn.deferred_retry
+    handle_submit(turn, "submit_result", result, "c2")  # 한 번만 — 다시 내도 또 묻지 않는다
+    assert "요청서가 없습니다" not in str(turn.out[-1].content)
+
+
+def test_no_nudge_when_there_is_nothing_to_request_or_it_is_not_a_question():
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    turn = _turn(_seen())  # 셋 다 정상 — CURRENT_CHECK 답이어도(반려 뒤 받은 경우) 근거 있는 요청이 없다
+    turn.counters["nextStepRejects"] = 1
+    handle_submit(turn, "submit_result", _submit("CURRENT_CHECK"), "c1")
+    assert "요청서가 없습니다" not in str(turn.out[-1].content)
+    turn = _turn(_seen(sensors=["head_pressure"]))
+    turn.state["purpose"] = "FOLLOWUP"
+    handle_submit(turn, "submit_result", _submit("CURRENT_CHECK"), "c1")
+    assert "요청서가 없습니다" not in str(turn.out[-1].content)
