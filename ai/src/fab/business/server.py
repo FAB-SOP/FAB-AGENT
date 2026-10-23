@@ -183,6 +183,12 @@ def _register_collaboration_tools(mcp: FastMCP, backend: BackendClient) -> None:
         """보고서 초안에 필요한 기록을 한 번에 돌려준다 — 사건, 요청 · 회신, 조치, 기존 보고서 버전."""
         return await backend.call("GET", f"/internal/incidents/{incidentId}/report-context")
 
+    @mcp.tool(annotations=READ)
+    async def get_incident_history(incidentId: IncidentId) -> dict:
+        """사건의 요약 이력을 최신순으로 돌려준다 — 최신 원인 분석 · 승인 대기 · 요청 상태 · 지난 질문과 AI 답 · 회신 · 작업 결과.
+        앞 질문이나 지난 결론을 확인할 때 쓴다. AI 답은 근거가 아니다 — 수치는 설비 데이터 도구로 다시 조회해 인용한다."""
+        return await backend.call("GET", f"/internal/incidents/{incidentId}/history")
+
 
 def _register_change_tools(mcp: FastMCP, backend: BackendClient) -> None:
     """변경 도구 — 사람이 승인한 approvalId로만 실행된다"""
