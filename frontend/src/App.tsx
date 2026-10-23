@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import {WorkInbox} from './components/WorkItems';
 import {Shell} from './components/Shell';
 import {Knowledge} from './pages/Knowledge';
+import {CauseStatistics} from './pages/CauseStatistics';
 import {Approvals,IncidentDetail,IncidentList,ReportEditor,ReportList,Requests} from './pages/Workflow';
 export default function App(){
  const [process,setProcess]=useState('CMP');
@@ -24,6 +25,7 @@ export default function App(){
     <Route path="reports" element={<ProcessPage process={process} kind="reports"/>}/>
     <Route path="reports/:id" element={<ReportEditor/>}/>
     <Route path="knowledge" element={<Knowledge/>}/>
+    <Route path="cause-statistics" element={<CauseStatistics/>}/>
     <Route path="*" element={<Empty>페이지를 찾을 수 없습니다. <Link to="/dashboard">대시보드로 돌아가기</Link></Empty>}/>
    </Route>
   </Routes>

@@ -8,6 +8,7 @@ import {type ActionChoice} from '../domain/actionSources';
 import {canManageInvestigation} from '../domain/permissions';
 import {useAuth} from '../auth';
 import {Badge,Empty,ErrorMessage,Field,Modal,Notice,Panel,PageHeading} from './ui';
+import {BriefDetails} from './InvestigationContext';
 
 export const workRoutes:Record<string,string>={
  SELF_CHECK:'내 확인 업무',
@@ -192,6 +193,10 @@ function WorkCard({item,children,muted=false}:{item:Obj;children?:React.ReactNod
   </div>
   {item.decisionComment&&<p className="small">검토 의견 · {item.decisionComment}</p>}
   {item.closeReason&&<p className="small">미수행 사유 · {item.closeReason} ({item.closedBy})</p>}
+  {item.brief&&<details className="work-brief">
+   <summary>확인 배경(미확정)</summary>
+   <BriefDetails brief={item.brief}/>
+  </details>}
   {item.status==='APPROVED'&&<p className="work-not-done">승인됨 · 아직 수행하지 않았습니다. 실제로 수행한 뒤 결과를 기록하세요.</p>}
   {children}
  </article>;
@@ -407,6 +412,25 @@ export function WorkManagerApprovals(){
   {selected&&<WorkDialog item={selected.item} mode={selected.mode} onClose={()=>setSelected(null)}/>}
  </Panel>;
 }
+/** 내가 수락하고 아직 회신하지 않은 확인 요청 — 내 업무 카드와 같은 요청은 한 번만 */
+export function incomingOnly(data?:Obj):Obj[]{
+ const linked=new Set((data?.items||[]).map((item:Obj)=>item.requestId).filter(Boolean));
+ return (data?.incomingRequests||[]).filter((request:Obj)=>!linked.has(request.requestId));
+}
+function IncomingRequests({requests}:{requests:Obj[]}){
+ if(!requests.length)return null;
+ return <Panel title={`회신할 확인 요청 ${requests.length}건`}>
+  <p className="small muted">수락한 다른 팀 요청입니다. 확인한 뒤 결과를 회신하세요.</p>
+  {requests.map(request=><Link key={request.requestId} className="request-row" to={requestLink(request.requestId)}>
+   <div>
+    <span className="eyebrow">{request.incidentDisplayId} → {request.targetProcessCode}</span>
+    <h3>{request.question}</h3>
+    <span className="small muted">{when(request.createdAt)} KST · 요청 {request.requesterUserId||request.createdBy||''}</span>
+   </div>
+   <Badge value="ACCEPTED"/>
+  </Link>)}
+ </Panel>;
+}
 export function WorkInbox(){
  const {session}=useAuth();
  const [selected,setSelected]=useState<{item:Obj;mode:string}|null>(null);
@@ -423,6 +447,7 @@ export function WorkInbox(){
     {canComplete(item)&&<button className="button" onClick={()=>setSelected({item,mode:'complete'})}>{completeLabel(item)}</button>}
    </WorkCard>):<Empty>채택한 업무가 없습니다.</Empty>}
   </Panel>
+  <IncomingRequests requests={incomingOnly(myWork.data)}/>
   {selected&&<WorkDialog item={selected.item} mode={selected.mode} onClose={()=>setSelected(null)}/>}
  </>;
 }
