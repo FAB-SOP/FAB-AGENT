@@ -192,10 +192,20 @@ async def _incident_block(turn: _Turn, args: dict, action_type: str) -> str | No
                   "status": "PENDING" if proposal.get("approvalId") == pending.get("approvalId") else "APPROVED"}
                  for proposal in state.get("proposals") or [] if isinstance(proposal, dict)]
     target = args.get("processCode") or (state.get("incidentProcess") if "MAINTENANCE" in action_type else None)
+    scope = _request_scope(state, action_type, target)
+    if scope:  # 사람이 연 요청서 작업 — 지정한 대상 공정만
+        return scope
     # 원인 분석이 언제 바뀌었는지는 사건 기록 조회(backend 내부 API)가 붙어야 안다 — 그 전에는 「바뀌지 않음」으로 본다
     return incident_rules.proposal_block(action_type, target, requests, approvals, lambda _at: False,
                                          limits.LIMITS.max_proposals,
                                          human_requested=state.get("purpose") in purpose.HUMAN_REQUESTED)
+
+
+def _request_scope(state, action_type: str, target: str | None) -> str | None:
+    """사람이 연 요청서 작업의 범위 — 지정한 대상 공정(input.request.targetProcessCode)으로만"""
+    if state.get("purpose") not in purpose.HUMAN_REQUESTED:
+        return None
+    return incident_rules.request_scope_error(action_type, target, state.get("requestInput"))
 
 
 async def _create_proposal(turn: _Turn, args: dict, cid: str, action_type: str, brief: dict) -> dict:
@@ -225,6 +235,8 @@ async def save_proposal(turn: _Turn, name: str, args: dict, cid: str) -> None:
             rejection, fixable = f"[REJECTED] {e}", True
     if rejection:
         turn.fixable_proposal_reject |= fixable
+        if rejection.startswith("[LIMIT]"):  # 사람에게도 이유를 보인다 — 결과의 한계로(finalize)
+            turn.update["proposalLimit"] = True
         return turn.say(rejection, cid, name)
     turn.rt.tracer.event("proposal", approvalId=approval["approvalId"], actionType=action_type)
     turn.say(f"[PROPOSED] 승인 {approval['approvalId']}로 저장했습니다. 사람의 승인을 기다립니다. "
