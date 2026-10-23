@@ -69,5 +69,10 @@ def record_evidence(result: dict) -> tuple[dict, str | None]:
     """근거와 데이터 버전 — 결과의 dataVersion은 데이터 팩 버전(업무 MCP)만 쓴다. 지식 MCP의 버전(KNOWLEDGE-*)은 문서 색인 버전이라
     덮어쓰지 않는다(예전에는 마지막 검색 결과가 결과의 dataVersion이 됐다)"""
     evidence = {e["evidenceId"]: e for e in result.get("evidenceRefs", [])}
+    analysis = (result.get("data") or {}).get("latestCauseAnalysis") if isinstance(result.get("data"), dict) else None
+    for ref in (analysis or {}).get("evidenceRefs") or []:  # 보고서 입력의 최신 원인 분석 근거 — 초안이 인용할 수 있게
+        if isinstance(ref, dict) and ref.get("evidenceId"):
+            evidence.setdefault(ref["evidenceId"], {"evidenceId": ref["evidenceId"], "sourceType": ref.get("type") or ref.get("sourceType"),
+                                                    "sourceId": ref.get("ref") or ref.get("sourceId") or ref["evidenceId"]})
     data_version = result.get("dataVersion")
     return evidence, None if str(data_version or "").startswith("KNOWLEDGE") else data_version

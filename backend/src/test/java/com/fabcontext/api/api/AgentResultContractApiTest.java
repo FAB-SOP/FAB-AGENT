@@ -195,4 +195,81 @@ class AgentResultContractApiTest extends ApiTestSupport {
         getAs(user,"/api/incidents/{id}/analysis-results",job.getIncidentId()).andExpect(jsonPath("$.data.resultKind").value("CAUSE_ANALYSIS"))
                 .andExpect(jsonPath("$.data.answer").doesNotExist());
     }
+    private ResultActions reportContext(String incident) throws Exception {
+        return mvc.perform(get("/internal/incidents/{id}/report-context", incident).header("Authorization", TOKEN));
+    }
+
+    @Test void reportContextAlwaysContainsExplicitNullBeforeAnyCauseAnalysis() throws Exception {
+        Job job = create();
+        var before = incidents.findById(job.getIncidentId()).orElseThrow();
+        long version = before.getVersion();
+        int timeline = tx.execute(t -> incidents.findById(job.getIncidentId()).orElseThrow().getTimeline().size());
+        var response = reportContext(job.getIncidentId()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.incident.incidentId").value(job.getIncidentId()))
+                .andExpect(jsonPath("$.data.data.checkRequests").isArray())
+                .andExpect(jsonPath("$.data.data.actions").isArray())
+                .andExpect(jsonPath("$.data.data.reports").isArray())
+                .andExpect(jsonPath("$.data.data.workItems").isArray())
+                .andExpect(jsonPath("$.data.evidenceRefs").isArray());
+        assertThat(Json.tree(json(response, "$.data.data")).get("latestCauseAnalysis").isNull()).isTrue();
+        assertThat(results.findByIncidentIdOrderByCreatedAtDesc(job.getIncidentId())).isEmpty();
+        assertThat(jobs.findById(job.getJobId()).orElseThrow().getStatus()).isEqualTo(JobStatus.QUEUED);
+        var after = incidents.findById(job.getIncidentId()).orElseThrow();
+        assertThat(after.getVersion()).isEqualTo(version);
+        int afterTimeline = tx.execute(t -> incidents.findById(job.getIncidentId()).orElseThrow().getTimeline().size());
+        assertThat(afterTimeline).isEqualTo(timeline);
+    }
+
+    @Test void reportContextDoesNotTreatAnAnswerOnlyHistoryAsCauseAnalysis() throws Exception {
+        Session user = cmp(); Job basic = create();
+        event(basic, "JOB_FAILED", Map.of("errorCode", "TEST", "message", "no initial result"));
+        Job answer = question(user, basic);
+        event(answer, "RESULT_READY", payload(answer, "ANSWER")).andExpect(status().isOk());
+        var response = reportContext(basic.getIncidentId()).andExpect(status().isOk());
+        assertThat(Json.tree(json(response, "$.data.data")).get("latestCauseAnalysis").isNull()).isTrue();
+    }
+
+    @Test void reportContextKeepsLatestCauseWhenANarrowAnswerIsNewerAndReusesPublicResultShape() throws Exception {
+        Session user = cmp(); Job basic = create();
+        event(basic, "RESULT_READY", payload(basic, "CAUSE_ANALYSIS")).andExpect(status().isOk());
+        var cause = results.findFirstByJobIdOrderByCreatedAtDesc(basic.getJobId()).orElseThrow();
+        Job answer = question(user, basic);
+        event(answer, "RESULT_READY", payload(answer, "ANSWER")).andExpect(status().isOk());
+        var response = reportContext(basic.getIncidentId()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.resultId").value(cause.getResultId()))
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.jobId").value(basic.getJobId()))
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.resultKind").value("CAUSE_ANALYSIS"))
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.analysis.nextStep").value("CURRENT_CHECK"))
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.candidateCauses[0].stance").value("REFUTED"));
+        var published = getAs(user, "/api/incidents/{id}/analysis-results?resultId={result}", basic.getIncidentId(), cause.getResultId())
+                .andExpect(status().isOk());
+        assertThat(Json.canonical(json(response, "$.data.data.latestCauseAnalysis")))
+                .isEqualTo(Json.canonical(json(published, "$.data")));
+    }
+
+    @Test void reportContextIncludesDeepCauseAnalysisAndPreservesMissingLegacyMetadata() throws Exception {
+        Session user = cmp(); Job basic = create();
+        event(basic, "RESULT_READY", payload(basic, "CAUSE_ANALYSIS")).andExpect(status().isOk());
+        Job deep = question(user, basic);
+        event(deep, "RESULT_READY", payload(deep, "CAUSE_ANALYSIS")).andExpect(status().isOk());
+        reportContext(basic.getIncidentId()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.jobId").value(deep.getJobId()))
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.kind").value("DEEP"))
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.evidenceRefs[0].evidenceId").value("E-ACT-act_1"));
+        Job legacy = create();
+        event(legacy, "RESULT_READY", Map.of("result", Map.of("observedFacts", List.of(), "candidateCauses", List.of(),
+                "evidenceRefs", List.of(), "limitations", List.of()))).andExpect(status().isOk());
+        var response = reportContext(legacy.getIncidentId()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.observedFacts").isEmpty())
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.candidateCauses").isEmpty())
+                .andExpect(jsonPath("$.data.data.latestCauseAnalysis.analysis.nextStep").doesNotExist());
+        assertThat(Json.tree(json(response, "$.data.data.latestCauseAnalysis")).get("answer").isNull()).isTrue();
+    }
+
+    @Test void reportContextStillRequiresServiceAuthenticationAndRejectsMissingIncident() throws Exception {
+        mvc.perform(get("/internal/incidents/EV-1009/report-context")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/internal/incidents/EV-1009/report-context").session(cmp().http())).andExpect(status().isForbidden());
+        reportContext("not-an-incident").andExpect(status().isNotFound());
+    }
+
 }

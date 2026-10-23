@@ -29,8 +29,8 @@
 키 순서와 JSON 숫자 표현(1/1.0)은 정규화하고 배열 순서는 보존한다. 전송 메타데이터를 제외한 envelope/payload의 SHA-256을 저장한다.
 
 - 제외: 최상위 eventId, at, sequence, metrics, traceId.
-- 추가 제외: JOB_STARTED의 payload.startedAt만.
-- 유지: 답변·후보·근거·순서·보고서/스냅샷 ID·업무 시각·nextRetryAt 등 업무 내용. payload 안의 at/sequence/metrics 같은 이름을 재귀적으로 삭제하지 않는다.
+- 추가 제외: JOB_STARTED.payload.startedAt, RETRY_SCHEDULED.payload.nextRetryAt.
+- 유지: 답변·후보·근거·순서·보고서/스냅샷 ID·업무 시각·RETRY_SCHEDULED의 nextAttempt/errorCode 등 업무 내용. payload 안의 at/sequence/metrics 같은 이름을 재귀적으로 삭제하지 않는다.
 - 기존 호환 입력에서 생략 가능한 schemaVersion/jobId/incidentId/threadId는 현재 Job의 기본값으로 정규화한다. 필드가 명시돼 있으면 그 값을 비교한다.
 
 C가 재전송 때 추가로 바꾸는 필드가 있다면 제외 가능 여부를 함께 확인한다. 제외 목록을 넓히기 전에 그 필드가 전송 정보인지 업무 내용인지 구분한다.
@@ -45,9 +45,11 @@ C가 재전송 때 추가로 바꾸는 필드가 있다면 제외 가능 여부�
 - 옛 행은 해시가 없어 내용을 검증할 수 없다. 같은 식별 정보면 기존 중복 무시를 유지하고 WARN `agent.event.legacy-unverifiable`로 남긴다. 재수신한 내용을 과거의 정답 해시로 채우지 않는다. 옛 행도 Job/attempt/type가 다르면 충돌이다.
 - 현재 ddl-auto=update에 따라 다음 해당 버전 기동 시 컬럼/인덱스가 추가된다. 서비스 DB 재시드·마이그레이션·배포는 이번 작업에서 실행하지 않았다. 기존 행의 내용 비교를 사후 복원하지 않는다.
 
+RETRY_SCHEDULED는 nextRetryAt 비교 제외 변경을 구분하도록 신규 해시에 v2 접두사를 사용한다. 기존 v1 RETRY 행은 원래 nextRetryAt 원문이 없어 새 비교식으로 변환할 수 없으므로 식별 정보가 같으면 검증 불가 경고와 기존 중복 무시를 유지한다. 다른 이벤트 해시는 바꾸지 않는다. 상세 호환 규칙은 report-context-analysis-api.md 참고.
+
 ## 의진님 전달·확인
 
-이벤트 충돌 보완 자체는 요청 형식을 바꾸지 않는다. 같은 이벤트 재전송은 같은 eventId를 쓰고 업무 payload를 유지한다. `at/sequence/metrics/traceId/JOB_STARTED.startedAt` 차이는 허용한다. 다른 payload가 EVENT_CONTENT_CONFLICT로 무시되면 재전송/새 ID 생성으로 덮어쓰려 하지 않고 trace에 남긴다.
+이벤트 충돌 보완 자체는 요청 형식을 바꾸지 않는다. 같은 이벤트 재전송은 같은 eventId를 쓰고 업무 payload를 유지한다. `at/sequence/metrics/traceId/JOB_STARTED.startedAt/RETRY_SCHEDULED.nextRetryAt` 차이는 허용한다. 다른 payload가 EVENT_CONTENT_CONFLICT로 무시되면 재전송/새 ID 생성으로 덮어쓰려 하지 않고 trace에 남긴다.
 
 함께 연결할 기존 작업:
 
