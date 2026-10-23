@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
-from fab.agent import followup
-from fab.agent.graph.state import AgentState, runtime
+from fab.agent import followup, purpose, question_kind, recent
+from fab.agent.graph.state import AgentState, current_job, runtime
 from fab.agent.harness import instructions, limits
 
 
@@ -21,6 +21,13 @@ async def start(state: AgentState, config) -> dict:
         "REPORT": "저장된 기록으로 보고서 초안을 만들어 주세요.",
     }.get(state["mode"], "추가 조사를 해 주세요.")
     messages.append(HumanMessage(content=f"[작업 {state['jobId']} · 모드 {state['mode']} · 사건 {state['incidentId']}]\n{question}"))
+    answer_only = state.get("purpose") == purpose.QUESTION and question_kind.answer_only(state.get("question"))
+    if answer_only:
+        messages.append(HumanMessage(content=question_kind.NOTE))
+    if state.get("purpose") in (purpose.QUESTION, purpose.FOLLOWUP):  # 질문마다 새 thread — 앞 질문 · 답을 참고로
+        history = await recent.load(runtime(config).backend, state["incidentId"], current_job(state, config), runtime(config).tracer)
+        if history:
+            messages.append(HumanMessage(content=history))
     request = state.get("requestInput") or {}
     if request:  # 사람이 연 요청서 작업 — 무엇을 만들지
         messages.append(HumanMessage(content="[요청서 작업] " + ", ".join(
@@ -30,6 +37,6 @@ async def start(state: AgentState, config) -> dict:
     if selected:  # 추가 분석 — 작업자가 고른 결과를 진술 근거로 넣는다(인용할 수 있게 근거로 등록)
         messages.append(HumanMessage(content=followup.note(selected)))
     runtime(config).tracer.event("node", node="start", mode=state["mode"], promptVersion=prompt_version)
-    return {"messages": messages, "counters": limits.new_window(), "result": None, "previousResult": None, "requestSent": None, "proposalLimit": None, "analysis": None, "report": None, "conclusion": None,
+    return {"messages": messages, "counters": limits.new_window(), "answerOnly": answer_only, "result": None, "previousResult": None, "requestSent": None, "proposalLimit": None, "analysis": None, "report": None, "conclusion": None,
             "stopReason": None, "promptVersion": prompt_version,
             **({"evidence": followup.evidence_of(selected, state.get("dataVersion"))} if selected else {})}

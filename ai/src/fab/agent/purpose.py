@@ -37,6 +37,8 @@ def can_propose(purpose: str, has_pending_approval: bool) -> bool:
 
 def may_propose(state: dict) -> bool:
     """그래프 상태로 본 제안 허용 — purpose가 없는 상태(예전 체크포인트)는 모드로 정한다"""
+    if state.get("answerOnly"):  # 수치 · 사실 질문 — 요청서를 내지 않는다(fab.agent.question_kind)
+        return False
     return can_propose(state.get("purpose") or purpose_of(state["mode"], None), bool(state.get("pendingApproval")))
 
 

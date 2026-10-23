@@ -16,6 +16,8 @@ def route_agent(state: AgentState) -> str:
         return "agent"
     if any(tool_call["name"] in PROPOSALS for tool_call in getattr(last, "tool_calls", None) or []):
         return "request_brief"
+    if not getattr(last, "tool_calls", None) and state.get("result"):  # 접수된 답 뒤의 말 — 다시 제출을 조르지 않는다
+        return "finalize"
     return "tools"
 
 
