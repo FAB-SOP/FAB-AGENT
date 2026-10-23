@@ -17,7 +17,7 @@ src/main/java/com/fabcontext/api/
 ├─ config/        FabProperties — 토큰 · 승인 만료 · 시드 · Agent 모드 · 데모 경로 · 묶음 경로(pack-dir · rag-dir)
 ├─ auth/          로그인 · 세션 · CSRF · 서비스 토큰(/api/events → ROLE_SERVICE, /internal → ROLE_AGENT) · 공정 범위 권한 · 시연 계정 전환
 ├─ domain/        화면(공개 API /api/**) 기능 — 기능마다 Controller · Service · Entity · Repository · Dtos
-│  ├─ incident/      P03 사건 목록 · 상세 · 보류 사건 조사 재개 · 타임라인
+│  ├─ incident/      P03 사건 목록 · 상세 · 타임라인(상태 전이 API는 항상 409)
 │  ├─ events/        이상 이벤트 접수 (탐지 서비스 → 사건 생성 + 기본 분석 작업)
 │  ├─ processdata/   P04~P06 run · 계측 · 특징 · 센서 시계열 · 경로 · 변경 · 공정 비교
 │  │                 PackStore(묶음 파일 읽기) · ProcessEvidenceService(서버 쪽 계산 — R1 · OOS · 정상 분포 대비 z · 참고 범위)
@@ -123,7 +123,7 @@ python3 ../ops/tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-do
 | 쓰기 | 모든 POST · PATCH에 `X-CSRF-TOKEN`. 계약에 표시된 쓰기는 `Idempotency-Key`도 필수 |
 | Idempotency | 같은 키 + 같은 본문 → 최초 응답 재생(`Idempotent-Replayed: true`), 같은 키 + 다른 본문 → 422 |
 | 낙관적 버전 | `expectedVersion` · `expectedIncidentVersion` · `expectedContentRevision`이 다르면 409 → 다시 조회 |
-| 권한 | 사건 · 데이터는 `processScopes` 기준, 확인 요청은 요청자 · 담당자 관계 기준, 사건 종료는 보고서 확정으로만 · 보류 사건 재개는 MANAGER만 |
+| 권한 | 사건 · 데이터는 `processScopes` 기준, 확인 요청은 요청자 · 담당자 관계 기준, 사건 종료는 보고서 확정으로만(관리자 수동 보류 · 보류 해제 · 종료 없음) |
 
 ## 화면별 흐름 (P01~P12)
 
@@ -134,7 +134,7 @@ python3 ../ops/tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-do
 5. **회신** 요청 담당자가 `POST .../replies` → 요청 REPLIED, 대기하던 작업에서 RESUME 작업 생성, 사건은 다시 INVESTIGATING.
 6. **조치 · 효과** 실제 수행한 조치만 기록합니다(미래 시각이면 422). 효과를 기록해도 사건은 자동 종료되지 않습니다.
 7. **보고서** 사용자가 요청할 때만 REPORT 작업으로 DRAFT를 만듭니다. 편집(`contentRevision`) → 확정(스냅샷 · 확정본 보존, 사건 종료) → Markdown 내보내기. 확정은 사건당 한 번이며 확정 뒤 새 판본 · 재확정은 없습니다.
-8. **사건 종료 · 관리자 전이** 사건은 최신 판본 보고서를 확정할 때만 종료됩니다(사건당 확정 1회, 남은 분석 · 승인 · 미회신 요청 · 미수행 업무가 있으면 409 `CONFIRMATION_BLOCKED`). 요청은 철회, 업무는 미수행으로 닫아 정리합니다. 확정과 함께 확정본 AI 요약이 접수됩니다. 관리자는 기존에 보류된 사건의 조사 재개(ON_HOLD → INVESTIGATING)만 할 수 있고, 보류 · 수동 종료는 409 `TRANSITION_REMOVED`.
+8. **사건 종료 · 관리자 전이** 사건은 최신 판본 보고서를 확정할 때만 종료됩니다(사건당 확정 1회, 남은 분석 · 승인 · 미회신 요청 · 미수행 업무가 있으면 409 `CONFIRMATION_BLOCKED`). 요청은 철회, 업무는 미수행으로 닫아 정리합니다. 확정과 함께 확정본 AI 요약이 접수됩니다. 보고서 초안 작업이 진행 중이면 확정이 막히고(`REPORT_IN_PROGRESS`), 종료된 사건에 늦게 도착한 초안은 저장하지 않습니다. 관리자의 수동 보류 · 보류 해제 · 종료는 없습니다 — 상태 전이 API는 항상 409 `TRANSITION_REMOVED`. 기존 보류 사건도 보고서 확정으로 종료됩니다.
 
 SSE `GET /api/incidents/{id}/stream` 이벤트: `snapshot`, `job.status`, `analysis.result`, `approval.created`, `approval.decided`, `approval.executed`, `work-item.updated`, `check-request.created`, `check-request.replied`, `action.recorded`, `action.verified`, `report.ready`, `report.confirmed`, `report.summary`, `incident.updated`. 연결이 끊기면 `getJob`으로 상태를 복구합니다. 대시보드 전역 스트림은 계약에 없으므로 `GET /api/dashboard`를 다시 조회합니다.
 
