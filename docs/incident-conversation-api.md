@@ -1,6 +1,6 @@
 # 프론트 연결: 사건 상세 통합 대화 조회 v1
 
-브랜치 `feat/incident-conversation`, 기준 main `75730c0`(PR #21 포함). Backend만 구현한다. Kafka 미사용. C의 Agent 내부 history API와 별개인 사람용 화면 API다.
+브랜치 `feat/incident-conversation`, 최신 main `f0e3daa`(PR #24 승인 재개까지 포함) 병합. Backend만 구현한다. Kafka 미사용. C의 Agent 내부 history API와 별개인 사람용 화면 API다.
 
 ## 달라지는 점
 
@@ -134,7 +134,8 @@ data.request는 사건 헤더와 회신 본문을 중복하지 않도록 inciden
 
 ## 검증 및 한계
 
-- `cd backend && ./gradlew test --offline`: **전체 327건 중 325건 통과, 실패 0, 기존 KnowledgeApiTest 2건 건너뜀**.
+- `cd backend && SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4 ./gradlew test --offline --rerun-tasks`: **전체 338건 중 336건 통과, 실패 0, 기존 KnowledgeApiTest 2건 건너뜀**. 최초 기본 풀 실행에서는 여러 테스트 컨텍스트가 연결을 보유해 SlowAgentApiTest 기동이 PostgreSQL 연결 한도(`too many clients`)로 실패했다. 재실행의 환경변수로 테스트 풀만 4로 제한했으며 제품 설정·테스트 코드는 바꾸지 않았다.
+- 기존 Agent 호환: `cd ai && uv run --offline pytest -q` → **176건 통과, 4건 건너뜀**. AI 코드는 수정하지 않았다.
 - 신규 ConversationApiTest **17건 통과**: 기본 분석 전 조회, 질문·답 보존, 승인/회신/RESUME·새 thread 추가 분석, 선택 스냅샷/실제 인용, 승인 카드 공개/페이지 밖 유지, 작업/업무 결정, 요청 거절/철회, 실패·끊긴/순환 연결, 읽기 전용·권한·커서·Swagger.
 - 격리 Postgres/Hibernate 통계에서 **기본 사건 SQL 11회 → 질문/답변 25쌍과 작업 결과 5건을 추가해도 SQL 11회**. 결과·작업별 개별 조회를 추가하지 않는다.
 - 실제 Frontend 화면 연결·브라우저 SSE 재연결은 미검증. 이 변경은 읽기 전용 Backend이며 Agent/LLM 동작을 변경하지 않았다. 실서버·서비스 DB·배포는 건드리지 않았다.
