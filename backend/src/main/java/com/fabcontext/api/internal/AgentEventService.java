@@ -66,6 +66,9 @@ public class AgentEventService {
 		if (job.getStatus() == JobStatus.SUCCEEDED || job.getStatus() == JobStatus.FAILED) {
 			return ignored(jobId, "JOB_FINISHED");
 		}
+		if (job.getStatus() == JobStatus.QUEUED && java.util.Set.of("JOB_STARTED", "ANALYSIS_PROGRESS", "RESULT_READY", "APPROVAL_REQUIRED", "WAITING_REPLY", "REPORT_DRAFT_READY").contains(type)
+				&& !jobService.canStart(job, incident))
+			throw new InternalError("CONFLICT", "현재 사건의 다른 작업이 끝난 뒤 이벤트를 처리할 수 있습니다.", "실행 가능한 작업만 claim하세요.");
 		// 처리 중 예외가 나면 수신 기록과 업무 변경이 함께 롤백되어 같은 ID로 다시 처리할 수 있다.
 		entityManager.persist(new ProcessedAgentEvent(eventId, jobId, attempt, type, Instant.now(clock)));
 		// 선택 필드 — 작업을 끝내거나 멈추는 이벤트에 실린 이번 시도의 trace 요약(Observability)

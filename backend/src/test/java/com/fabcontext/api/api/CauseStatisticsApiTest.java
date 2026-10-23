@@ -161,11 +161,11 @@ class CauseStatisticsApiTest extends ApiTestSupport {
     }
 
     @Test
-    void requiresManagerAndNeverLeaksOtherProcessThroughDefaultOrExplicitEquipmentFilters() throws Exception {
+    void requiresStatisticsAccessAndNeverLeaksOtherProcessThroughDefaultOrExplicitEquipmentFilters() throws Exception {
         fixture();
         mvc.perform(get("/api/cause-statistics")).andExpect(status().isUnauthorized());
         getAs(cmp(), "/api/cause-statistics").andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("MANAGER_ROLE_REQUIRED"));
+                .andExpect(jsonPath("$.error.code").value("CAUSE_STATISTICS_ACCESS_DENIED"));
         getAs(cmp(), "/api/cause-statistics/reports").andExpect(status().isForbidden());
         String name = prefix + "manager";
         jdbc.update("""
@@ -183,6 +183,39 @@ class CauseStatisticsApiTest extends ApiTestSupport {
                 .andExpect(status().isForbidden());
         getAs(limited, "/api/cause-statistics/reports?year=2091&equipmentIds=ETCH-PM2")
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void maintenanceCanReadStatisticsListAndReportDetailWithinAssignedScopes() throws Exception {
+        fixture();
+        Session maintenance = login("mnt.jung");
+        getAs(maintenance, "/api/cause-statistics?year=2091")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(4));
+        var page = getAs(maintenance, "/api/cause-statistics/reports?year=2091")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(4));
+        String reportId = json(page, "$.data.items[0].reportId");
+        getAs(maintenance, "/api/reports/{id}", reportId)
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void maintenanceAccessDoesNotExpandProcessOrEquipmentScopes() throws Exception {
+        fixture();
+        String name = prefix + "maintenance";
+        jdbc.update("""
+            insert into user_account (user_id, username, password_hash, display_name, role, process_scopes, team)
+            select ?, ?, password_hash, '범위 정비사', 'ENGINEER', cast('["CMP"]' as jsonb), '설비정비팀'
+            from user_account where user_id='USR-MGR-01'
+            """, prefix + "user", name);
+        Session limited = login(name);
+        getAs(limited, "/api/cause-statistics?year=2091")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalCount").value(3));
+        getAs(limited, "/api/cause-statistics/reports?year=2091")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(3));
+        getAs(limited, "/api/cause-statistics?year=2091&processCodes=ETCH")
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("PROCESS_SCOPE_DENIED"));
+        getAs(limited, "/api/cause-statistics/reports?year=2091&equipmentIds=ETCH-PM2")
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("PROCESS_SCOPE_DENIED"));
     }
 
     @Test

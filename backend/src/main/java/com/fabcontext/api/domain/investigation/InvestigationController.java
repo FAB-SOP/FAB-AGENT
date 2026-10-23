@@ -81,6 +81,7 @@ public class InvestigationController {
 			s.put("status", incident.getStatus().name());
 			s.put("version", incident.getVersion());
 			s.put("activeJob", activeJobs.find(incident.getActiveJobId()));
+			s.put("waitingJobs", activeJobs.waitingForIncident(incidentId));
 			return s;
 		});
 		return streamHub.subscribe(incidentId, snapshot);
