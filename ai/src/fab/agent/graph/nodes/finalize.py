@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from fab.agent import purpose
 from fab.agent.graph.state import AgentState, current_job, runtime
 from fab.agent.tools import REPORT_SECTIONS
 from fab.agent.harness.limits import LIMITS
@@ -21,7 +22,7 @@ def as_list(value) -> list[str]:
     return [str(item) for item in value]
 
 
-REF_TYPES = {"SENSOR", "METROLOGY", "ROUTE", "CHANGE", "REPLY", "DOCUMENT"}  # 계약 Reference.sourceType
+REF_TYPES = {"SENSOR", "METROLOGY", "ROUTE", "CHANGE", "REPLY", "DOCUMENT", "ACTION"}  # 계약 Reference.sourceType
 
 
 SEGMENT_LIMITATION = ("시계열 구간(DEMO-SEGMENT-V2)의 4σ · 2초 · 5초는 팀 시연 선택값이며 실제 공장 검증값이 아닙니다. "
@@ -60,13 +61,31 @@ def _contract_facts(submitted: dict) -> list[dict]:
             for fact in submitted.get("observedFacts", [])]
 
 
+def candidate_id(cause_ids: list[str], priority: int, taken: set[str]) -> str:
+    """원인 후보 ID — 원인 매트릭스 ID를 정렬해 +로 잇는다(순위 · 가설 문구와 무관, 같은 원인 조합이면 같은 ID).
+    원인 ID가 없는 후보는 UNMAPPED-순위, 한 결과 안에서 겹치면 #2 · #3을 붙인다"""
+    base = "+".join(sorted(set(cause_ids))) or f"UNMAPPED-{priority}"
+    candidate, n = base, 1
+    while candidate in taken:
+        n += 1
+        candidate = f"{base}#{n}"
+    taken.add(candidate)
+    return candidate
+
+
 def _contract_causes(submitted: dict) -> list[dict]:
-    return [{"priority": max(1, int(cause.get("priority") or i + 1)), "hypothesis": str(cause.get("hypothesis", "")),
-             "supportingEvidenceIds": list(cause.get("supportingEvidenceIds") or []),
-             "conflictingEvidenceIds": list(cause.get("conflictingEvidenceIds") or []),
-             "missingData": as_list(cause.get("missingData")),
-             "nextCheck": str(cause.get("nextCheck", ""))}
-            for i, cause in enumerate(submitted.get("candidateCauses", []))]
+    causes, taken = [], set()
+    for i, cause in enumerate(submitted.get("candidateCauses", [])):
+        priority = max(1, int(cause.get("priority") or i + 1))
+        cause_ids = [str(cause_id) for cause_id in cause.get("causeIds") or []]
+        row = {"candidateId": candidate_id(cause_ids, priority, taken), "priority": priority,
+               "hypothesis": str(cause.get("hypothesis", "")), "causeIds": cause_ids,
+               "supportingEvidenceIds": list(cause.get("supportingEvidenceIds") or []),
+               "conflictingEvidenceIds": list(cause.get("conflictingEvidenceIds") or []),
+               "missingData": as_list(cause.get("missingData")),
+               "nextCheck": str(cause.get("nextCheck", ""))}
+        causes.append(row | {"stance": cause_stance(row)})
+    return causes
 
 
 def _used_evidence_ids(facts: list[dict], causes: list[dict]) -> set[str]:
@@ -75,10 +94,19 @@ def _used_evidence_ids(facts: list[dict], causes: list[dict]) -> set[str]:
             | {evidence_id for cause in causes for evidence_id in cause["supportingEvidenceIds"] + cause["conflictingEvidenceIds"]})
 
 
+NO_CHANGE = {"changed": False, "fields": [], "reason": "", "newEvidenceIds": [], "adjusted": False}
+
+
 async def finalize(state: AgentState, config) -> dict:
     job_runtime = runtime(config)
     if state["mode"] == "REPORT":
         return await _finalize_report(state, job_runtime)
+    return outcome(state, current_job(state, config))
+
+
+def outcome(state: dict, job_id: str) -> dict:
+    """그래프 상태 → 계약 모양 {result, analysis, workSuggestions}. 끝낼 때(finalize)와 승인 대기 직전(이미 접수된 답을
+    APPROVAL_REQUIRED에 싣는다 — Worker)에 같은 모양을 쓴다"""
     submitted = state.get("result")
     limitations = []
     if submitted is None and state.get("previousResult"):  # 재개 뒤 다시 정리하기 전에 멈춤 — 그 전에 접수된 답을 쓴다
@@ -104,8 +132,8 @@ async def finalize(state: AgentState, config) -> dict:
     used |= {e for item in submitted.get("workSuggestions") or [] for e in item.get("evidenceIds") or []}
     evidence = state.get("evidence", {})
     result = {
-        "resultId": f"RESULT-{current_job(state, config)}",
-        "jobId": current_job(state, config), "incidentId": state["incidentId"],
+        "resultId": f"RESULT-{job_id}",
+        "jobId": job_id, "incidentId": state["incidentId"],
         "dataVersion": state.get("dataVersion") or "UNKNOWN",
         **({"answer": str(submitted["answer"]).strip()} if str(submitted.get("answer") or "").strip() else {}),
         "observedFacts": facts, "candidateCauses": causes,
@@ -114,12 +142,12 @@ async def finalize(state: AgentState, config) -> dict:
                          for evidence_id in sorted(used) if evidence_id in evidence],
         "synthetic": True,
     }
-    # 계약 AnalysisResult.candidateCauses는 추가 필드를 막는다 — 원인 매트릭스 ID는 계약 밖 analysis에 둔다
-    analysis = {"nextStep": submitted.get("nextStep"), "stopReason": state.get("stopReason"),
-                "promptVersion": state.get("promptVersion"), "conclusion": state.get("conclusion"),
-                "causeIds": [[str(cause_id) for cause_id in cause.get("causeIds") or []]
-                             for cause in submitted.get("candidateCauses", [])],
-                "causeStances": [cause_stance(cause) for cause in causes],
+    # 원인 후보의 candidateId · causeIds · stance는 result에, 판단(resultKind · nextStep · 결론 변경)은 analysis에 — payload에서 둘은 형제다
+    conclusion = {**NO_CHANGE, **(state.get("conclusion") or {})}
+    analysis = {"resultKind": purpose.result_kind(state.get("purpose") or purpose.purpose_of(state["mode"], None),
+                                                  bool(conclusion["changed"])),
+                "nextStep": submitted.get("nextStep") or "INSUFFICIENT_EVIDENCE", "conclusion": conclusion,
+                "stopReason": state.get("stopReason"), "promptVersion": state.get("promptVersion"),
                 "requestSent": state.get("requestSent"), "proposalLimit": bool(state.get("proposalLimit"))}
     # 업무 후보는 계약 AnalysisResult 밖 — 이벤트 payload의 workSuggestions로 따로 싣는다(근거는 evidenceRefs 안의 것만)
     suggestions = contract_suggestions(submitted.get("workSuggestions"), {ref["evidenceId"] for ref in result["evidenceRefs"]})

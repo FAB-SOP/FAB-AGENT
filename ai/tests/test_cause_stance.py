@@ -57,5 +57,8 @@ async def test_finalize_reports_stances_and_cites_conflicting_evidence():
                                {"causeIds": ["ETCH_WALL"], "supportingEvidenceIds": [], "conflictingEvidenceIds": ["E-3"]},
                                {"supportingEvidenceIds": ["E-2"], "conflictingEvidenceIds": ["E-3"]})}
     out = await finalize(state, {"configurable": {"runtime": _Runtime()}})
-    assert out["analysis"]["causeStances"] == [SUPPORTED, REFUTED, UNDETERMINED]
+    causes = out["result"]["candidateCauses"]  # 판정은 후보마다 — candidateId는 원인 ID 조합(없으면 UNMAPPED-순위)
+    assert [c["stance"] for c in causes] == [SUPPORTED, REFUTED, UNDETERMINED]
+    assert [c["candidateId"] for c in causes] == ["CMP_PRESSURE", "ETCH_WALL", "UNMAPPED-3"]
+    assert out["analysis"]["resultKind"] == "ANSWER" and out["analysis"]["conclusion"]["changed"] is False
     assert {ref["evidenceId"] for ref in out["result"]["evidenceRefs"]} == KNOWN  # 반대 근거도 화면이 찾을 수 있게

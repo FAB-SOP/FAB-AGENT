@@ -58,6 +58,10 @@ class HttpBackend:
         """확정 보고서의 스냅샷(섹션 · 원인 분류 · 근거 · snapshotRef) — SUMMARY 작업이 읽는다. CONFIRMED가 아니면 409"""
         return await self._req("GET", f"/internal/reports/{report_id}/snapshot")
 
+    async def incident_history(self, incident_id: str) -> dict:
+        """사건 요약 이력(최근 질문 · AI 답 · 회신 · 요청, 최신순) — 질문 작업이 앞 질문을 알게 한다"""
+        return await self._req("GET", f"/internal/incidents/{incident_id}/history")
+
     async def save_report_draft(self, incident_id, sections, evidence_ids):
         return await self._req("POST", f"/internal/incidents/{incident_id}/report-drafts",
                                json={"sections": sections, "evidenceIds": evidence_ids})

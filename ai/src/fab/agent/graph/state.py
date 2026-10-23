@@ -19,6 +19,7 @@ class AgentState(TypedDict, total=False):
     threadId: str
     jobId: str
     mode: str  # BASIC | DEEP | REPORT
+    answerOnly: bool  # 수치 · 사실만 묻는 질문 — 원인 후보 · 할 일 후보 · 요청서 없이 답만(fab.agent.question_kind)
     purpose: str  # BASIC | REPLY | QUESTION | REQUEST | REPORT — 작업 종류(fab.agent.purpose)
     pendingApproval: dict | None  # 이 사건에서 승인을 기다리는 요청서 — 있으면 질문은 질문 전용(사건 기록 조회가 채운다)
     baseline: dict | None  # 사건의 가장 최근 원인 분석 — 결론 변경 검사의 기준(사건 기록 조회가 채운다)

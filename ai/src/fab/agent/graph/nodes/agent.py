@@ -28,7 +28,8 @@ async def agent(state: AgentState, config) -> dict:
         job_runtime.tracer.event("limit", reason=reason)
         return {"stopReason": reason}
     messages = context.fit_budget(state["messages"])
-    tools = job_runtime.toolbox.model_tools(state["mode"], allow_proposals=may_propose(state))
+    tools = job_runtime.toolbox.model_tools(state["mode"], allow_proposals=may_propose(state),
+                                            answer_only=bool(state.get("answerOnly")))
     if _last_call(state, counters):  # 한도 직전 — 조회 대신 지금 근거로 답하게(빈 결과로 멈추지 않게)
         job_runtime.tracer.event("last_call", modelCalls=counters["modelCalls"])
         tools = [tool for tool in tools if tool["function"]["name"] in ("submit_result", "submit_report")]
@@ -44,6 +45,8 @@ async def agent(state: AgentState, config) -> dict:
                            outputTokens=usage.get("output_tokens", 0),
                            reasoningTokens=(usage.get("output_token_details") or {}).get("reasoning", 0))
     counters["modelCalls"] += 1
+    if not reply.tool_calls and state.get("result"):  # 답은 이미 접수됐다(요청서 알림에 말로 「필요 없다」고 답한 경우) — 그대로 끝낸다
+        return {"messages": [reply], "counters": counters}
     if not reply.tool_calls:  # 제출 없이 말로 끝내려 하면 제출 도구를 쓰라고 되돌린다
         nudge = HumanMessage(content="[Harness] 결과는 반드시 submit_result(또는 submit_report)로 제출하세요.")
         return {"messages": [reply, nudge], "counters": counters}

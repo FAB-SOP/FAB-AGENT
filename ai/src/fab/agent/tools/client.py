@@ -15,7 +15,7 @@ from fastmcp import Client
 
 from fab.agent.harness.guard import mask
 from fab.agent.harness.limits import LIMITS
-from fab.agent.tools.definitions import HARNESS_TOOLS, PROPOSALS, WRITE_TOOLS
+from fab.agent.tools.definitions import HARNESS_TOOLS, PROPOSALS, ANSWER_SUBMIT, WRITE_TOOLS
 from fab.common.envelope import RETRYABLE_CODES, parse_error_code
 
 
@@ -50,9 +50,12 @@ class Toolbox:
     async def __aexit__(self, *exc):
         await self._stack.aclose()
 
-    def model_tools(self, mode: str, *, allow_proposals: bool) -> list[dict]:
+    def model_tools(self, mode: str, *, allow_proposals: bool, answer_only: bool = False) -> list[dict]:
         allowed = {"submit_report"} if mode == "REPORT" else {"submit_result", *(PROPOSALS if allow_proposals else ())}
-        return self.specs + [tool for tool in HARNESS_TOOLS if tool["function"]["name"] in allowed]
+        harness = [tool for tool in HARNESS_TOOLS if tool["function"]["name"] in allowed]
+        if answer_only:  # 수치 · 사실 질문 — 원인 후보 · 할 일 후보 칸이 없는 양식
+            harness = [ANSWER_SUBMIT if tool["function"]["name"] == "submit_result" else tool for tool in harness]
+        return self.specs + harness
 
     async def call(self, name: str, args: dict, tracer, *, allow_write: bool = False) -> dict:
         if name in WRITE_TOOLS and not allow_write:

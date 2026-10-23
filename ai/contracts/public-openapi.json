@@ -6527,7 +6527,8 @@
               "ROUTE",
               "CHANGE",
               "REPLY",
-              "DOCUMENT"
+              "DOCUMENT",
+              "ACTION"
             ]
           },
           "sourceId": {
@@ -6602,12 +6603,31 @@
             "items": {
               "type": "object",
               "properties": {
+                "candidateId": {
+                  "type": "string",
+                  "description": "원인 매트릭스 ID를 정렬해 +로 이은 값(같은 원인 조합이면 같은 ID). 원인 ID가 없으면 UNMAPPED-순위"
+                },
                 "priority": {
                   "type": "integer",
                   "minimum": 1
                 },
                 "hypothesis": {
                   "type": "string"
+                },
+                "causeIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "stance": {
+                  "type": "string",
+                  "enum": [
+                    "SUPPORTED",
+                    "REFUTED",
+                    "UNDETERMINED"
+                  ],
+                  "description": "근거 수로 본 Agent 판정. 사람의 확정이 아니며 backend status와 별개"
                 },
                 "supportingEvidenceIds": {
                   "type": "array",
@@ -6634,6 +6654,9 @@
                 }
               },
               "required": [
+                "candidateId",
+                "causeIds",
+                "stance",
                 "priority",
                 "hypothesis",
                 "supportingEvidenceIds",
