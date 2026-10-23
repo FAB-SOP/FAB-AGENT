@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {answerText,conclusionChange,counterIds,nextCheck,stanceView} from '../src/domain/analysisMarks';
+import {answerText,conclusionChange,counterIds,nextCheck,nextStepView,stanceView} from '../src/domain/analysisMarks';
 
 describe('agent v2 analysis marks',()=>{
  it('shows stance only when the server sent one',()=>{
@@ -14,6 +14,11 @@ describe('agent v2 analysis marks',()=>{
   expect(conclusionChange({analysis:{}})).toBeNull();
   expect(conclusionChange({analysis:{conclusion:{changed:true,reason:'새 계측',fields:['topCause'],newEvidenceIds:['E-1']}}}))
    .toEqual({reason:'새 계측',fields:['topCause'],newEvidenceIds:['E-1']});
+ });
+ it('shows the next step only for known values',()=>{
+  expect(nextStepView({analysis:{nextStep:'UPSTREAM_CHECK'}})?.label).toBe('앞 공정 확인');
+  expect(nextStepView({analysis:{}})).toBeNull();
+  expect(nextStepView({analysis:{nextStep:'SOMETHING'}})).toBeNull();
  });
  it('reads new and old field names',()=>{
   expect(answerText({answer:'전체 답',summary:'요약'})).toBe('전체 답');

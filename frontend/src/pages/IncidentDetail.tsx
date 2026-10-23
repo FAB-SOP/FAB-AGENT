@@ -1,23 +1,19 @@
-import {useEffect,useState,type Dispatch,type SetStateAction} from 'react';
+import {useEffect,useState} from 'react';
 import {Link,useParams,useSearchParams} from 'react-router-dom';
-import {useQueries,useQuery,useQueryClient} from '@tanstack/react-query';
+import {useInfiniteQuery,useQuery,useQueryClient} from '@tanstack/react-query';
 import {ArrowUpRight,FileText,Send,RefreshCw,ChevronLeft} from 'lucide-react';
 import {api,API_MODE,write} from '../api/client';
 import {fmt,labels,when,type Incident,type Obj} from '../api/types';
 import {useAuth} from '../auth';
 import {Badge,Empty,ErrorMessage,Field,Modal,Notice,PageHeading,Panel} from '../components/ui';
 import {ActionWorkspace} from '../components/ActionWorkspace';
-import {loadQuestionThread} from '../domain/questionThreads';
 import {incidentStage} from '../domain/actionSources';
 import {AnalysisRequestStatus} from '../components/AnalysisRequestStatus';
-import {ProposedWorkList} from '../components/WorkItems';
-import {ResultReview} from '../components/ResultReview';
-import {IncidentApprovals} from './Approvals';
-import {InvestigationConversation} from '../components/InvestigationConversation';
-import {conversationEntries,followupEntries} from '../domain/conversation';
+import {refKey,SelectionBar} from '../components/ResultReview';
+import {InvestigationBlocks} from '../components/InvestigationBlocks';
+import {buildBlocks,conversationItems,pendingOutsidePages,runningJob,selectState,type ConversationPage} from '../domain/incidentConversation';
 import {canManageInvestigation} from '../domain/permissions';
 import {ErrorMessageIfFailed,useCommand} from './workflowShared';
-const IN_PROGRESS_STATES=['QUEUED','RUNNING','WAITING_APPROVAL','WAITING_REPLY'];
 const STREAM_EVENTS=[
  'snapshot','job.status','analysis.result','approval.created','approval.decided','check-request.replied',
  'check-request.created','check-request.decided',
@@ -26,7 +22,6 @@ const STREAM_EVENTS=[
 const DETAIL_TABS=[['analysis','분석과 추가 질문'],['evidence','관측 근거'],['actions','검토·조치·효과'],['reports','보고서'],['timeline','조사 이력']];
 const nowInKstInput=()=>new Date(Date.now()+9*3600000-60000).toISOString().slice(0,16);
 type Command=ReturnType<typeof useCommand>;
-type TrackedJob={incidentId:string;jobId:string};
 function useStream(id:string){
  const queryClient=useQueryClient();
  const [connected,setConnected]=useState(false);
@@ -47,94 +42,49 @@ function useStream(id:string){
  },[id,queryClient]);
  return connected;
 }
-/** 사건 · 분석 · 진행 중 작업 · 조치 · 보고서 조회. 작업 상태가 바뀌면 사건 화면 데이터를 다시 불러온다 */
-function useInvestigationData(id:string){
- const queryClient=useQueryClient();
+/** 사건 · 조치 · 보고서 조회. 조치 탭만 분석 이력이 필요하다 */
+function useInvestigationData(id:string,tab:string){
  const incidentQuery=useQuery({queryKey:['incident',id],queryFn:()=>api<Incident>('/api/incidents/'+id),refetchInterval:2000});
- const incident=incidentQuery.data;
  const analysis=useQuery({
   queryKey:['analysis',id],
   queryFn:()=>api<Obj>(`/api/incidents/${id}/analysis-results?latest=false`),
   retry:false,
-  refetchInterval:5000,
+  enabled:tab==='actions',
  });
- const [trackedJob,setTrackedJob]=useState<TrackedJob|null>(null);
- useEffect(()=>{
-  if(incident?.activeJobId)setTrackedJob({incidentId:id,jobId:incident.activeJobId});
- },[id,incident?.activeJobId]);
- const jobId=(trackedJob?.incidentId===id?trackedJob.jobId:null)||incident?.activeJobId||analysis.data?.jobId;
- const job=useQuery({
-  queryKey:['job',jobId],
-  queryFn:()=>api<Obj>('/api/jobs/'+jobId),
-  enabled:!!jobId,
-  refetchInterval:query=>IN_PROGRESS_STATES.includes(query.state.data?.status)?2000:false,
- });
- useEffect(()=>{
-  if(!job.data)return;
-  for(const key of ['incident','analysis','actions','reports','work-items'])queryClient.invalidateQueries({queryKey:[key,id]});
-  queryClient.invalidateQueries({queryKey:['approvals']});
-  queryClient.invalidateQueries({queryKey:['requests']});
- },[job.data?.jobId,job.data?.status,id,queryClient]);
  const actions=useQuery({queryKey:['actions',id],queryFn:()=>api<Obj>(`/api/incidents/${id}/actions`),refetchInterval:5000});
  const reports=useQuery({queryKey:['reports',id],queryFn:()=>api<Obj>(`/api/incidents/${id}/reports`),refetchInterval:3000});
- return {incidentQuery,incident,analysis,jobId,job,setTrackedJob,actions,reports};
+ return {incidentQuery,incident:incidentQuery.data,analysis,actions,reports};
 }
-/** 승인 대기 제안 · 질문 스레드 · 지난 분석 결과 */
-function useConversation(id:string,incident:Incident|undefined,analysis:Obj|undefined,activeJob:Obj|null|undefined){
- const approvalId=activeJob?.waitingRef?.type==='APPROVAL'?activeJob.waitingRef.id:null;
- const proposal=useQuery({
-  queryKey:['approval',approvalId],
-  queryFn:()=>api<Obj>('/api/approvals/'+approvalId),
-  enabled:!!approvalId&&activeJob?.status==='WAITING_APPROVAL',
-  refetchInterval:2000,
+/** 사건 대화 통합 조회 — 질문·답·재개 연결, 승인 대기, 결과 검토를 한 번에. 사건 SSE가 오면 다시 읽는다 */
+function useIncidentConversation(id:string){
+ const query=useInfiniteQuery({
+  queryKey:['conversation',id],
+  queryFn:({pageParam})=>api<ConversationPage>(`/api/incidents/${id}/conversation?size=50${pageParam?'&cursor='+encodeURIComponent(pageParam):''}`),
+  initialPageParam:'',
+  getNextPageParam:(last:ConversationPage)=>last.nextCursor||undefined,
+  // SSE가 끊겼을 때를 위해 실행 중일 때만 다시 읽는다
+  refetchInterval:query=>query.state.data?.pages[0]?.runningJobs.length?2000:false,
  });
- const answerResults=useQueries({queries:(analysis?.history||[])
-  .filter((result:Obj)=>result.resultId!==analysis?.resultId)
-  .map((result:Obj)=>({
-   queryKey:['analysis-source',id,result.resultId],
-   queryFn:()=>api<Obj>(`/api/incidents/${id}/analysis-results?resultId=${encodeURIComponent(result.resultId)}`),
-  }))});
- const threadQuery=(entry:Obj)=>({
-  queryKey:['question-thread',id,entry.jobId],
-  queryFn:()=>loadQuestionThread(entry.jobId,threadJobId=>api<Obj>('/api/jobs/'+threadJobId)),
-  refetchInterval:(query:any)=>IN_PROGRESS_STATES.includes(query.state.data?.latestJob?.status)?2000:false,
- });
- const baseEntries=conversationEntries(incident?.timeline,analysis?.history||[],activeJob);
- const baseJobs=useQueries({queries:baseEntries.map(threadQuery)});
- // 질문·기본 분석 스레드를 다 불러온 뒤에야 어느 결과가 이미 들어 있는지 알 수 있다(잠깐 중복 표시 방지)
- const settled=baseJobs.every(query=>!query.isPending);
- const coveredJobs=new Set<string>([...baseEntries.map(entry=>entry.jobId),...baseJobs.flatMap(query=>query.data?.jobs.map((job:Obj)=>job.jobId)||[])]);
- const coveredThreads=new Set<string>(baseJobs.flatMap(query=>query.data?.jobs.map((job:Obj)=>job.threadId).filter(Boolean)||[]));
- const allResults=[...(analysis?[analysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])];
- // 진행·승인 대기 중인 추가 분석은 아직 결과가 없으므로 작업 자체로 항목을 만든다
- if(activeJob&&['DEEP','RESUME'].includes(activeJob.kind))allResults.push({...activeJob,createdAt:activeJob.createdAt||new Date().toISOString()});
- const extraEntries=settled?followupEntries(allResults,coveredJobs,coveredThreads):[];
- const extraJobs=useQueries({queries:extraEntries.map(threadQuery)});
- const pairs=[...baseEntries.map((entry,index)=>({entry,query:baseJobs[index]})),...extraEntries.map((entry,index)=>({entry,query:extraJobs[index]}))]
-  .sort((a,b)=>Date.parse(a.entry.createdAt)-Date.parse(b.entry.createdAt));
- const questions=pairs.map(pair=>pair.entry);
- const questionJobs=pairs.map(pair=>pair.query);
- return {proposal,questions,questionJobs,answerResults};
+ const latest=query.data?.pages[0];
+ return {query,latest,items:conversationItems(query.data?.pages||[])};
 }
+type Conversation=ReturnType<typeof useIncidentConversation>;
 type DetailContext={
  id:string;
  incident:Incident;
  command:Command;
  blocked:boolean;
  setStartingBasic:(starting:boolean)=>void;
- setRequestedBasic:(job:Obj)=>void;
- setTrackedJob:Dispatch<SetStateAction<TrackedJob|null>>;
 };
 async function requestRerun(context:DetailContext){
  const {id,incident,command,blocked}=context;
  if(blocked||command.isPending)return;
  context.setStartingBasic(true);
  try{
-  await command.exec(async()=>{
-   const accepted=await write<Obj>(`/api/incidents/${id}/basic-analysis-jobs`,{expectedIncidentVersion:incident.version,reason:'사용자 재실행'});
-   context.setRequestedBasic({...accepted,kind:'BASIC',createdAt:new Date().toISOString()});
-   context.setTrackedJob({incidentId:id,jobId:accepted.jobId});
-  },undefined,'재분석 요청을 접수했습니다.');
+  await command.exec(
+   ()=>write<Obj>(`/api/incidents/${id}/basic-analysis-jobs`,{expectedIncidentVersion:incident.version,reason:'사용자 재실행'}),
+   undefined,'재분석 요청을 접수했습니다.',
+  );
  }finally{
   context.setStartingBasic(false);
  }
@@ -151,11 +101,10 @@ function submitQuestion(context:DetailContext,question:string,clearQuestion:()=>
 function requestReportDraft({id,incident,command}:DetailContext){
  command.exec(()=>write(`/api/incidents/${id}/report-jobs`,{expectedIncidentVersion:incident.version,baseReportVersion:null}));
 }
-/** 진행 중인 분석 · 승인 · 회신이 있거나 운영 권한이 없으면 새 요청을 막는다 */
-function investigationStatus(incident:Incident,activeJob:Obj|null|undefined,startingBasic:boolean,canManage:boolean){
- const state=activeJob?.status||incident.jobStatus;
- const blocked=startingBasic||!canManage||incident.status==='CLOSED'||IN_PROGRESS_STATES.includes(state||'');
- const rerunning=startingBasic||activeJob?.kind==='BASIC'&&['QUEUED','RUNNING'].includes(state||'');
+/** 실행 중인 분석이 있거나 운영 권한이 없으면 새 요청을 막는다 — 승인·회신 대기는 막지 않는다 */
+function investigationStatus(incident:Incident,running:Obj|undefined,startingBasic:boolean,canManage:boolean){
+ const blocked=startingBasic||!canManage||incident.status==='CLOSED'||!!running;
+ const rerunning=startingBasic||running?.kind==='BASIC';
  return {canManage,blocked,rerunning};
 }
 export function IncidentDetail(){
@@ -163,28 +112,29 @@ export function IncidentDetail(){
  const [detailParams]=useSearchParams();
  const {session}=useAuth();
  const connected=useStream(id);
- const data=useInvestigationData(id);
  const [tab,setTab]=useState(detailParams.get('tab')||'analysis');
+ const data=useInvestigationData(id,tab);
+ const conversation=useIncidentConversation(id);
  const [question,setQuestion]=useState('');
  const [modal,setModal]=useState('');
  const [startingBasic,setStartingBasic]=useState(false);
- const [requestedBasic,setRequestedBasic]=useState<Obj|null>(null);
  const command=useCommand();
  const {incident}=data;
- const activeJob=data.job.data||(requestedBasic?.jobId===data.jobId?requestedBasic:incident?.activeJob);
- const conversation=useConversation(id,incident,data.analysis.data,activeJob);
+ const running=runningJob(conversation.latest);
+ const activeJob=running||conversation.latest?.waitingJobs[0]||null;
  const [verification,setVerification]=useState<Obj|null>(null);
  if(data.incidentQuery.isError)return <ErrorMessage error={data.incidentQuery.error}/>;
  if(!incident)return <Empty>사건을 불러오는 중…</Empty>;
- const {canManage,blocked,rerunning}=investigationStatus(incident,activeJob,startingBasic,canManageInvestigation(session,incident.processCode));
- const context:DetailContext={id,incident,command,blocked,setStartingBasic,setRequestedBasic,setTrackedJob:data.setTrackedJob};
+ const {canManage,blocked,rerunning}=investigationStatus(incident,running,startingBasic,canManageInvestigation(session,incident.processCode));
+ const context:DetailContext={id,incident,command,blocked,setStartingBasic};
  const stage=incidentStage(incident,activeJob);
+ const waitingApproval=conversation.latest?.pendingApprovals.find(approval=>approval.approvalId===activeJob?.waitingRef?.id);
  return <><IncidentHeader incident={incident} stage={stage} connected={connected}/>
   {command.message&&<Notice tone={command.isError?'error':'info'}>{command.message}</Notice>}
-  {tab!=='analysis'&&activeJob&&<AnalysisRequestStatus job={activeJob} approval={conversation.proposal.data} error={conversation.proposal.error}/>}
+  {tab!=='analysis'&&activeJob&&<AnalysisRequestStatus job={activeJob} approval={waitingApproval}/>}
   <DetailTabs tab={tab} onChange={setTab}/>
   {tab==='analysis'&&<AnalysisTab
-   incident={incident} stage={stage} activeJob={activeJob} latestAnalysis={data.analysis.data} conversation={conversation} command={command}
+   incident={incident} stage={stage} conversation={conversation} command={command}
    startingBasic={startingBasic} rerunning={rerunning} canManage={canManage} blocked={blocked} question={question} onQuestionChange={setQuestion}
    onRerun={()=>requestRerun(context)} onAsk={()=>submitQuestion(context,question,()=>setQuestion(''))} onReviewActions={()=>setTab('actions')}
   />}
@@ -218,9 +168,7 @@ function DetailTabs({tab,onChange}:{tab:string;onChange:(tab:string)=>void}){
 type AnalysisTabProps={
  incident:Incident;
  stage:{code:string;label:string};
- activeJob?:Obj|null;
- latestAnalysis?:Obj;
- conversation:ReturnType<typeof useConversation>;
+ conversation:Conversation;
  startingBasic:boolean;
  rerunning:boolean;
  canManage:boolean;
@@ -233,35 +181,37 @@ type AnalysisTabProps={
  onReviewActions:()=>void;
 };
 function AnalysisTab(props:AnalysisTabProps){
- const {incident,stage,activeJob,latestAnalysis,conversation,command}=props;
- const {proposal,questions,questionJobs,answerResults}=conversation;
+ const {incident,stage,conversation,command}=props;
+ const {query,latest,items}=conversation;
+ const latestAnalysis=latest?.latestCauseAnalysis;
+ const [selected,setSelected]=useState<string[]>([]);
+ const blocks=buildBlocks(items);
+ // 이미 분석에 쓰였거나 진행 중이 된 결과는 선택에서 뺀다(서버 analysisUse 기준)
+ const picked=items.filter(item=>item.sourceRef&&selected.includes(refKey(item.sourceRef))&&selectState(item).selectable);
+ const toggle=(key:string)=>setSelected(keys=>keys.includes(key)?keys.filter(other=>other!==key):[...keys,key]);
+ const outside=pendingOutsidePages(items,latest);
  const rerunButton=<button className="button secondary" disabled={props.blocked||command.isPending} onClick={props.onRerun}>
   <RefreshCw size={18}/>{props.rerunning?'재분석 중…':'기본 분석 재요청'}
  </button>;
  return <div className="analysis-grid"><Panel title="조사 내용" className="conversation-panel" extra={rerunButton}>
-  <InvestigationConversation
-   entries={questions}
-   threads={questionJobs.map(query=>query.data)}
-   results={[...(latestAnalysis?[latestAnalysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])]}
-   activeJob={activeJob}
-   proposal={proposal.data}
-   startingBasic={props.startingBasic}
+  {query.hasNextPage&&<div className="older-records">
+   {outside>0&&<span className="small">이전 기록에 처리 대기 {outside}건이 있습니다.</span>}
+   <button type="button" className="text-button" disabled={query.isFetchingNextPage} onClick={()=>query.fetchNextPage()}>
+    {query.isFetchingNextPage?'불러오는 중…':'이전 기록 더 보기'}
+   </button>
+  </div>}
+  <InvestigationBlocks blocks={blocks} latestCauseId={latestAnalysis?.resultId} startingBasic={props.startingBasic} loading={query.isPending}
+   incident={incident} canManage={props.canManage} selected={selected} onToggle={toggle}/>
+  {query.error&&<ErrorMessage error={query.error}/>}
+  <SelectionBar incident={incident} picked={picked} running={runningJob(latest)} onClear={()=>setSelected([])}/>
+  <QuestionComposer
+   canManage={props.canManage}
+   blocked={props.blocked}
+   pending={command.isPending}
+   question={props.question}
+   onChange={props.onQuestionChange}
+   onSubmit={props.onAsk}
   />
-  {questionJobs.some(query=>query.error)&&<ErrorMessage error={questionJobs.find(query=>query.error)?.error}/>}
-  {answerResults.some(query=>query.error)&&<ErrorMessage error={answerResults.find(query=>query.error)?.error}/>}
-  {proposal.error&&<ErrorMessage error={proposal.error}/>}
-  <ProposedWorkList incident={incident} canManage={props.canManage}
-   results={[...(latestAnalysis?[latestAnalysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])]}
-   afterSuggestions={<QuestionComposer
-    canManage={props.canManage}
-    blocked={props.blocked}
-    pending={command.isPending}
-    question={props.question}
-    onChange={props.onQuestionChange}
-    onSubmit={props.onAsk}
-   />}/>
-  <IncidentApprovals incidentId={incident.incidentId}/>
-  <ResultReview incident={incident} canManage={props.canManage} activeJob={activeJob}/>
   </Panel><div className="side-stack">
    <Panel title="다음 확인">
     <button className="button secondary full" disabled={!props.canManage||incident.status==='CLOSED'} onClick={props.onReviewActions}>확인·조치 제안 검토</button>

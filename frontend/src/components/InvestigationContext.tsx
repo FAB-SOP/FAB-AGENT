@@ -99,7 +99,7 @@ export function PayloadDetails({value}:{value:Obj}){
   {value?.brief&&<RequestContext value={value}/>}
  </>;
 }
-const evidenceTypes:Record<string,string>={METROLOGY:'계측',SENSOR:'센서',MAINTENANCE:'정비',MATERIAL:'재료',CHANGE:'변경',DOCUMENT:'문서'};
+const evidenceTypes:Record<string,string>={METROLOGY:'계측',SENSOR:'센서',MAINTENANCE:'정비',MATERIAL:'재료',CHANGE:'변경',DOCUMENT:'문서',REPLY:'다른 팀 회신',ACTION:'작업 결과'};
 export function EvidenceList({ids:rawIds,refs,label}:{ids:unknown[];refs:Obj[];label:string}){
  const ids=[...new Set(rawIds)];
  if(ids.length===0)return null;
@@ -108,7 +108,9 @@ export function EvidenceList({ids:rawIds,refs,label}:{ids:unknown[];refs:Obj[];l
   {ids.map((id,index)=>{
    const evidence=refs.find(ref=>ref.evidenceId===id);
    return <details key={index}>
-    <summary>{evidence?.description||evidence?.label||'근거 '+(index+1)}{evidence?.type&&<span className="small muted"> · {evidenceTypes[evidence.type]||evidence.type}</span>}</summary>
+    {/* 회신·작업 결과 근거는 이름이 요청 ID라서 종류 이름으로 보여 준다 */}
+    <summary>{evidence&&['REPLY','ACTION'].includes(evidence.type)?evidenceTypes[evidence.type]
+     :<>{evidence?.description||evidence?.label||'근거 '+(index+1)}{evidence?.type&&<span className="small muted"> · {evidenceTypes[evidence.type]||evidence.type}</span>}</>}</summary>
     <p className="small muted">{String(id)}</p>
    </details>;
   })}

@@ -86,6 +86,10 @@ export const labels:Record<string,string>={
  RECORD_ACTION:'조치 기록',
  CONFIRM_REPORT:'보고서 확정',
 };
+/** 승인 대상 종류 — 사건 화면 승인 칸·대화에서 무엇을 승인하는지 앞에 붙이는 이름 */
+export const approvalKindLabels:Record<string,string>={
+ CHECK_REQUEST:'타팀 확인 요청',MAINTENANCE_REQUEST:'정비 요청',CONFIRM_REPORT:'보고서 확정',RECORD_ACTION:'조치 기록',
+};
 export const sensorNames:Record<string,string>={
  chamber_pressure:'챔버 압력',
  heater_temperature:'히터 온도',

@@ -1,65 +1,34 @@
 import {LoaderCircle} from 'lucide-react';
 import {type Obj,when} from '../api/types';
-import {type QuestionThread} from '../domain/questionThreads';
-import {Badge,Empty} from './ui';
-import {ConclusionNotice,StanceBadge} from './AnalysisMarks';
+import {ConclusionNotice,NextStepNotice,StanceBadge} from './AnalysisMarks';
 import {answerText,counterIds,nextCheck} from '../domain/analysisMarks';
 import {EvidenceList} from './InvestigationContext';
-import {AnalysisRequestStatus,QuestionHistory} from './AnalysisRequestStatus';
+import {statusMessages,ThreadAnswer} from './AnalysisRequestStatus';
 
-export function InvestigationConversation({entries,threads,results,activeJob,proposal,startingBasic=false}:{
- entries:Obj[];
- threads:(QuestionThread|undefined)[];
- results:Obj[];
- activeJob?:Obj|null;
- proposal?:Obj;
- startingBasic?:boolean;
-}){
- const latestBasic=entries.map(entry=>entry.kind).lastIndexOf('BASIC');
- return <div className="investigation-conversation">
-  {entries.map((entry,index)=>{
-   const thread=threads[index];
-   const job=activeJob?.jobId===entry.jobId?activeJob:thread?.latestJob;
-   if(entry.kind==='DEEP'){
-    return <QuestionHistory key={entry.jobId} entries={[entry]} threads={[thread]} results={results} proposal={proposal} embedded/>;
-   }
-   const basic=<BasicAnalysisEntry key={entry.jobId} entry={entry} thread={thread} job={job} results={results} proposal={proposal}/>;
-   // 최신 기본 분석만 펼치고 이전 것은 접는다
-   return index<latestBasic?<details key={entry.jobId} className="previous-analysis">
-    <summary>이전 {entry.rerun?'재분석':'기본 분석'} · {when(entry.createdAt)} KST</summary>{basic}
-   </details>:basic;
-  })}
-  {startingBasic&&<div className="reanalysis-progress" role="status">
-   <LoaderCircle size={24} className="loading-spinner"/>
-   <strong>재분석 요청 중…</strong>
-  </div>}
-  {!entries.length&&!startingBasic&&<Empty>기본 분석 결과를 기다리고 있습니다.</Empty>}
- </div>;
+/** 요청이 아직 끝나지 않았으면 현재 작업(재개까지 따라간 것) 상태를 보여 준다. 실패는 별도 항목이 있다 */
+export function JobProgress({job}:{job?:Obj|null}){
+ if(!job||['SUCCEEDED','FAILED','CANCELLED'].includes(job.status))return null;
+ const loading=['QUEUED','RUNNING'].includes(job.status);
+ const message=job.status==='WAITING_APPROVAL'?'AI가 확인 요청을 제안했습니다. 아래 카드에서 검토하세요.':statusMessages[job.status]||job.status;
+ return <p role="status" aria-live="polite" className="analysis-progress">
+  {loading&&<LoaderCircle className="loading-spinner" size={20} aria-hidden="true"/>}
+  {message}
+ </p>;
 }
-function BasicAnalysisEntry({entry,thread,job,results,proposal}:{
- entry:Obj;thread?:QuestionThread;job?:Obj|null;results:Obj[];proposal?:Obj;
-}){
- const jobIds=new Set(thread?.jobs.map(item=>item.jobId)||[entry.jobId]);
- const answers=results
-  .filter(result=>jobIds.has(result.jobId))
-  .sort((first,second)=>Date.parse(first.createdAt)-Date.parse(second.createdAt));
- const pending=job&&['QUEUED','RUNNING'].includes(job.status);
- return <article className={'conversation-analysis'+(pending?' is-running':'')}>
-  <div className="row-between">
-   <h3>{entry.rerun?'재분석':'기본 분석'}</h3>
-   <span className="small muted">{when(entry.createdAt)} KST</span>
-  </div>
-  {pending&&<div className="reanalysis-progress" role="status" aria-live="polite">
-   <LoaderCircle size={24} className="loading-spinner"/>
-   <div>
-    <strong>{entry.rerun?'재분석 중…':'기본 분석 중…'}</strong>
-    <p>센서 데이터와 근거를 다시 확인하고 있습니다.</p>
-   </div>
-  </div>}
-  {answers.map(answer=><AnalysisResultBody key={answer.resultId} result={answer}/>)}
-  {job&&!['QUEUED','RUNNING','SUCCEEDED'].includes(job.status)&&<AnalysisRequestStatus job={job} approval={proposal}/>}
-  {!answers.length&&!pending&&(!job||job.status==='SUCCEEDED')&&<Empty>분석 결과를 불러오는 중…</Empty>}
-  {answers.length>0&&<Badge value="SUCCEEDED">분석 완료</Badge>}
+export function AnswerItem({item,latestCauseId}:{item:Obj;latestCauseId?:string|null}){
+ const result=item.data?.analysis||{};
+ const at=<span className="small muted">{when(item.occurredAt)} KST</span>;
+ const cause=result.resultKind==='CAUSE_ANALYSIS';
+ const title=item.job?.kind==='BASIC'?'AI 원인 분석':cause?'AI 원인 분석 갱신':'AI 답변';
+ if(cause&&latestCauseId&&result.resultId!==latestCauseId){
+  return <details className="previous-analysis">
+   <summary>이전 {title} · {when(item.occurredAt)} KST</summary>
+   <AnalysisResultBody result={result}/>
+  </details>;
+ }
+ return <article className={cause?'conversation-analysis':'qa-answer'}>
+  <div className="row-between"><span className="answer-by">{title}</span>{at}</div>
+  {cause?<AnalysisResultBody result={result}/>:<ThreadAnswer answer={result}/>}
  </article>;
 }
 export function AnalysisResultBody({result}:{result:Obj}){
@@ -71,6 +40,7 @@ export function AnalysisResultBody({result}:{result:Obj}){
  return <div className="conversation-result">
   <ConclusionNotice result={result}/>
   <p className="analysis-summary">{answerText(result)}</p>
+  <NextStepNotice result={result}/>
   {result.observedFacts?.length>0&&<details className="conversation-evidence">
    <summary>관측 사실 {result.observedFacts.length}건</summary>
    {result.observedFacts.map((fact:Obj,index:number)=><p key={index}>{fact.statement||fact.text||fact.description||fact.label}</p>)}

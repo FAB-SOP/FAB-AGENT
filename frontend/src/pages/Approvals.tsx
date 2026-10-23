@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
-import {useQueries,useQuery} from '@tanstack/react-query';
+import {useQuery} from '@tanstack/react-query';
 import {ArrowUpRight,Check} from 'lucide-react';
 import {api,write} from '../api/client';
 import {labels,when,type Incident,type Obj,type Page} from '../api/types';
@@ -128,43 +128,15 @@ function useApprovalReview(selected:string,setSelected:(id:string)=>void){
  />:null;
  return {command,openApproval,modal};
 }
-/** 사건 화면 승인 칸에서 무엇을 승인하는지 앞에 붙이는 이름 */
-export const approvalKindLabels:Record<string,string>={
- CHECK_REQUEST:'타팀 확인 요청',MAINTENANCE_REQUEST:'정비 요청',CONFIRM_REPORT:'보고서 확정',RECORD_ACTION:'조치 기록',
-};
-function IncidentApprovalRow({approval,onOpen}:{approval:Obj;onOpen:()=>void}){
- const payload=approval.payload||{};
- const target=[payload.targetProcessCode,payload.equipmentId].filter(Boolean).join(' · ');
- return <button className="request-row" onClick={onOpen}>
-  <div>
-   <span className="approval-kind">{approvalKindLabels[approval.actionType]||approval.actionType}</span>
-   <h3>{payload.question||approval.rationale||labels[approval.actionType]}</h3>
-   <span className="small muted">{target&&target+' · '}{approval.source==='AGENT'?'AI 제안':'사용자 제안'} · {when(approval.createdAt)}</span>
-  </div>
-  <Badge value={approval.status}/>
- </button>;
-}
-/** 사건 화면에서 바로 승인·거절 — 이 사건의 승인 대기 제안만 보여준다 */
-export function IncidentApprovals({incidentId}:{incidentId:string}){
+/** 사건 화면 흐름 카드의 승인 검토 버튼 — 승인함과 같은 검토 창 */
+export function ApprovalReviewButton({approvalId,disabled}:{approvalId:string;disabled?:boolean}){
  const [selected,setSelected]=useState('');
  const {command,openApproval,modal}=useApprovalReview(selected,setSelected);
- const approvals=useQuery({
-  queryKey:['approvals',incidentId],
-  queryFn:()=>api<Page<Obj>>(`/api/approvals?incidentId=${encodeURIComponent(incidentId)}&size=100`),
- });
- const pending=(approvals.data?.items||[]).filter(approval=>approval.status==='PENDING');
- // 목록 응답에는 요청 내용(payload)이 없어 승인 대기 건만 상세를 불러온다 — 검토 창과 같은 캐시
- const details=useQueries({queries:pending.map(approval=>({
-  queryKey:['approval',approval.approvalId],
-  queryFn:()=>api<Obj>('/api/approvals/'+approval.approvalId),
- }))});
- if(!pending.length&&!command.message)return null;
- return <section className="incident-approvals">
-  <h3>승인 대기 중 {pending.length}건 <span className="small muted">승인해야 실제로 발송·확정됩니다</span></h3>
+ return <>
+  <button className="button" disabled={disabled} onClick={()=>openApproval(approvalId)}>검토하고 승인·거절</button>
   {command.message&&<Notice tone={command.isError?'error':'info'}>{command.message}</Notice>}
-  {pending.map((approval,index)=><IncidentApprovalRow key={approval.approvalId} approval={details[index]?.data||approval} onOpen={()=>openApproval(approval.approvalId)}/>)}
   {modal}
- </section>;
+ </>;
 }
 export function Approvals(){
  const [params,setParams]=useSearchParams();

@@ -1,17 +1,16 @@
-import {ConclusionNotice,ResultKindTag,StanceBadge} from './AnalysisMarks';
+import {ConclusionNotice,NextStepNotice,ResultKindTag,StanceBadge} from './AnalysisMarks';
 import {answerText,nextCheck} from '../domain/analysisMarks';
 import {LoaderCircle} from 'lucide-react';
 import {Link} from 'react-router-dom';
-import {type QuestionThread} from '../domain/questionThreads';
 import {type Obj,when} from '../api/types';
 import {Badge,ErrorMessage,Panel} from './ui';
 import {PayloadDetails} from './InvestigationContext';
 
-const statusMessages:Record<string,string>={
+export const statusMessages:Record<string,string>={
  QUEUED:'분석 요청을 접수했습니다.',
  RUNNING:'센서 데이터와 문서를 분석하고 있습니다.',
  WAITING_APPROVAL:'AI가 확인 요청을 제안했습니다. 실행할 내용을 검토해 주세요.',
- WAITING_REPLY:'담당자에게 확인을 요청했습니다. 회신 후 분석이 이어집니다.',
+ WAITING_REPLY:'담당자에게 확인을 요청했습니다. 회신이 오면 아래 결과 검토에서 골라 추가 분석을 요청하세요.',
  SUCCEEDED:'요청한 분석이 완료되었습니다.',
  FAILED:'분석에 실패했습니다.',
  CANCELLED:'분석 요청이 취소되었습니다.',
@@ -50,83 +49,17 @@ export function AnalysisRequestStatus({job,approval,error}:{job?:Obj;approval?:O
  </Panel>;
 }
 
-export function questionEntries(timeline:Obj[]=[]){
- return timeline
-  .filter(item=>item.type==='QUESTION_ASKED'&&item.ref?.type==='JOB'&&item.ref.id)
-  .map(item=>({
-   jobId:item.ref.id,
-   question:String(item.message||'').replace(/^추가 조사 질문:\s*/,''),
-   createdAt:item.at,
-  }));
-}
-function threadStatusMessage(job:Obj|undefined){
- if(job?.resultRef?.type==='APPROVAL_REJECTED')return '제안이 거절되어 해당 조사를 마쳤습니다.';
- return job?statusMessages[job.status]||job.status:'처리 상태를 불러오는 중…';
-}
-function ThreadAnswer({answer}:{answer:Obj}){
+/** 질문에 대한 AI 답 — 원인 분석을 갱신했으면 태그·결론 변경을 함께 */
+export function ThreadAnswer({answer}:{answer:Obj}){
  return <div className="qa-result">
   <ResultKindTag result={answer}/>
   <ConclusionNotice result={answer}/>
   <p>{answerText(answer)}</p>
+  <NextStepNotice result={answer}/>
   {answer.candidateCauses?.map((cause:Obj,index:number)=><div key={cause.candidateId||cause.causeId||index}>
    <h3>{cause.rank||cause.priority}. {cause.hypothesis||cause.cause} <StanceBadge stance={cause.stance}/></h3>
    {nextCheck(cause)&&<p>{nextCheck(cause)}</p>}
    {cause.action&&<p>조치 제안 · {cause.action}</p>}
   </div>)}
  </div>;
-}
-function QuestionThreadView({entry,thread,job,results,proposal}:{
- entry:Obj;thread?:QuestionThread;job?:Obj;results:Obj[];proposal?:Obj;
-}){
- const jobIds=new Set(thread?.jobs.map(item=>item.jobId)||[entry.jobId]);
- const answers=results
-  .filter(result=>jobIds.has(result.jobId)||(job?.resultRef?.id&&result.resultId===job.resultRef.id))
-  .sort((first,second)=>Date.parse(first.createdAt||'')-Date.parse(second.createdAt||''));
- const pendingProposal=job?.status==='WAITING_APPROVAL'&&proposal?.approvalId===job.waitingRef?.id?proposal:undefined;
- const loading=job&&['QUEUED','RUNNING'].includes(job.status);
- return <article className="question-thread">
-  <div className="qa-question">
-   <div className="row-between">
-    <strong>질문</strong>
-    <span className="small muted">{when(entry.createdAt)} KST</span>
-   </div>
-   <p>{thread?.rootJob.question||job?.question||entry.question}</p>
-  </div>
-  <div className="qa-answer">
-   <div className="row-between">
-    <strong>AI 답변</strong>
-    {job&&<Badge value={job.status}/>}
-   </div>
-   {answers.map(answer=><ThreadAnswer key={answer.resultId||answer.jobId} answer={answer}/>)}
-   {pendingProposal&&<div className="qa-proposal">
-    <h3>확인 요청 제안</h3>
-    <p>{pendingProposal.rationale}</p>
-    {pendingProposal.payload?.question&&<p>{pendingProposal.payload.question}</p>}
-    <Link className="text-button" to={approvalLink(pendingProposal.approvalId)}>제안 검토하기</Link>
-   </div>}
-   {(!answers.length||job?.status!=='SUCCEEDED')&&<p role="status" className="analysis-progress">
-    {loading&&<LoaderCircle className="loading-spinner" size={20} aria-hidden="true"/>}
-    {threadStatusMessage(job)}
-   </p>}
-   {job?.error?.message&&<p className="warning-text">{job.error.message}</p>}
-  </div>
- </article>;
-}
-export function QuestionHistory({entries,jobs=[],threads=[],results=[],proposal,embedded=false}:{
- entries:Obj[];
- jobs?:(Obj|undefined)[];
- threads?:(QuestionThread|undefined)[];
- results?:Obj[];
- proposal?:Obj;
- embedded?:boolean;
-}){
- if(!entries.length)return null;
- const content=<div className="question-history">
-  {entries.map((entry,index)=>{
-   const thread=threads[index];
-   const job=thread?.latestJob||jobs[index];
-   return <QuestionThreadView key={entry.jobId} entry={entry} thread={thread} job={job} results={results} proposal={proposal}/>;
-  })}
- </div>;
- return embedded?content:<Panel title="질문·답변">{content}</Panel>;
 }
