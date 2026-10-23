@@ -46,4 +46,13 @@
   - 가설 문장과 nextStep이 어긋나면 제출이 반려된다.
 - observedFacts: 확인한 사실 · 계산 결과와 evidenceIds
 - candidateCauses: 우선순위 순서의 가설 · causeIds(위 15개 중에서, 1순위에는 반드시) · 지지 근거 · 반대 근거 · 부족한 데이터 · 다음 확인
+  - 확인한 공정마다 후보를 세워 보통 2~4개를 낸다. 검토했지만 근거가 반대하는 원인(예: 제거량이 정상 변동 안인 공정)도 버리지 말고 2순위 이하에 반대 근거(conflictingEvidenceIds)와 함께 남긴다
+  - 같은 근거 ID(예: 센서 특징 결과 하나)에 지지하는 센서와 반대하는 센서가 함께 있으면 양쪽에 넣어도 된다. Harness가 근거 수로 지지 · 반증 · 판정 보류를 붙인다 — 근거가 갈리거나 없으면 판정 보류이고, 무엇이 있으면 정할 수 있는지 missingData에 적는다
+  - 1순위는 지지 근거가 반대 근거보다 많은 후보여야 한다
 - limitations: 계측 · 센서 · 권한 · 문서 적용 범위의 한계
+- workSuggestions(선택, 최대 5): 답 다음에 할 일 후보. 작업자가 후보별로 수락 · 거절한다 — 채택 · 승인 · 발송이 아니다.
+  - 내 할 일: `REVIEW_SENSOR_DATA`(센서 실측 · 설정값 비교) · `REVIEW_PROCESS_HISTORY`(재료 · 정비 · 운전 이력) · `COMPARE_METROLOGY`(계측 비교)
+  - 상급자 검토: `REVIEW_REQUIRED`(변경 여부 검토가 필요할 때 — 무엇을 얼마로 바꿀지는 적지 않는다)
+  - 다른 팀 요청: `EQUIPMENT_INSPECTION`(장비팀 현장 점검) · `FACILITY_INSPECTION`(시설 · 공급 계통) · `UPSTREAM_CHECK`(앞 공정 담당자 확인)
+  - 근거는 이 답(observedFacts · candidateCauses)이 인용한 evidenceId만 붙인다. 근거가 약하면 후보를 내지 않는다
+  - 설정값 변경 · 부품 교체 · 재가동은 후보로도 처방하지 않는다

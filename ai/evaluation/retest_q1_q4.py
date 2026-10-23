@@ -63,20 +63,22 @@ async def _latest(user, incident_id: str) -> dict:
     return body.get("data", {}) if status == 200 else {}
 
 
-async def _reply_open(display: str, findings: str) -> int:
-    """이 사건의 OPEN 요청에 받는 사람으로 회신한다 — 회신 대기가 그래프에 있든 없든 같게"""
+async def _reply_open(display: str, findings: str) -> list[dict]:
+    """이 사건의 OPEN 요청을 받는 사람으로 수락하고 회신한다. 회신은 저장만 되므로 재개는 부른 쪽이 추가 분석으로 연다"""
     from fab.devtools.spring import LOGIN, User
 
-    replied = 0
+    replies = []
     for request in await _requests(display):
         if request.get("status") != "OPEN":
             continue
         owner = await User(LOGIN[request["ownerUserId"]]).login()
-        await owner.post(f"/api/check-requests/{request['requestId']}/replies", {
-            "findings": findings, "evidenceIds": [], "confirmedByUser": True, "expectedVersion": request["version"]})
+        _, decided = await owner.post(f"/api/check-requests/{request['requestId']}/decisions",
+                                      {"decision": "ACCEPT", "comment": None, "expectedVersion": request["version"]})
+        _, reply = await owner.post(f"/api/check-requests/{request['requestId']}/replies", {
+            "findings": findings, "evidenceIds": [], "confirmedByUser": True, "expectedVersion": decided["data"]["version"]})
+        replies.append({"type": "REPLY", "id": reply["data"]["replyId"]})
         await owner.close()
-        replied += 1
-    return replied
+    return replies
 
 
 async def _decide(user, outcome: dict, approve: bool, comment: str) -> dict:
@@ -113,7 +115,7 @@ async def _ask(user, display: str, question: str) -> str:
 
 
 async def setup(runner, backend) -> list[dict]:
-    from fab.devtools.spring import OWNER_OF_PROCESS, User, internal
+    from fab.devtools.spring import OWNER_OF_PROCESS, User, internal, request_followup
 
     log = []
     for step in SETUP:
@@ -127,7 +129,9 @@ async def setup(runner, backend) -> list[dict]:
                 log.append(await _decide(user, outcome, approved < step["approve"], "지금은 요청 없이 진행"))
                 approved += log[-1]["decision"] == "APPROVE"
             else:
-                await _reply_open(display, step["reply"])
+                replies = await _reply_open(display, step["reply"])
+                if replies:  # 회신은 저장만 된다 — 작업자가 회신을 골라 추가 분석으로 대기 중인 Agent를 재개한다
+                    await request_followup(user, display, replies)
             outs = await _drain(runner, backend)
             if not outs:
                 break

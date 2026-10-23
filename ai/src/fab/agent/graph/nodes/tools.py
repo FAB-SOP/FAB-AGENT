@@ -17,6 +17,7 @@ from fab.agent.harness.retry import TransientJobError
 from fab.agent import purpose
 from fab.agent.purpose import may_propose
 from fab.agent.tools import HARNESS_NAMES, PROPOSALS, ToolCallError
+from fab.agent.work import validate_work_suggestions
 
 
 class _Turn:
@@ -90,6 +91,7 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         turn.update["report"] = args
         return
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
+    errs += validate_work_suggestions(args.get("workSuggestions"), _cited(args))
     note = ""
     if not errs:
         args, note, change_error = _check_conclusion(turn, args)
@@ -101,6 +103,12 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
     else:
         turn.say("[ACCEPTED] 결과를 접수했습니다." + note, cid, name)
         turn.update["result"] = args
+
+
+def _cited(result: dict) -> set[str]:
+    """답이 인용한 근거 — 관측 사실 · 원인 후보 지지 근거(결과 evidenceRefs가 되는 것)"""
+    return ({e for fact in result.get("observedFacts") or [] for e in fact.get("evidenceIds") or []}
+            | {e for cause in result.get("candidateCauses") or [] for e in cause.get("supportingEvidenceIds") or []})
 
 
 def _check_conclusion(turn: _Turn, args: dict) -> tuple[dict, str, str | None]:
@@ -178,13 +186,13 @@ async def _incident_block(turn: _Turn, args: dict, action_type: str) -> str | No
         turn.rt.tracer.event("incident_rules_unavailable", error=e.text[:200])
         requests = []
     pending = state.get("pending") or {}
-    # 사건의 승인 기록은 사건 기록 조회(D9 · D12)가 붙어야 안다 — 그 전에는 이번 thread의 제안만 보고,
+    # 사건의 승인 기록은 사건 기록 조회(backend 내부 API)가 붙어야 안다 — 그 전에는 이번 thread의 제안만 보고,
     # 대기 중이 아닌 것은 요청(get_check_requests)으로 이미 세어진 것으로 본다(거절된 제안은 아직 모른다)
     approvals = [{"actionType": proposal["actionType"], "targetProcessCode": proposal.get("targetProcessCode"),
                   "status": "PENDING" if proposal.get("approvalId") == pending.get("approvalId") else "APPROVED"}
                  for proposal in state.get("proposals") or [] if isinstance(proposal, dict)]
     target = args.get("processCode") or (state.get("incidentProcess") if "MAINTENANCE" in action_type else None)
-    # 원인 분석이 언제 바뀌었는지는 사건 기록 조회(D12)가 붙어야 안다 — 그 전에는 「바뀌지 않음」으로 본다
+    # 원인 분석이 언제 바뀌었는지는 사건 기록 조회(backend 내부 API)가 붙어야 안다 — 그 전에는 「바뀌지 않음」으로 본다
     return incident_rules.proposal_block(action_type, target, requests, approvals, lambda _at: False,
                                          limits.LIMITS.max_proposals,
                                          human_requested=state.get("purpose") == purpose.REQUEST)
@@ -235,7 +243,7 @@ async def run_tool(turn: _Turn, name: str, args: dict, cid: str) -> None:
         new_evidence, data_version = record_evidence(result)
         turn.evidence.update(new_evidence)
         turn.dv = data_version or turn.dv
-        turn.say(context.to_tool_text(result), cid, name)
+        turn.say(context.to_tool_text(result, name), cid, name)
     except ToolCallError as e:
         turn.say(e.text, cid, name)
         if e.retryable:  # 재시도 후에도 일시 장애면 작업 단위 재시도로 넘긴다

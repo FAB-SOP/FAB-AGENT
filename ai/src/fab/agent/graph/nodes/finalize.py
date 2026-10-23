@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fab.agent.graph.state import AgentState, current_job, runtime
 from fab.agent.tools import REPORT_SECTIONS
+from fab.agent.stance import cause_stance
+from fab.agent.work import contract_suggestions
 
 
 def as_list(value) -> list[str]:
@@ -64,9 +66,9 @@ def _contract_causes(submitted: dict) -> list[dict]:
 
 
 def _used_evidence_ids(facts: list[dict], causes: list[dict]) -> set[str]:
-    """결과가 실제로 인용한 근거 — 관측 사실 · 원인 후보 지지 근거"""
+    """결과가 실제로 인용한 근거 — 관측 사실 · 원인 후보 지지 · 반대 근거(화면이 반대 근거도 찾을 수 있게)"""
     return ({evidence_id for fact in facts for evidence_id in fact["evidenceIds"]}
-            | {evidence_id for cause in causes for evidence_id in cause["supportingEvidenceIds"]})
+            | {evidence_id for cause in causes for evidence_id in cause["supportingEvidenceIds"] + cause["conflictingEvidenceIds"]})
 
 
 async def finalize(state: AgentState, config) -> dict:
@@ -99,5 +101,8 @@ async def finalize(state: AgentState, config) -> dict:
     analysis = {"nextStep": submitted.get("nextStep"), "stopReason": state.get("stopReason"),
                 "promptVersion": state.get("promptVersion"), "conclusion": state.get("conclusion"),
                 "causeIds": [[str(cause_id) for cause_id in cause.get("causeIds") or []]
-                             for cause in submitted.get("candidateCauses", [])]}
-    return {"result": result, "analysis": analysis}
+                             for cause in submitted.get("candidateCauses", [])],
+                "causeStances": [cause_stance(cause) for cause in causes]}
+    # 업무 후보는 계약 AnalysisResult 밖 — 이벤트 payload의 workSuggestions로 따로 싣는다(근거는 evidenceRefs 안의 것만)
+    suggestions = contract_suggestions(submitted.get("workSuggestions"), {ref["evidenceId"] for ref in result["evidenceRefs"]})
+    return {"result": result, "analysis": analysis, "workSuggestions": suggestions}

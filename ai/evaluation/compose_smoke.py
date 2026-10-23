@@ -21,7 +21,7 @@ import json
 import os
 import sys
 
-from fab.devtools.spring import User
+from fab.devtools.spring import User, request_followup
 
 INCIDENT = "EV-1009"
 QUESTION = "이 사건의 원인 후보를 분석하고, 필요한 확인 · 점검 요청을 제안해줘"
@@ -98,9 +98,12 @@ async def reply_as_etch(request_id: str | None) -> dict:
     check("확인 요청에 브리프 — ETCH-PM2 제거량 · 원인 후보(확정 아님)",
           deviation.get("value") == 4896.3 and deviation.get("withinNormal") is False and causes_ok
           and all(cause["confirmed"] is False for cause in brief["suspectedCauses"]), brief)
+    status, decided = await etch.post(f"/api/check-requests/{request_id}/decisions",
+                                      {"decision": "ACCEPT", "comment": None, "expectedVersion": request["data"]["version"]})
+    check("Etch 담당자 요청 수락 (200)", status == 200, decided)
     status, reply = await etch.post(f"/api/check-requests/{request_id}/replies", {
         "findings": "ETCH-PM2 정비 후 시즈닝 매수가 절차보다 적었습니다. 모니터 결과를 첨부합니다(시연 회신).",
-        "evidenceIds": [], "confirmedByUser": True, "expectedVersion": request["data"]["version"]})
+        "evidenceIds": [], "confirmedByUser": True, "expectedVersion": decided["data"]["version"]})
     check("Etch 담당자 회신 (201)", status == 201, reply)
     await etch.close()
     return reply
@@ -133,7 +136,10 @@ async def draft_report(cmp: User) -> None:
 async def approve_to_end(cmp: User, incident: dict, approval: dict) -> None:
     request_id = await approve_and_resume(cmp, approval)
     reply = await reply_as_etch(request_id)
-    await finish_resume(cmp, incident, reply["data"]["resumeJobId"])
+    # 회신은 저장만 된다 — 작업자가 그 회신을 골라 추가 분석을 요청해야 대기 중인 Agent가 재개된다
+    followup = await request_followup(cmp, incident["displayId"], [{"type": "REPLY", "id": reply["data"]["replyId"]}])
+    check("회신 선택 추가 분석 → 대기 재개(RESUME)", followup.get("executionMode") == "RESUME", followup)
+    await finish_resume(cmp, incident, followup["jobId"])
     await check_resumed_result(cmp, incident)
     await draft_report(cmp)
 
