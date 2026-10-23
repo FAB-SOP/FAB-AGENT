@@ -196,21 +196,21 @@ Check if `.specify/extensions.yml` exists in the project root.
 <!-- CONSTITUTION:BEGIN -->
 <!--
 Sync Impact Report
-- Version change: 1.2.0 → 1.2.1 (PATCH — 원격 커밋 57572a4의 디렉터리 구조 정리에 맞춘 경로 수정, 원칙 의미 변경 없음)
+- Version change: 1.2.1 → 2.0.0 (MAJOR — 원칙 VI의 상태 전이 규칙 재정의: 「보류 · 종료는 MANAGER만」 →
+  「종료는 보고서 확정으로만, MANAGER는 기존 보류 해제만」. 기존 관리자 수동 보류 · 종료 권한을 없애는 비호환 변경)
 - Modified principles:
-  - IV. 계약 우선 — 계약 · 변경 기록 · 대조 도구 경로(data/backend-handoff-v2 · ai/contracts · ai/docs · ops/tools)
-  - IX. 객체지향 설계 · 현업형 프로젝트 구조 — Agent(ai/src · ai/tests) · Web(frontend/src · frontend/tests) 경로
+  - VI. 공정 범위 권한 — 종료 = 보고서 확정(사건당 한 번, 같은 처리 단위), 수동 보류 · 종료 제거, 기존 보류 해제만 MANAGER,
+    종료 사건 변경 금지(조회 · 내려받기 · 요약 재요청 제외), 옛 이력 보존, 근거 보강
 - Modified sections:
-  - 기술 · 데이터 제약 — 구성(frontend · backend · ai), 패키지 의존 검사 도구 경로
-  - 개발 워크플로 · 품질 게이트 — 검증 명령의 컴포넌트 · 도구 경로
-  - Governance — 실행 지침 README 경로
+  - 기술 · 데이터 제약 — 데이터 팩 dataVersion `causal-pack-v2.1-scenarios`(원격 main의 데이터 갱신 반영, 사실 정정)
 - Added / Removed sections: 없음
 - Templates requiring updates:
-  - ✅ .specify/templates/*.md — 컴포넌트 경로를 쓰지 않음(산출물 위치만 .claude/skills 기준)
-  - ✅ .claude/skills/speckit-*/SKILL.md — 컴포넌트 경로를 쓰지 않음
-  - ✅ README.md — 원격 커밋에서 이미 새 구조로 갱신됨
-- Follow-up TODOs: 없음
-- History: 1.0.0 → 1.1.0(원칙 VIII) → 1.2.0(원칙 IX · X, 2026-10-22) → 1.2.1(경로)
+  - ✅ .specify/templates/plan-template.md · spec-template.md · tasks-template.md — 원칙을 헌법에서 읽는 구조라 수정 불필요
+  - ✅ .claude/skills/speckit-*/SKILL.md — 원칙 VI 문구를 직접 인용하지 않음
+  - ✅ README.md 101행 · backend/README.md 20 · 126 · 137행(관리자 전이 설명) — 003 구현과 함께 갱신(2026-10-23)
+- Follow-up TODOs:
+  - ✅ 001 스펙의 「보류로 확정 후 새 판본으로 재분류」 예외 삭제(2026-10-23, 003 구현)
+- History: 1.0.0 → 1.1.0(원칙 VIII) → 1.2.0(원칙 IX · X) → 1.2.1(경로) → 2.0.0(원칙 VI 종료 규칙, 2026-10-23)
 -->
 
 # FAB CONTEXT Constitution
@@ -287,13 +287,20 @@ Sync Impact Report
 ### VI. 공정 범위 권한
 
 - 조회는 `processScopes`, 사건 운영(질문 · 제안 · 승인 · 조치 · 보고서)은 `investigationProcessScopes`로
-  서버가 검사한다. 상태 전이(보류 · 종료)는 MANAGER만 할 수 있다.
+  서버가 검사한다.
+- **사건 종료는 보고서 확정으로만 일어난다.** 확정은 사건당 한 번이며, 확정과 종료는 같은 처리 단위로 함께
+  저장되거나 함께 취소된다. 관리자를 포함해 누구도 보고서 없이 사건을 보류 · 종료하지 않는다. MANAGER에게는
+  기존에 보류된 사건의 해제(조사 재개)만 남는다.
+- 종료된 사건에는 조회 · 내려받기 · 확정본 요약 재요청 외의 변경을 허용하지 않는다(서버가 거부한다).
+- 기존 보류 사건과 보고서 없이 종료된 옛 사건의 이력은 소급해 바꾸지 않는다.
 - 다른 공정 담당자 · 설비정비팀은 사건 전체가 아니라 **자신에게 배정된 요청과 그 브리프**로만 협업한다.
 - 제안의 받는 사람은 backend가 검증한다 — 앞 공정 확인은 그 공정의 PROCESS_OWNER에게만, 정비 요청은
   설비정비팀에게만, 질문한 본인에게는 보낼 수 없다.
 - 프론트의 권한 표시는 편의일 뿐이며 모든 쓰기는 서버에서 다시 검사한다.
 
 **근거**: 공정별 책임 경계가 실제 FAB 조직의 협업 방식이며, 과도한 공개는 보안 · 책임 문제를 만든다.
+종료를 보고서 확정 하나로 묶어야 「모든 종료 사건에는 사람이 검토한 확정본이 하나 있다」를 보장하고,
+닫힌 사건의 내용이 뒤늦게 바뀌는 것을 막을 수 있다.
 
 ### VII. 결정적 검증 · 복구 · 관측 가능성
 
@@ -374,7 +381,7 @@ Sync Impact Report
   업무 MCP · 지식 MCP · Agent Worker(`ai`, Python 3.12 · LangGraph · FastMCP). backend는 하나뿐이다.
 - **DB**: 실행 · 테스트 모두 PostgreSQL(pgvector). 스키마는 `backend` · `agent`(체크포인트) · `knowledge`(벡터)로
   나눈다. H2 등 대체 DB를 쓰지 않는다. 스키마를 바꾸면 반드시 재시드한다.
-- **데이터 팩**: `data/fab-causal-pack-v2`(dataVersion `causal-pack-v2-scenarios`)가 유일한 운전 데이터 원본이며
+- **데이터 팩**: `data/fab-causal-pack-v2`(dataVersion `causal-pack-v2.1-scenarios`)가 유일한 운전 데이터 원본이며
   `data/build_pack_v2.py`로 결정적으로 재생성한다. 경로(`FAB_PACK_DIR` · `FAB_RAG_DIR`)에는 코드 기본값을 두지 않는다.
 - **패키지 의존**: Spring `domain`은 `internal` · `simulator` · `seed`를 모른다. 패키지 순환은 허용하지 않는다
   (`ops/tools/java_pkgdeps.py`가 「순환: 없음」).
@@ -405,5 +412,5 @@ Sync Impact Report
   게이트로 사용하고, 위반은 Complexity Tracking에 정당화를 남겨야 한다.
 - 실행 지침은 `README.md`(전체) · `ai/README.md` · `backend/README.md`를 따른다.
 
-**Version**: 1.2.1 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-22
+**Version**: 2.0.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-23
 <!-- CONSTITUTION:END -->
