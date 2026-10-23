@@ -12,6 +12,7 @@ import {incidentStage} from '../domain/actionSources';
 import {AnalysisRequestStatus} from '../components/AnalysisRequestStatus';
 import {ProposedWorkList} from '../components/WorkItems';
 import {ResultReview} from '../components/ResultReview';
+import {IncidentApprovals} from './Approvals';
 import {InvestigationConversation} from '../components/InvestigationConversation';
 import {conversationEntries} from '../domain/conversation';
 import {canManageInvestigation} from '../domain/permissions';
@@ -253,6 +254,7 @@ function AnalysisTab(props:AnalysisTabProps){
    onSubmit={props.onAsk}
   />
   </Panel><div className="side-stack">
+   <IncidentApprovals incidentId={incident.incidentId}/>
    <Panel title="다음 확인">
     <button className="button secondary full" disabled={!props.canManage||incident.status==='CLOSED'} onClick={props.onReviewActions}>확인·조치 제안 검토</button>
     <Link className="text-button" to="/approvals">승인 제안 확인 <ArrowRight size={17}/></Link>
