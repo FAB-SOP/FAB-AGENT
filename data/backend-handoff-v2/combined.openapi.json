@@ -2476,6 +2476,114 @@
           }
         }
       }
+    },
+    "/api/reports": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "보고서 목록 · 제목 검색(페이지 단위)",
+        "operationId": "searchReports",
+        "parameters": [
+          {
+            "name": "processCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "equipmentParameter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "detectedFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "detectedTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Zero-based page index (0..N)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "The size of the page to be returned",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sorting criteria in the format: property,(asc|desc). Default sort order is ascending. Multiple sort criteria are supported.",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseReportSlice"
+                }
+              }
+            }
+          }
+        },
+        "description": "보고서 목록 · 제목 검색(페이지 단위). 공정 필수, 제목 부분 일치(대소문자 무시 · % _ 글자 그대로 · 최대 100자), category=MATERIAL·MAN·METHOD·MACHINE·HOLD·UNCLASSIFIED, equipmentParameter는 MACHINE일 때만, detectedFrom/To는 한국 시간 날짜(종료일 포함). 정렬은 이상 감지일 최신순 고정(sort 무시), size 최대 100, 전체 건수 없이 hasNext만."
+      }
     }
   },
   "components": {
@@ -6046,6 +6154,89 @@
           "meta"
         ],
         "additionalProperties": true
+      },
+      "ReportSlice": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportListItem"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hasNext": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReportListItem": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string"
+          },
+          "incidentId": {
+            "type": "string"
+          },
+          "incidentDisplayId": {
+            "type": "string"
+          },
+          "processCode": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "CONFIRMED"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "contentRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/ClassificationView"
+          }
+        }
+      },
+      "ApiResponseReportSlice": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReportSlice"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        }
       }
     },
     "securitySchemes": {
