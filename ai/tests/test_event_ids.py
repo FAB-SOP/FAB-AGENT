@@ -38,3 +38,25 @@ async def test_progress_events_are_numbered_within_an_attempt_and_sequence_still
         "EVT-job_s-A2-ANALYSIS_PROGRESS-1"]
     sequences = [e["sequence"] for e in sink.events]
     assert sequences == sorted(sequences) and len(set(sequences)) == len(sequences)
+
+
+async def test_rejected_job_failed_event_does_not_loop():
+    """실패 이벤트(JOB_FAILED)마저 backend가 거부하면 더 보내지 않고 로컬 실패 기록만 남긴다 — 예외로 작업이 RUNNING에
+    남아 lease 만료 · 재시도로 같은 실패를 되풀이하지 않게"""
+    from fab.agent.backend import BackendError
+    from fab.agent.worker.sinks import EventSink
+
+    class RejectingSink(EventSink):
+        async def emit(self, event):
+            if event["type"] == "JOB_FAILED":
+                raise BackendError("INVALID_EVENT", "payload.errorCode가 계약에 없습니다")
+            await super().emit(event)
+
+    runner, _, _ = _runner(ScriptModel((GOOD, ["E-RUN-ETCH"])))
+    runner.sink = sink = RejectingSink()
+    job = _job()
+    job["input"] = {}  # summaryRef 없음 → 작업 실패
+    out = await runner.process(job)
+    assert out["status"] == "FAILED" and out["errorCode"] == "INVALID_SUMMARY_INPUT"
+    assert [e["type"] for e in sink.events] == ["JOB_STARTED"]
+    assert len(sink.dlq) == 1 and "JOB_FAILED 이벤트도 거부" in sink.dlq[0]["error"] and "INVALID_EVENT" in sink.dlq[0]["error"]

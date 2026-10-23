@@ -23,9 +23,8 @@ from fab.agent.harness.limits import LIMITS
 from fab.agent.harness.retry import PermanentJobError, TransientJobError
 from fab.agent.harness.trace import Tracer
 from fab.agent.models import make_models
-from fab.agent.followup import split_question
+from fab.agent.job_input import resolve
 from fab.agent.report import locked_of
-from fab.agent.purpose import FOLLOWUP, purpose_of
 from fab.agent.summary import make_summary
 from fab.agent.tools import Toolbox
 from fab.common.envelope import FabToolError
@@ -80,8 +79,12 @@ class JobRunner:
 
     async def _fail(self, job: dict, code: str, message: str, tracer: Tracer) -> dict:
         ref = f"analysis.jobs.dlq/{job['jobId']}/A{job['attempt']}"
-        await self._event(job, "JOB_FAILED", {"errorCode": code, "message": message[:300], "dlqRef": ref},
-                          tracer.summary())
+        try:
+            await self._event(job, "JOB_FAILED", {"errorCode": code, "message": message[:300], "dlqRef": ref},
+                              tracer.summary())
+        except FabToolError as e:  # 실패 이벤트마저 거부되면 더 보내지 않는다 — 예외로 작업이 RUNNING에 남아 재시도가 되풀이되지 않게
+            tracer.event("job_failed_rejected", code=e.code, error=e.raw[:300])
+            message = f"{message} / JOB_FAILED 이벤트도 거부됨 [{e.code}] {e.raw[:200]}"
         await self.sink.dead_letter(job, f"[{code}] {message}")
         return {"status": "FAILED", "errorCode": code, "error": message, "trace": tracer.summary()}
 
@@ -117,7 +120,7 @@ class JobRunner:
                                               {"stepCode": code, "message": msg, "progressRatio": 0.5})
                 return await self._outcome(job, cfg, tracer)
         except PermanentJobError as e:
-            return await self._fail(job, "INVALID_RESUME", str(e), tracer)
+            return await self._fail(job, getattr(e, "code", "INVALID_RESUME"), str(e), tracer)
         except (TransientJobError, asyncio.TimeoutError) as e:
             return await self._retry(job, "TRANSIENT", str(e) or type(e).__name__, tracer)
         except FabToolError as e:
@@ -178,10 +181,11 @@ class JobRunner:
             return None
         if snap and snap.next:
             raise PermanentJobError("이 사건은 승인 또는 회신을 기다리는 중입니다. 대기를 먼저 해제하세요.")
-        question, selected = split_question(question)  # 추가 분석이면 질문 칸에 작업자가 고른 결과가 붙어 온다
+        given = resolve(job, question, trigger)  # 실행 목적 — input.purpose 우선, 전환 기간에는 기존 방식도
         return {"incidentId": job["incidentId"], "threadId": job["threadId"], "jobId": job["jobId"],
-                "mode": job["kind"], "purpose": FOLLOWUP if selected is not None else purpose_of(job["kind"], trigger),
-                "question": question, "selectedInputs": selected, "lockedSections": locked_of(job)}
+                "mode": job["kind"], "purpose": given["purpose"], "question": given["question"] or "",
+                "selectedInputs": given["selectedInputs"], "requestInput": given["request"], "lockedSections": locked_of(job),
+                "replyFlow": reply_flow(job)}
 
     async def _outcome(self, job: dict, cfg: dict, tracer: Tracer) -> dict:
         snap = await self.graph.aget_state(cfg)
@@ -208,6 +212,13 @@ class JobRunner:
         await self._event(job, "RESULT_READY", {"result": payload, **({"workSuggestions": suggestions} if suggestions else {}),
                                                 "investigationReady": analysis.get("investigationReady")}, trace)
         return {"status": "DONE", "result": result, "analysis": analysis, "workSuggestions": suggestions, "trace": trace}
+
+
+def reply_flow(job: dict) -> str:
+    """새로 시작하는 thread의 회신 흐름 — backend가 작업에 저장해 준 input.replyFlow가 먼저, 없으면 Worker 설정
+    FAB_REPLY_FLOW(MANUAL이면 요청 발송 뒤 끝냄), 기본은 WAIT. thread를 시작할 때 고정되고 RESUME은 그 값을 유지한다"""
+    given = str((job.get("input") or {}).get("replyFlow") or os.getenv("FAB_REPLY_FLOW", "")).upper()
+    return "MANUAL" if given == "MANUAL" else "WAIT"
 
 
 def make_job(kind: str, incident_id: str = "EV-1009", thread_id: str = "THR-EV1009-01",

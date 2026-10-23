@@ -24,6 +24,7 @@ class AgentState(TypedDict, total=False):
     baseline: dict | None  # 사건의 가장 최근 원인 분석 — 결론 변경 검사의 기준(사건 기록 조회가 채운다)
     conclusion: dict | None  # 결론 변경 검사 결과 — changed · fields · reason · newEvidenceIds · adjusted
     question: str
+    requestInput: dict | None  # 요청서 생성 · 재생성 입력(fab.agent.job_input) — 대상 공정 · 원인 · 대체할 승인
     selectedInputs: list | None  # 추가 분석에 작업자가 고른 조사 결과(fab.agent.followup) — 진술 근거로 등록한다
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: Annotated[dict, _merge]  # evidenceId -> ref
@@ -37,6 +38,8 @@ class AgentState(TypedDict, total=False):
     analysis: dict | None  # 계약 밖 정보(nextStep 등) — 계약 개정 전까지 따로 둔다
     workSuggestions: list | None  # 답과 함께 내는 업무 후보(fab.agent.work) — RESULT_READY.payload.workSuggestions
     report: dict | None
+    replyFlow: str | None  # 회신 흐름 — WAIT(회신 대기) · MANUAL(요청 발송 뒤 끝냄). thread를 시작할 때 정해 바뀌지 않는다
+    requestSent: str | None  # MANUAL 흐름에서 승인으로 보낸 요청 ID — 결과는 「발송 사실」이다
     lockedSections: list | None  # 보고서 작업 — 사람이 고친 칸(fab.agent.report). Agent가 쓰지 않는다
     stopReason: str | None
     promptVersion: str

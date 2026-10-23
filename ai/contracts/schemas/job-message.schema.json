@@ -81,6 +81,135 @@
       "type": "object",
       "description": "선택. 작업 종류별 입력 — 이 계약에 정의한 필드만 싣는다(DB의 job.input을 통째로 내보내지 않는다, 내부 제어값 · 비밀값 없음). SUMMARY는 summaryRef 필수, REPORT는 이전 판을 바탕으로 다시 만들 때 report",
       "properties": {
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "BASIC",
+            "QUESTION",
+            "FOLLOWUP",
+            "REQUEST",
+            "REGENERATE",
+            "REPORT"
+          ],
+          "description": "실행 목적 — kind BASIC은 BASIC, REPORT는 REPORT, DEEP은 QUESTION · FOLLOWUP · REQUEST · REGENERATE. SUMMARY는 kind와 summaryRef로 구분하고 purpose를 쓰지 않는다. 전환 기간에 맥락 trigger · 질문 칸 방식과 함께 오면 purpose가 우선이고, 모순이면 Agent가 INVALID_INPUT으로 실패시킨다"
+        },
+        "followup": {
+          "type": "object",
+          "description": "추가 분석(FOLLOWUP) — 작업자가 고른 조사 결과. backend가 원본을 조회해 만든 접수 시점 스냅샷(프론트가 보낸 내용을 그대로 쓰지 않는다)",
+          "properties": {
+            "analysisRequestId": {
+              "type": "string",
+              "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+            },
+            "question": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "selectedInputs": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "sourceRef": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "REPLY",
+                          "ACTION",
+                          "REQUEST_DECISION"
+                        ]
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "evidenceId": {
+                    "type": "string",
+                    "description": "E-REQ-{requestId}(회신 · 거절 사유) · E-ACT-{actionId}(내 작업 결과) — 결과가 이 ID를 인용하면 실제 인용"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "authorUserId": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "taskId": {
+                    "type": "string"
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "sourceRef",
+                  "evidenceId",
+                  "content",
+                  "authorUserId",
+                  "createdAt"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "analysisRequestId",
+            "selectedInputs"
+          ],
+          "additionalProperties": false
+        },
+        "request": {
+          "type": "object",
+          "description": "요청서 생성(REQUEST) · 재생성(REGENERATE) — 재생성은 대체할 승인이 필수",
+          "properties": {
+            "causeIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "targetProcessCode": {
+              "type": "string",
+              "enum": [
+                "CVD",
+                "ETCH",
+                "CMP"
+              ]
+            },
+            "supersedesApprovalId": {
+              "type": "string",
+              "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+            }
+          },
+          "additionalProperties": false
+        },
+        "replyFlow": {
+          "type": "string",
+          "enum": [
+            "WAIT",
+            "MANUAL"
+          ],
+          "description": "회신 흐름 판 — backend가 작업에 저장해 준다. WAIT: 승인 → 요청 등록 → 회신 대기(기존). MANUAL: 요청을 보낸 뒤 그래프를 끝내고, 회신은 사람이 골라 추가 분석으로 반영. Agent는 thread를 시작할 때 고정하고, 기존 thread와 RESUME은 처음 값을 유지한다"
+        },
         "report": {
           "type": "object",
           "description": "REPORT 작업 — 이전 판을 바탕으로 다시 만들 때. lockedSections는 사람이 고친 칸(보고서 칸별 editedBy). Agent는 그 칸에 「[사람이 고친 칸 — 이전 판 유지]」를 넣어 보내고 backend가 baseReportVersion의 원문으로 옮긴다",
@@ -233,6 +362,69 @@
             "required": [
               "summaryRef"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "input": {
+            "properties": {
+              "purpose": {
+                "const": "FOLLOWUP"
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "required": [
+              "followup"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "input": {
+            "properties": {
+              "purpose": {
+                "const": "REGENERATE"
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "required": [
+              "request"
+            ],
+            "properties": {
+              "request": {
+                "required": [
+                  "supersedesApprovalId"
+                ]
+              }
+            }
           }
         }
       }

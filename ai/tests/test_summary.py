@@ -211,3 +211,37 @@ def test_rule_summary_with_many_parameters_stays_short():
     summary = rule_summary(snap)
     assert all(len(line) <= 120 for line in summary["lines"]), summary
     assert validate_summary(summary["lines"], summary["evidenceIds"], snap) == []
+
+
+# ---- backend 스냅샷 모양(GET /internal/reports/{id}/snapshot) — 표시 ID 이름 · 칸 값 모양
+
+def _backend_snapshot(object_sections: bool) -> dict:
+    sections = {key: ({"title": key, "content": text} if object_sections else text) for key, text in SNAPSHOT["sections"].items()}
+    return {"reportId": "rpt_1", "reportVersion": 2, "contentRevision": 5, "snapshotRef": SNAPSHOT["snapshotRef"],
+            "title": "EV-1009 조사 보고서", "incidentDisplayId": "EV-1009", "sections": sections,
+            "classification": SNAPSHOT["classification"], "evidenceIds": SNAPSHOT["evidenceIds"],
+            "confirmedBy": "USR-CMP-01", "confirmedAt": SNAPSHOT["confirmedAt"]}
+
+
+
+@pytest.mark.parametrize("object_sections", [False, True])
+def test_backend_snapshot_shapes_are_read_the_same(object_sections):
+    """칸 값이 글이든 {title, content} 객체든 같은 요약 · 같은 검사 — 표시 ID는 incidentDisplayId(예전 displayId도 읽음)"""
+    snapshot = _backend_snapshot(object_sections)
+    assert validate_summary(GOOD, ["E-RUN-ETCH"], snapshot) == []
+    assert rule_summary(snapshot) == rule_summary(SNAPSHOT)
+    from fab.agent.summary.guard import display_id
+    assert display_id(snapshot) == display_id(SNAPSHOT) == "EV-1009"
+
+
+def test_snapshot_schema_accepts_backend_snapshot():
+    import json as _json
+    from pathlib import Path
+
+    from jsonschema import Draft202012Validator
+
+    schema = _json.loads((Path(__file__).resolve().parents[1] / "contracts/schemas/report-snapshot.schema.json").read_text())
+    validator = Draft202012Validator(schema)
+    assert not list(validator.iter_errors(_backend_snapshot(False)))
+    broken = _backend_snapshot(False) | {"classification": {"category": "SOMETHING", "equipmentParameters": []}}
+    assert list(validator.iter_errors(broken))

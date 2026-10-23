@@ -84,6 +84,8 @@ async def finalize(state: AgentState, config) -> dict:
     if submitted is None and state.get("previousResult"):  # 재개 뒤 다시 정리하기 전에 멈춤 — 그 전에 접수된 답을 쓴다
         submitted = state["previousResult"]
         limitations.append(f"승인 · 회신 뒤 다시 정리하기 전에 멈춰, 그 전에 낸 답을 그대로 둡니다: {state.get('stopReason')}")
+    if state.get("requestSent"):  # 승인으로 요청을 보낸 뒤 정리 — 회신은 저장만 된다
+        limitations.append(f"확인 요청 {state['requestSent']}를 보냈습니다. 회신은 저장만 되며, 반영하려면 회신을 골라 추가 분석을 요청하세요.")
     if submitted is None:  # 한도 초과 등으로 제출 없이 끝남 — 지금까지의 근거로 부분 결과
         submitted = {"nextStep": "INSUFFICIENT_EVIDENCE", "observedFacts": [], "candidateCauses": [], "limitations": []}
         limitations.append(f"조사가 끝나기 전에 멈췄습니다: {state.get('stopReason')}")
@@ -107,6 +109,7 @@ async def finalize(state: AgentState, config) -> dict:
                 "causeIds": [[str(cause_id) for cause_id in cause.get("causeIds") or []]
                              for cause in submitted.get("candidateCauses", [])],
                 "causeStances": [cause_stance(cause) for cause in causes],
+                "requestSent": state.get("requestSent"),
                 "investigationReady": investigation_ready(submitted, state.get("stopReason"))}
     # 업무 후보는 계약 AnalysisResult 밖 — 이벤트 payload의 workSuggestions로 따로 싣는다(근거는 evidenceRefs 안의 것만)
     suggestions = contract_suggestions(submitted.get("workSuggestions"), {ref["evidenceId"] for ref in result["evidenceRefs"]})

@@ -1,4 +1,9 @@
-"""approval_wait — 사람의 승인을 기다린다(interrupt). 승인되면 승인 ID로 변경 도구를 실행하고 회신 대기로 넘어간다."""
+"""approval_wait — 사람의 승인을 기다린다(interrupt). 승인되면 승인 ID로 변경 도구를 실행한다.
+
+회신 흐름은 thread를 시작할 때 정한다(state.replyFlow):
+  WAIT    회신 대기(reply_wait)로 넘어간다 — 전환 전에 시작한 thread
+  MANUAL  요청을 보낸 뒤 승인 전에 접수된 답으로 정리하고 끝낸다. 회신은 저장만 되고, 사람이 추가 분석을 요청하면 새 DEEP으로
+"""
 
 from __future__ import annotations
 
@@ -31,6 +36,9 @@ async def approval_wait(state: AgentState, config) -> dict:
                                          job_runtime.tracer, allow_write=True)
     req = res["data"]
     job_runtime.tracer.event("approval", approvalId=pending["approvalId"], decision="APPROVE", requestId=req["requestId"])
+    if state.get("replyFlow") == "MANUAL":
+        note = HumanMessage(content=f"[시스템 알림] 승인 결과: APPROVE. 확인 요청 {req['requestId']}를 등록했습니다.")
+        return {"messages": [note], "pending": None, "requestSent": req["requestId"]}  # 승인 전에 접수된 답(result)을 그대로 정리
     note = HumanMessage(content=f"[시스템 알림] 승인 결과: APPROVE. 확인 요청 {req['requestId']}를 등록했습니다. 회신을 기다립니다.")
     return {"messages": [note], "result": None, "previousResult": state.get("result"), "pending": {"kind": "REPLY", "requestId": req["requestId"],
                                            "interruptId": f"INT-REPLY-{uuid.uuid4().hex[:8]}"}}
