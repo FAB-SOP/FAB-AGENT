@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from langgraph.types import Command
 
 from fab.agent.graph import Runtime, build_graph
+from fab.agent.graph.nodes.finalize import outcome
 from fab.agent.harness.limits import LIMITS
 from fab.agent.harness.retry import PermanentJobError, TransientJobError
 from fab.agent.harness.trace import Tracer
@@ -56,6 +57,7 @@ class JobRunner:
         self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:6]}"
         self._seq: dict[str, int] = {}
         self._progress: dict[tuple[str, int], int] = {}  # (jobId, attempt) → 진행 알림 순번
+        self._tracers: dict[tuple[str, int], Tracer] = {}  # (jobId, attempt) → 그 시도의 trace(이벤트 충돌 경고를 남긴다)
 
     async def _event(self, job: dict, etype: str, payload: dict, metrics: dict | None = None) -> dict:
         # sequence는 thread 안에서 늘 증가해야 한다. Worker가 재시작해도 줄지 않도록 ms 시각과 비교해 키운다.
@@ -73,7 +75,13 @@ class JobRunner:
                  "payload": payload}
         if metrics is not None:  # 작업을 끝내거나 멈추는 이벤트에만 — 이번 시도의 trace 요약(backend job.metrics)
             event["metrics"] = {**metrics, "attempt": job["attempt"]}
-        await self.sink.emit(event)
+        applied = await self.sink.emit(event)
+        if isinstance(applied, dict) and applied.get("applied") is False and applied.get("reason") == "EVENT_CONTENT_CONFLICT":
+            # 같은 eventId에 다른 내용 — backend는 첫 결과를 지키고 충돌만 기록한다. 적용된 것으로 치지 않고 경고로 남긴다
+            tracer = self._tracers.get((job["jobId"], job["attempt"]))
+            if tracer is not None:
+                tracer.event("event_conflict", eventId=event_id, type=etype)
+            print(f"[warn] {event_id} 내용 충돌 — backend가 첫 결과를 유지했습니다(EVENT_CONTENT_CONFLICT)", flush=True)
         return event
 
     async def _fail(self, job: dict, code: str, message: str, tracer: Tracer) -> dict:
@@ -88,7 +96,14 @@ class JobRunner:
         return {"status": "FAILED", "errorCode": code, "error": message, "trace": tracer.summary()}
 
     async def process(self, job: dict, *, question: str | None = None, trigger: str | None = None) -> dict:
-        tracer = Tracer(job["traceId"], job["jobId"], job["incidentId"])
+        key = (job["jobId"], job["attempt"])
+        self._tracers[key] = Tracer(job["traceId"], job["jobId"], job["incidentId"])
+        try:
+            return await self._process(job, self._tracers[key], question, trigger)
+        finally:
+            self._tracers.pop(key, None)
+
+    async def _process(self, job: dict, tracer: Tracer, question: str | None, trigger: str | None) -> dict:
         try:  # 같은 jobId · attempt를 두 번 처리하지 않는다(중복 전달 · 재시작)
             await self.backend.claim(job["jobId"], job["attempt"], self.worker_id)
         except FabToolError as e:
@@ -193,10 +208,13 @@ class JobRunner:
         if pending_interrupts:
             waiting = pending_interrupts[0]
             if waiting["kind"] == "APPROVAL":
+                # 승인 전에 답이 이미 접수돼 있다(답이 먼저) — 사람이 답을 보고 승인하게 결과 · 판단 · 업무 후보를 함께 싣는다
+                answered = outcome(snap.values, job["jobId"]) if snap.values.get("result") else {}
                 await self._event(job, "APPROVAL_REQUIRED", {"approvalId": waiting["approvalId"],
                                                               "approvalVersion": waiting["approvalVersion"],
-                                                              "interruptId": waiting["interruptId"]}, trace)
-                return {"status": "WAITING_APPROVAL", "interrupt": waiting, "trace": trace}
+                                                              "interruptId": waiting["interruptId"],
+                                                              **_shape(answered)}, trace)
+                return {"status": "WAITING_APPROVAL", "interrupt": waiting, "trace": trace, **answered}
             await self._event(job, "WAITING_REPLY", {"requestId": waiting["requestId"],
                                                      "interruptId": waiting["interruptId"]}, trace)
             return {"status": "WAITING_REPLY", "interrupt": waiting, "trace": trace}
@@ -205,11 +223,17 @@ class JobRunner:
             await self._event(job, "REPORT_DRAFT_READY", {"report": final_state["report"]}, trace)
             return {"status": "DONE", "report": final_state["report"], "trace": trace}
         result, analysis = final_state["result"], final_state.get("analysis") or {}
-        # 계약(AnalysisResult)은 추가 필드를 허용하지 않는다. nextStep 등은 계약 개정 전까지 옵션으로만 싣는다.
-        payload = {**result, **analysis} if os.getenv("FAB_RESULT_EXTENSIONS") == "true" else result
         suggestions = final_state.get("workSuggestions") or []
-        await self._event(job, "RESULT_READY", {"result": payload, **({"workSuggestions": suggestions} if suggestions else {})}, trace)
+        await self._event(job, "RESULT_READY", _shape({"result": result, "analysis": analysis, "workSuggestions": suggestions}), trace)
         return {"status": "DONE", "result": result, "analysis": analysis, "workSuggestions": suggestions, "trace": trace}
+
+
+def _shape(outcome_: dict) -> dict:
+    """이벤트 payload의 결과 칸 — result와 analysis는 형제, 업무 후보는 있을 때만"""
+    if not outcome_.get("result"):
+        return {}
+    return {"result": outcome_["result"], "analysis": outcome_.get("analysis") or {},
+            **({"workSuggestions": outcome_["workSuggestions"]} if outcome_.get("workSuggestions") else {})}
 
 
 def reply_flow(job: dict) -> str:

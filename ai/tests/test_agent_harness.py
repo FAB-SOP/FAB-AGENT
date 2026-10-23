@@ -79,10 +79,11 @@ async def test_basic_analysis_offers_work_candidates_only_as_proposals(spring_ur
     result = next(item for item in processed if item["job"]["jobId"] == accepted["jobId"])
     assert result["status"] == "DONE"
     assert result["result"]["candidateCauses"]
-    stances = result["analysis"]["causeStances"]  # 원인 후보 판정 — 1순위는 지지, 정상 변동인 앞 공정은 반증으로 남는다
+    stances = [c["stance"] for c in result["result"]["candidateCauses"]]  # 원인 후보 판정 — 1순위는 지지, 정상 변동인 앞 공정은 반증으로 남는다
     assert stances[0] == "SUPPORTED" and "REFUTED" in stances[1:], stances
     event = next(e for e in runner.sink.events if e["jobId"] == accepted["jobId"] and e["type"] == "RESULT_READY")
     suggestions = event["payload"]["workSuggestions"]
+    assert event["payload"]["analysis"]["resultKind"] == "CAUSE_ANALYSIS" and event["payload"]["analysis"]["nextStep"]  # result와 형제
     assert {s["operationCode"] for s in suggestions} == {"REVIEW_SENSOR_DATA", "EQUIPMENT_INSPECTION"}
     cited = {ref["evidenceId"] for ref in event["payload"]["result"]["evidenceRefs"]}
     assert all(s["evidenceIds"] and set(s["evidenceIds"]) <= cited for s in suggestions)
@@ -192,10 +193,20 @@ async def test_events_and_jobs_follow_team_contract(display_id, spring_url, kb, 
     ctx = (await internal("GET", "/internal/jobs", spring_url))["data"]
     assert all(not list(job_v.iter_errors(x["job"])) for x in ctx)
     # Observability — 작업을 끝내거나 멈추는 이벤트에만 trace 요약(metrics)이 실리고, 진행 이벤트에는 없다
-    stops = {"RESULT_READY", "REPORT_DRAFT_READY", "APPROVAL_REQUIRED", "WAITING_REPLY", "RETRY_SCHEDULED", "JOB_FAILED"}
-    assert all(("metrics" in e) == (e["type"] in stops) for e in r["events"]), [(e["type"], "metrics" in e) for e in r["events"]]
+    stops = {"RESULT_READY", "REPORT_DRAFT_READY", "SUMMARY_READY", "APPROVAL_REQUIRED", "WAITING_REPLY", "RETRY_SCHEDULED",
+             "JOB_FAILED"}  # SUMMARY_READY — 시드의 확정 보고서 요약 작업(이 시험만 따로 돌면 이벤트 목록에 들어온다)
+    assert all(("metrics" in e) == (e["type"] in stops) for e in r["events"]), [(e["type"], "metrics" in e) for e in r["events"] if ("metrics" in e) != (e["type"] in stops)]
     m = next(e["metrics"] for e in r["events"] if e["type"] in stops)
     assert m["modelCalls"] >= 1 and m["toolCalls"] >= 1 and m["attempt"] >= 1 and m["traceId"].startswith("TRACE-")
+    # 결과는 result와 analysis가 형제 — 후보마다 candidateId · causeIds · stance, 판단은 analysis에
+    finals = [e["payload"] for e in r["events"] if e["type"] in ("RESULT_READY", "APPROVAL_REQUIRED") and "result" in e["payload"]]
+    assert finals and all(p["analysis"]["resultKind"] in ("CAUSE_ANALYSIS", "ANSWER") and p["analysis"]["nextStep"] for p in finals)
+    assert all(c["candidateId"] and "stance" in c for p in finals for c in p["result"]["candidateCauses"])
+    # 승인 대기 — 이미 접수된 답을 함께 실어 사람이 답을 보고 승인한다. backend는 그 답을 승인의 기준 결과로 저장한다
+    approvals = [e for e in r["events"] if e["type"] == "APPROVAL_REQUIRED"]
+    assert approvals and all(e["payload"].get("result") and e["payload"].get("analysis") for e in approvals)
+    stored = (await internal("GET", f"/internal/approvals/{approvals[0]['payload']['approvalId']}", spring_url))["data"]
+    assert stored.get("sourceResultId"), stored
 
 
 class SecondProposalModel:
