@@ -55,15 +55,19 @@ public final class IncidentDtos {
 			String lotId, List<String> waferIds, List<String> runIds, List<String> sensorIds,
 			Map<String, Object> metrics, IncidentStatus status, long version, String activeJobId,
 			ActiveJob activeJob, Instant detectedAt, Instant createdAt, Instant updatedAt,
-			List<TimelineItem> timeline, InvestigationPriorityView investigationPriority) {
+			List<TimelineItem> timeline, InvestigationPriorityView investigationPriority, List<ActiveJob> waitingJobs) {
 
 		public static IncidentDetail from(Incident i, ActiveJob activeJob) {
+			return from(i, activeJob, List.of());
+		}
+
+		public static IncidentDetail from(Incident i, ActiveJob activeJob, List<ActiveJob> waitingJobs) {
 			return new IncidentDetail(i.getIncidentId(), i.getDisplayId(), i.getTitle(), i.getAnomalyType(),
 				i.getSeverity(), i.getSummary(), i.getProcessCode(), i.getEquipmentId(), i.getChamberId(),
 				i.getLotId(), List.copyOf(i.getWaferIds()), List.copyOf(i.getRunIds()),
 				List.copyOf(i.getSensorIds()), Map.copyOf(i.getMetrics()), i.getStatus(), i.getVersion(),
 				i.getActiveJobId(), activeJob, i.getDetectedAt(), i.getCreatedAt(),
-				i.getUpdatedAt(), i.getTimeline().stream().map(TimelineItem::from).toList(), InvestigationPriorityView.from(i));
+				i.getUpdatedAt(), i.getTimeline().stream().map(TimelineItem::from).toList(), InvestigationPriorityView.from(i), List.copyOf(waitingJobs));
 		}
 	}
 

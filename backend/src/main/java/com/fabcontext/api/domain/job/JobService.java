@@ -49,10 +49,34 @@ public class JobService {
 	}
 
 	public void assertNoRunningJob(Incident incident) {
-		if (jobRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(), IN_PROGRESS)) {
+		if (hasInProgressInvestigation(incident.getIncidentId())) {
 			throw ApiException.conflict("JOB_IN_PROGRESS", "이미 진행 중인 분석 작업이 있습니다. getJob으로 상태를 확인하세요.",
 				Map.of("activeJobId", String.valueOf(incident.getActiveJobId())));
 		}
+	}
+
+	public boolean hasInProgressInvestigation(String incidentId) {
+		return jobRepository.findByIncidentIdOrderByCreatedAtDesc(incidentId).stream()
+			.anyMatch(j -> j.getKind().affectsInvestigationState() && j.getStatus().isInProgress());
+	}
+
+	/** 사건 잠금 아래 start/claim에서 다시 검사한다. SUMMARY는 조사 실행과 독립이다. */
+	public boolean canStart(Job job, Incident incident) {
+		if (!job.getKind().affectsInvestigationState()) return true;
+		if (!incident.isActive()) return false;
+		var all = jobRepository.findByIncidentIdOrderByCreatedAtDesc(incident.getIncidentId());
+		var running = all.stream().filter(j -> j.getKind().affectsInvestigationState() && j.getStatus() == JobStatus.RUNNING).findFirst();
+		if (running.isPresent()) return running.get().getJobId().equals(job.getJobId());
+		// 이미 접수되어 화면에서 실행 대상으로 잡힌 질문은 새 승인 재개보다 먼저 처리한다.
+		var pinned = all.stream().filter(j -> j.getJobId().equals(incident.getActiveJobId()) && j.getStatus() == JobStatus.QUEUED).findFirst();
+		if (pinned.isPresent()) return pinned.get().getJobId().equals(job.getJobId());
+		return nextQueued(all).map(j -> j.getJobId().equals(job.getJobId())).orElse(false);
+	}
+
+	private static java.util.Optional<Job> nextQueued(java.util.List<Job> jobs) {
+		return jobs.stream().filter(j -> j.getKind().affectsInvestigationState() && j.getStatus() == JobStatus.QUEUED)
+			.min(java.util.Comparator.comparingInt((Job j) -> j.getKind() == JobKind.RESUME ? 0 : 1)
+				.thenComparing(Job::getCreatedAt).thenComparing(Job::getJobId));
 	}
 
 	public boolean hasRunning(String incidentId, JobKind kind) {
@@ -64,7 +88,10 @@ public class JobService {
 			Map<String, Object> input, String threadId, String parentJobId) {
 		entityManager.lock(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		// 요약은 조사와 따로 돈다 — 진행 중인 조사 작업이 있어도 막지 않고, 사건의 조사 상태를 바꾸지 않는다
-		if(kind!=JobKind.REPORT && kind.affectsInvestigationState()) assertNoRunningJob(incident);
+		boolean approvalResume = kind == JobKind.RESUME && parentJobId != null && "APPROVAL_DECIDED".equals(input.get("reason"));
+		if(kind!=JobKind.REPORT && kind.affectsInvestigationState() && !approvalResume) assertNoRunningJob(incident);
+		boolean occupied = jobRepository.findByIncidentIdOrderByCreatedAtDesc(incident.getIncidentId()).stream()
+			.anyMatch(j -> j.getKind().affectsInvestigationState() && j.getStatus().isInProgress());
 		// 외부 Agent의 attempt는 같은 작업의 재시도 번호다. 수동 재실행으로 만든 새 작업은 다시 1부터 시작한다.
 		// 시뮬레이터의 기존 화면용 BASIC 재실행 횟수는 그대로 둔다.
 		int attempt = kind == JobKind.BASIC && !properties.agent().external()
@@ -83,7 +110,7 @@ public class JobService {
 			.createdAt(Instant.now(clock))
 			.build();
 		job = jobRepository.save(job);
-		if (kind.affectsInvestigationState()) {
+		if (kind.affectsInvestigationState() && !occupied) {
 			if (kind != JobKind.REPORT) {
 				incident.setActiveJobId(job.getJobId());
 			}
@@ -111,15 +138,15 @@ public class JobService {
 	}
 
 	public void start(Job job, Incident incident) {
+		if (!canStart(job, incident)) throw ApiException.conflict("JOB_START_DEFERRED", "현재 실행이 끝난 뒤 시작할 작업입니다.", Map.of("jobId",job.getJobId()));
+		if (job.getKind().affectsInvestigationState() && job.getKind() != JobKind.REPORT) incident.setActiveJobId(job.getJobId());
 		job.start(Instant.now(clock));
 		sync(job, incident);
 	}
 
 	public void succeed(Job job, Incident incident, Ref result) {
 		job.succeed(result, Instant.now(clock));
-		if (job.getJobId().equals(incident.getActiveJobId())) {
-			incident.setActiveJobId(null);
-		}
+		advance(job, incident);
 		sync(job, incident);
 		if (job.getKind().affectsInvestigationState()) {
 			notificationEvents.analysisFinished(job, incident);
@@ -128,6 +155,7 @@ public class JobService {
 
 	public void fail(Job job, Incident incident, String code, String message) {
 		job.fail(code, message, Instant.now(clock));
+		advance(job, incident);
 		sync(job, incident);
 		if (job.getKind().affectsInvestigationState()) {
 			notificationEvents.analysisFinished(job, incident);
@@ -151,6 +179,7 @@ public class JobService {
 
 	public void waitFor(Job job, Incident incident, JobStatus waitingStatus, Ref ref) {
 		job.waitFor(waitingStatus, ref, Instant.now(clock));
+		advance(job, incident);
 		sync(job, incident);
 	}
 
@@ -170,9 +199,28 @@ public class JobService {
 		return resume;
 	}
 
+	/** 결정을 잃지 않도록 QUEUED 재개를 먼저 깨운다. 실행 중인 다른 질문의 포인터는 보존한다. */
+	private void advance(Job finished, Incident incident) {
+		if (!finished.getKind().affectsInvestigationState() || !incident.isActive()) return;
+		var all = jobRepository.findByIncidentIdOrderByCreatedAtDesc(incident.getIncidentId());
+		var running = all.stream().filter(j -> j.getKind().affectsInvestigationState() && j.getStatus() == JobStatus.RUNNING).findFirst();
+		Job selected = running.orElseGet(() -> nextQueued(all).orElseGet(() -> all.stream()
+			.filter(j -> j.getKind().affectsInvestigationState() && j.getStatus().isWaiting()).findFirst().orElse(null)));
+		if (selected == null) {
+			incident.setActiveJobId(finished.getStatus() == JobStatus.FAILED && finished.getKind() != JobKind.REPORT ? finished.getJobId() : null);
+			incident.setLatestJobStatus(finished.getStatus().name());
+		} else {
+			incident.setActiveJobId(selected.getKind() == JobKind.REPORT ? null : selected.getJobId());
+			incident.setLatestJobStatus(selected.getStatus().name());
+			if (selected.getStatus() == JobStatus.QUEUED) events.publishEvent(new JobQueuedEvent(selected.getJobId()));
+		}
+	}
+
 	private void sync(Job job, Incident incident) {
-		boolean isLatest = incident.getActiveJobId() == null || job.getJobId().equals(incident.getActiveJobId());
-		if (job.getKind().affectsInvestigationState() && (isLatest || job.getKind() == JobKind.REPORT)) {
+		boolean isLatest = job.getJobId().equals(incident.getActiveJobId()) || (incident.getActiveJobId() == null
+			&& jobRepository.findByIncidentIdOrderByCreatedAtDesc(incident.getIncidentId()).stream()
+				.noneMatch(other -> !other.getJobId().equals(job.getJobId()) && other.getKind().affectsInvestigationState() && other.getStatus().isInProgress()));
+		if (job.getKind().affectsInvestigationState() && isLatest) {
 			incident.setLatestJobStatus(job.getStatus().name());
 		}
 		publish(job);

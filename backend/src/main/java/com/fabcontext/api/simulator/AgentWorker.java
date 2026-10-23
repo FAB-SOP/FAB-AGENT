@@ -58,14 +58,15 @@ public class AgentWorker {
 	private final IncidentStreamHub streamHub;
 	private final FabProperties properties;
 	private final Clock clock;
+	private final jakarta.persistence.EntityManager entityManager;
 
 	@Transactional
 	public boolean start(String jobId) {
 		Job job = jobRepository.findById(jobId).orElse(null);
-		if (job == null || job.getStatus() != JobStatus.QUEUED) {
-			return false;
-		}
-		jobService.start(job, incident(job));
+		if (job == null) return false;
+		Incident incident = lock(job);
+		if (job.getStatus() != JobStatus.QUEUED || !jobService.canStart(job, incident)) return false;
+		jobService.start(job, incident);
 		if (job.getKind() == JobKind.SUMMARY) {
 			reportSummaries.markStarted(job);
 		}
@@ -78,7 +79,8 @@ public class AgentWorker {
 		if (job == null || job.getStatus() != JobStatus.RUNNING) {
 			return;
 		}
-		Incident incident = incident(job);
+		Incident incident = lock(job);
+		if (job.getStatus() != JobStatus.RUNNING) return;
 		if (shouldFail(job, incident)) {
 			fail(job, incident, "AGENT_ERROR", "시뮬레이션 Agent 분석 실패 (재실행 가능). 원본 데이터 조회에는 영향이 없습니다.");
 			return;
@@ -95,11 +97,19 @@ public class AgentWorker {
 	@Transactional
 	public void fail(String jobId, String code, String message) {
 		jobRepository.findById(jobId).ifPresent(job -> {
+			Incident incident = lock(job);
 			if (!job.getStatus().isInProgress()) {
 				return;
 			}
-			fail(job, incident(job), code, message);
+			fail(job, incident, code, message);
 		});
+	}
+
+	private Incident lock(Job job) {
+		Incident incident = incident(job);
+		entityManager.refresh(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		entityManager.refresh(job, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		return incident;
 	}
 
 	private void completeBasic(Job job, Incident incident) {
@@ -111,7 +121,7 @@ public class AgentWorker {
 		AnalysisResult result = resultRepository.save(analysisFactory.deep(incident, job));
 		boolean hasOpenRequest = checkRequestRepository.existsByIncidentIdAndStatusIn(incident.getIncidentId(),
 			java.util.List.of(CheckRequestStatus.OPEN,CheckRequestStatus.ACCEPTED));
-		Optional<Map<String, Object>> payload = hasOpenRequest ? Optional.empty()
+		Optional<Map<String, Object>> payload = hasOpenRequest || approvalService.hasPendingAgent(incident.getIncidentId()) ? Optional.empty()
 			: analysisFactory.checkRequestPayload(incident, job);
 		if (payload.isPresent()) {
 			// 정해진 모양의 제안 하나(시뮬레이터) — 내부 경로로 저장 → 사람 승인(P08) 전까지 실행하지 않는다.
@@ -120,6 +130,7 @@ public class AgentWorker {
 			Approval approval = approvalService.createAgentProposal(incident, job, ApprovalActionType.CHECK_REQUEST,
 				payload.get(), "시뮬레이터 예시 제안 — 실제 분석 아님. 결과: " + result.getResultId(),
 				evidenceIds, null, null);
+			approval.attachSourceResult(result.getResultId());
 			jobService.waitFor(job, incident, JobStatus.WAITING_APPROVAL, new Ref("APPROVAL", approval.getApprovalId()));
 			streamHub.publish(incident.getIncidentId(), "analysis.result",
 				Map.of("resultId", result.getResultId(), "jobId", job.getJobId(), "kind", result.getKind()));
