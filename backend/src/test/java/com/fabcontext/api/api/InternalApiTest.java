@@ -232,7 +232,7 @@ class InternalApiTest extends ApiTestSupport {
 		iget("/internal/jobs/{id}/context", jobId).andExpect(jsonPath("$.data.job.kind").value("REPORT"))
 			.andExpect(jsonPath("$.data.job.schemaVersion").value("1.0"))
 			.andExpect(jsonPath("$.data.job.resume").doesNotExist());
-		ipost("/internal/jobs/{id}/events", "{\"type\":\"JOB_FAILED\",\"payload\":{}}", jobId)
+		ipost("/internal/jobs/{id}/events", "{\"eventId\":\"EVT-" + jobId + "-FAILED\",\"attempt\":1,\"type\":\"JOB_FAILED\",\"payload\":{}}", jobId)
 			.andExpect(jsonPath("$.data.applied").value(false));
 	}
 
@@ -244,11 +244,14 @@ class InternalApiTest extends ApiTestSupport {
 		jobs.save(Job.builder().jobId(jobId).incidentId(incidentId).kind(JobKind.DEEP).attempt(1)
 			.threadId("thr_metrics").question("q").createdAt(Instant.now()).build());
 		String tpl = """
-			{"type":"ANALYSIS_PROGRESS","payload":{"stepCode":"THINKING","message":"m","progressRatio":0.5},
+			{"eventId":"EVT-%s","attempt":%d,"type":"ANALYSIS_PROGRESS","payload":{"stepCode":"THINKING","message":"m","progressRatio":0.5},
 			 "metrics":{"attempt":%d,"modelCalls":%d,"inputTokens":%d,"outputTokens":40,"apiModels":["gpt-4.1-mini-2025-04-14"],
 			            "guardRejects":1,"ms":1200.5}}""";
-		ipost("/internal/jobs/{id}/events", tpl.formatted(1, 3, 1000), jobId).andExpect(status().isOk());
-		ipost("/internal/jobs/{id}/events", tpl.formatted(2, 5, 2000), jobId).andExpect(status().isOk());
+		ipost("/internal/jobs/{id}/events", tpl.formatted(jobId + "-A1", 1, 1, 3, 1000), jobId).andExpect(status().isOk());
+		ipost("/internal/jobs/{id}/events", """
+			{"eventId":"EVT-%s-retry","attempt":1,"type":"RETRY_SCHEDULED","payload":{"nextAttempt":2}}
+			""".formatted(jobId), jobId).andExpect(status().isOk());
+		ipost("/internal/jobs/{id}/events", tpl.formatted(jobId + "-A2-1", 2, 2, 5, 2000), jobId).andExpect(status().isOk());
 		// 최신 시도가 위에, 앞 시도는 previousAttempts — jsonb 연산자로 바로 조회된다(DBeaver · Grafana)
 		var row = jdbc.queryForMap("""
 			select metrics->>'attempt' as attempt, (metrics->>'inputTokens')::int as input_tokens,
@@ -258,7 +261,7 @@ class InternalApiTest extends ApiTestSupport {
 		org.assertj.core.api.Assertions.assertThat(row).containsEntry("attempt", "2").containsEntry("input_tokens", 2000)
 			.containsEntry("model", "gpt-4.1-mini-2025-04-14").containsEntry("previous", 1).containsEntry("previous_input", "1000");
 		// 같은 시도가 다시 오면 덮는다(쌓지 않는다)
-		ipost("/internal/jobs/{id}/events", tpl.formatted(2, 6, 2500), jobId).andExpect(status().isOk());
+		ipost("/internal/jobs/{id}/events", tpl.formatted(jobId + "-A2-2", 2, 2, 6, 2500), jobId).andExpect(status().isOk());
 		org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
 			"select jsonb_array_length(metrics->'previousAttempts') from job where job_id = ?", Integer.class, jobId)).isEqualTo(1);
 	}

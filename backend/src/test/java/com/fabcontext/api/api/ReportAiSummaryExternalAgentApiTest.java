@@ -36,7 +36,7 @@ class ReportAiSummaryExternalAgentApiTest extends ApiTestSupport {
 	private ResultActions event(String jobId, String type, String payload) throws Exception {
 		return mvc.perform(post("/internal/jobs/{id}/events", jobId).header("Authorization", BEARER)
 			.contentType(MediaType.APPLICATION_JSON).content("""
-				{"schemaVersion":"1.0","eventId":"EVT-%s-%s-%d","jobId":"%s","type":"%s","payload":%s}
+				{"schemaVersion":"1.0","eventId":"EVT-%s-%s-%d","jobId":"%s","attempt":1,"type":"%s","payload":%s}
 				""".formatted(jobId, type, System.nanoTime(), jobId, type, payload)));
 	}
 

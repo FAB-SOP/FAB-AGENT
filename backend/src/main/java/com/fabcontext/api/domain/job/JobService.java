@@ -9,6 +9,7 @@ import com.fabcontext.api.auth.AuthUser;
 import com.fabcontext.api.common.ApiException;
 import com.fabcontext.api.common.Ids;
 import com.fabcontext.api.common.Ref;
+import com.fabcontext.api.config.FabProperties;
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentService;
 import com.fabcontext.api.domain.job.JobDtos.JobEvent;
@@ -32,6 +33,7 @@ public class JobService {
 	private final IncidentStreamHub streamHub;
 	private final ApplicationEventPublisher events;
 	private final Clock clock;
+	private final FabProperties properties;
 	private final jakarta.persistence.EntityManager entityManager;
 
 	@Transactional(readOnly = true)
@@ -62,12 +64,15 @@ public class JobService {
 		entityManager.lock(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		// 요약은 조사와 따로 돈다 — 진행 중인 조사 작업이 있어도 막지 않고, 사건의 조사 상태를 바꾸지 않는다
 		if(kind!=JobKind.REPORT && kind.affectsInvestigationState()) assertNoRunningJob(incident);
-		int attempt = (int) jobRepository.countByIncidentIdAndKind(incident.getIncidentId(), kind) + 1;
+		// 외부 Agent의 attempt는 같은 작업의 재시도 번호다. 수동 재실행으로 만든 새 작업은 다시 1부터 시작한다.
+		// 시뮬레이터의 기존 화면용 BASIC 재실행 횟수는 그대로 둔다.
+		int attempt = kind == JobKind.BASIC && !properties.agent().external()
+			? (int) jobRepository.countByIncidentIdAndKind(incident.getIncidentId(), kind) + 1 : 1;
 		Job job = Job.builder()
 			.jobId(Ids.next("job"))
 			.incidentId(incident.getIncidentId())
 			.kind(kind)
-			.attempt(kind == JobKind.BASIC ? attempt : 1)
+			.attempt(attempt)
 			.threadId(threadId != null ? threadId : Ids.next("thr"))
 			.parentJobId(parentJobId)
 			.question(question)
