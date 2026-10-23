@@ -112,10 +112,11 @@ OLD = {"resultId": "res_00", "createdAt": "2026-10-20T03:00:00Z", "answer": None
 
 
 def _report_args(analysis="absent") -> dict:
+    """규칙 모델은 모델이 받은 도구 결과(줄인 모양)를 읽는다 — 실제 흐름처럼 to_tool_text를 거친다"""
     from fab.agent.models.rule import _report_step
 
-    raw = _context(analysis=analysis)
-    return _report_step({"get_report_context": [raw]}, "EV-1009").tool_calls[0]["args"]
+    seen = json.loads(to_tool_text(_context(analysis=analysis), "get_report_context"))
+    return _report_step({"get_report_context": [seen]}, "EV-1009").tool_calls[0]["args"]
 
 
 def test_rule_report_uses_the_latest_cause_analysis():

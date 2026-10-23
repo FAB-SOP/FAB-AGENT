@@ -95,7 +95,9 @@ def _analysis_sections(analysis: dict | None) -> tuple[str, list[str], list[str]
     open_items = [*(analysis.get("limitations") or []),
                   *(check for cause in causes for check in cause.get("nextChecks") or []),
                   *(f"부족한 자료: {item}" for cause in causes for item in cause.get("missingData") or [])]
-    ids = [ref["evidenceId"] for ref in analysis.get("evidenceRefs") or [] if isinstance(ref, dict) and ref.get("evidenceId")]
+    # 모델이 보는 결과(context.analysis_view)는 근거를 evidenceIds로, Backend 원본은 evidenceRefs로 준다
+    ids = list(analysis.get("evidenceIds") or []) or [ref["evidenceId"] for ref in analysis.get("evidenceRefs") or []
+                                                      if isinstance(ref, dict) and ref.get("evidenceId")]
     return " ".join(line for line in lines if line), list(dict.fromkeys(open_items)), ids
 
 
