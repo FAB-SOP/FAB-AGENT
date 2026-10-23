@@ -1,6 +1,6 @@
 # 프론트 연결: 조사 블록·업무 흐름·회신 맥락
 
-브랜치 `feat/conversation-context`, 기준 main `fe6660b`(PR #30). PR #32의 conversation 연결을 전제로 한 **Backend 조회 보완**입니다. 프론트·AI/MCP·보고서 소스는 수정하지 않습니다. 새 API·DB 테이블·Kafka·자동 분석은 추가하지 않습니다.
+브랜치 `feat/conversation-context`, 기준 main `fe6660b`(PR #30), 최신 main `c0dbe6f`(PR #31·#33 포함) 통합. PR #32의 conversation 연결을 전제로 한 **Backend 조회 보완**입니다. 프론트·AI/MCP·보고서 소스는 이번 변경분에서 수정하지 않습니다. 새 API·DB 테이블·Kafka·자동 분석은 추가하지 않습니다.
 
 ## 바뀐 것
 
@@ -127,5 +127,5 @@
 - 표적 ConversationApiTest 22건 통과(기존 17 + 신규 5), 실패·건너뜀 0. 기존 같은 thread 선택 결과 RESUME 테스트와 타 사건 부모 차단 테스트에도 placement 검증 추가.
 - 신규: 회신만 최근 페이지에 있는 경우의 원 요청 요약/블록, Unicode 요약 길이, WorkItem→승인→요청→회신 동일 흐름, 직접 수행 결과 연결, REQUEST 버튼 기준 분석 블록, 출처 없는 수동 승인 DIRECT 블록.
 - 기존 읽기 전용·사건 권한·커서·SQL 수·Swagger 테스트 유지. 실서버·서비스 DB·실제 Agent/프론트 소스는 변경하지 않습니다.
-- `cd backend && ./gradlew test --offline`: **352건 중 350건 통과, 실패/오류 0, 기존 KnowledgeApiTest 2건 건너뜀**. 격리된 Testcontainers PostgreSQL 사용. 기존 SQL 수 회귀 테스트도 통과했습니다.
+- 최신 main `c0dbe6f` 통합 후 `cd backend && ./gradlew test --offline`: **360건 중 358건 통과, 실패/오류 0, 기존 KnowledgeApiTest 2건 건너뜀**. 격리된 Testcontainers PostgreSQL 사용. 기존 SQL 수 회귀 테스트도 통과했습니다.
 - 저장소 밖 HTML 화면 예시: 자체 포함 검사 통과. 별도 Chrome에서 채택/미채택·승인/거절·늦은 회신의 원 요청 연결·선택 추가 분석·이후 질문 순서·초기화·키보드·390px 가로 넘침 없음·브라우저 오류 0을 확인했습니다. 이는 가상 UI 예시 검증이며 실제 PR #32 화면과 Backend의 종단 간 검증은 아닙니다.
