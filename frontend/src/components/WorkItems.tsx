@@ -73,7 +73,7 @@ function useIncidentWork(incidentId:string){
 }
 /** 승인만 된 변경은 수행 전이므로 '실제 수행' 기록임을 분명히 한다 */
 const completeLabel=(item:Obj)=>item.status==='APPROVED'?'실제 수행 결과 기록':'수행·확인 결과 기록';
-const adoptLabel=(item:Obj)=>item.route==='SELF_CHECK'
+export const adoptLabel=(item:Obj)=>item.route==='SELF_CHECK'
  ?'내 확인 목록에 추가'
  :item.route==='MANAGER_APPROVAL'?'채택하고 관리자 승인 요청':'요청 내용 검토·발송';
 function ProposedWorkCard({item,disabled,onSelect}:{item:Obj;disabled:boolean;onSelect:(mode:string)=>void}){
@@ -132,83 +132,6 @@ export function WorkItemsPanel({incident,sources,results,canManage}:{
  </>;
 }
 /** 분석 결과별로 연결된 제안(sourceResultId)을 상태와 관계없이 모두 보여주고, 상태에 따라 모양만 바꾼다 */
-/** AI 추천 조치안(번호)과 진행 중인 업무를 나눠 보여준다 — 분석에서 나온 업무를 상태와 관계없이 모두 표시 */
-export function ProposedWorkList({incident,canManage,results,afterSuggestions}:{incident:Incident;canManage:boolean;results:Obj[];afterSuggestions?:React.ReactNode}){
- const {workItems}=useIncidentWork(incident.incidentId);
- const [selected,setSelected]=useState<{item:Obj;mode:string}|null>(null);
- const groups=groupBySourceResult(workItems.data?.items||[],results);
- if(!groups.length)return <>{afterSuggestions}</>;
- const disabled=!canManage||incident.status==='CLOSED';
- const view=classifyAnalysisWork(groups);
- const select=(item:Obj)=>(mode:string)=>setSelected({item,mode});
- const decided=(item:Obj)=>['DECLINED','REJECTED','CLOSED_UNPERFORMED'].includes(item.status);
- return <section className="proposed-work">
-  {view.aiTotal>0&&<>
-   <h3>AI 추천 조치안 <span className="kind-count">{view.aiTotal}</span> <span className="small muted">채택 대기 {view.aiWaiting}건 · 진행할 조치를 선택하세요</span></h3>
-   {view.aiGroups.map(group=><div key={group.resultId} className="proposed-group">
-    <p className="small muted">{group.label}</p>
-    {group.items.map(({item,number})=><div key={item.taskId} className="ai-suggestion">
-     <span className="suggestion-number">{number}</span>
-     {item.status==='PROPOSED'
-      ?<ProposedWorkCard item={item} disabled={disabled} onSelect={select(item)}/>
-      :<WorkCard item={item} muted={decided(item)}>{item.status!=='DECLINED'&&<p className="small muted">채택됨 · 아래 채택한 업무에서 이어서 확인하세요.</p>}</WorkCard>}
-    </div>)}
-   </div>)}
-  </>}
-  {view.direct.length>0&&<div className="work-kind"><h4>직접 제안 · 채택 대기 <span className="kind-count">{view.direct.length}</span></h4>
-   {view.direct.map(item=>item.status==='PROPOSED'
-    ?<ProposedWorkCard key={item.taskId} item={item} disabled={disabled} onSelect={select(item)}/>
-    :<WorkCard key={item.taskId} item={item} muted/>)}
-  </div>}
-  {afterSuggestions}
-  {view.mine.length+view.team.length>0&&<>
-   <h3 className="progress-title">채택한 업무 <span className="kind-count">{view.mine.length+view.team.length}</span> <span className="small muted">진행 중·완료·반려 모두</span></h3>
-   {view.mine.length>0&&<div className="work-kind"><h4>내 확인·변경 업무 <span className="kind-count">{view.mine.length}</span></h4>
-    {view.mine.map(item=><WorkCard key={item.taskId} item={item} muted={decided(item)} origin={originLabel(item,view.numberOf(item))}/>)}</div>}
-   {view.team.length>0&&<div className="work-kind team"><h4>다른 팀 요청 <span className="kind-count">{view.team.length}</span></h4>
-    {view.team.map(item=><WorkCard key={item.taskId} item={item} muted={decided(item)} origin={originLabel(item,view.numberOf(item))}/>)}</div>}
-  </>}
-  {selected&&<WorkDialog item={selected.item} mode={selected.mode} incident={incident} onClose={()=>setSelected(null)}/>}
- </section>;
-}
-const originLabel=(item:Obj,number?:number)=>item.createdBy==='agent'?`AI 추천 ${number??''}번에서 채택`:'직접 제안에서 채택';
-/**
- * 분석별 업무를 나눈다.
- * - AI 추천: createdBy가 agent인 것. 분석마다 1번부터 번호(생성 순), 채택 뒤에도 번호 유지
- * - 직접 제안: 사람이 만든 채택 대기·미채택
- * - 진행 중: 채택된 것(출처 무관) → 내 확인·변경 업무 / 다른 팀 요청
- */
-export function classifyAnalysisWork(groups:{resultId:string;label:string;items:Obj[]}[]){
- const numbers=new Map<string,number>();
- const aiGroups=groups.map(group=>{
-  const ai=group.items.filter(item=>item.createdBy==='agent')
-   .sort((a,b)=>Date.parse(a.createdAt||'')-Date.parse(b.createdAt||'')||String(a.taskId).localeCompare(String(b.taskId)));
-  ai.forEach((item,index)=>numbers.set(item.taskId,index+1));
-  return {resultId:group.resultId,label:group.label,items:ai.map((item,index)=>({item,number:index+1}))};
- }).filter(group=>group.items.length);
- const all=groups.flatMap(group=>group.items);
- const notAdopted=(item:Obj)=>['PROPOSED','DECLINED'].includes(item.status);
- const progress=all.filter(item=>!notAdopted(item));
- return {
-  aiGroups,
-  aiTotal:aiGroups.reduce((count,group)=>count+group.items.length,0),
-  aiWaiting:all.filter(item=>item.createdBy==='agent'&&item.status==='PROPOSED').length,
-  direct:all.filter(item=>item.createdBy!=='agent'&&notAdopted(item)),
-  mine:progress.filter(item=>item.route!=='TEAM_REQUEST'),
-  team:progress.filter(item=>item.route==='TEAM_REQUEST'),
-  numberOf:(item:Obj)=>numbers.get(item.taskId),
- };
-}
-/** 제안을 근거 분석 결과별로 묶는다 — 최신 분석이 위, 화면에 없는 이전 분석은 '이전 분석'으로 */
-export function groupBySourceResult(items:Obj[],results:Obj[]){
- const byResult=new Map<string,Obj[]>();
- items.filter(item=>item.sourceResultId).forEach(item=>byResult.set(item.sourceResultId,[...(byResult.get(item.sourceResultId)||[]),item]));
- return [...byResult.entries()].map(([resultId,grouped])=>{
-  const result=results.find(candidate=>candidate.resultId===resultId);
-  const label=result?(result.kind==='DEEP'?'추가 질문 답변':'기본 분석')+' · '+when(result.createdAt)+' KST':'이전 분석';
-  return {resultId,label,at:result?Date.parse(result.createdAt):0,items:grouped};
- }).sort((first,second)=>second.at-first.at);
-}
 function TeamRequestResult({request}:{request:Obj}) {
  const replies:Obj[]=request.replies||[];
  const replied=request.status==='REPLIED'&&replies.length>0;
@@ -402,7 +325,7 @@ function CompletionFields({form,busy}:{form:WorkDialogForm;busy:boolean}){
   </label>
  </>;
 }
-function WorkDialog({item,mode,incident,onClose}:{item:Obj;mode:string;incident?:Incident;onClose:()=>void}){
+export function WorkDialog({item,mode,incident,onClose}:{item:Obj;mode:string;incident?:Incident;onClose:()=>void}){
  const policy=usePolicy();
  const incidentQuery=useQuery({
   queryKey:['incident',item.incidentId],

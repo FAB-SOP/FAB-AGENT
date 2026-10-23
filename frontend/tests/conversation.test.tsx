@@ -1,7 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {renderToStaticMarkup} from 'react-dom/server';
-import {conversationItems,conversationResults,runningJob,type ConversationPage} from '../src/domain/incidentConversation';
-import {InvestigationConversation} from '../src/components/InvestigationConversation';
+import {buildBlocks,conversationItems,flowView,pendingOutsidePages,runningJob,selectState,stepLabel,suggestionNumbers,type ConversationPage} from '../src/domain/incidentConversation';
 import {canManageInvestigation} from '../src/domain/permissions';
 import {type Obj,type Session} from '../src/api/types';
 
@@ -9,54 +7,63 @@ const page=(items:Obj[],extra:Partial<ConversationPage>={}):ConversationPage=>({
  incidentId:'inc',items,nextCursor:null,jobs:[],runningJobs:[],waitingJobs:[],pendingApprovals:[],pendingWorkItems:[],
  latestCauseAnalysis:null,investigationResults:[],...extra,
 });
-const answer=(id:string,resultKind:string,summary:string,kind='BASIC')=>({
- entryId:'result:'+id,type:'AI_ANSWER',occurredAt:'2026-10-23T01:00:00Z',actor:{type:'AI'},job:{kind},
- data:{analysis:{resultId:id,resultKind,summary}},
-});
+const at=(blockId:string,createdAt:string,flowId:string|null=null,blockType='BASIC')=>({blockId,blockType,createdAt,title:'',flowId});
 
-describe('incident conversation API',()=>{
- it('puts older pages first, keeps server order and the newest copy of an entry',()=>{
-  const newer=page([{entryId:'b',type:'QUESTION',text:'새 값'},{entryId:'c',type:'AI_ANSWER'}]);
-  const older=page([{entryId:'a',type:'BASIC_REQUESTED'},{entryId:'b',type:'QUESTION',text:'옛 값'}]);
+describe('incident conversation pages',()=>{
+ it('puts older pages first and keeps the newest copy of an entry',()=>{
+  const newer=page([{entryId:'b',text:'새 값'},{entryId:'c'}]);
+  const older=page([{entryId:'a'},{entryId:'b',text:'옛 값'}]);
   const items=conversationItems([newer,older]);
   expect(items.map(item=>item.entryId)).toEqual(['a','b','c']);
   expect(items[1].text).toBe('새 값');
- });
- it('leaves work, request and action entries to the sections below',()=>{
-  const items=conversationItems([page(['WORK_PROPOSED','WORK_EVENT','REQUEST_SENT','REQUEST_ACCEPTED','ACTION_RESULT','REPLY','QUESTION']
-   .map(type=>({entryId:type,type})))]);
-  expect(items.map(item=>item.type)).toEqual(['REPLY','QUESTION']);
- });
- it('attaches the original request to each reply',()=>{
-  const items=conversationItems([page([
-   {entryId:'s',type:'REQUEST_SENT',links:{requestId:'chk_1'},data:{request:{question:'제거량 확인 부탁',targetProcessCode:'ETCH'}}},
-   {entryId:'r',type:'REPLY',links:{requestId:'chk_1'},text:'이상 없음'},
-  ])]);
-  expect(items).toHaveLength(1);
-  expect(items[0].request.question).toBe('제거량 확인 부탁');
  });
  it('blocks new questions only while a job runs',()=>{
   expect(runningJob(page([],{waitingJobs:[{status:'WAITING_APPROVAL'}]}))).toBeUndefined();
   expect(runningJob(page([],{runningJobs:[{status:'RUNNING'}]}))?.status).toBe('RUNNING');
  });
- it('collects analyses for grouping suggestions, adding the latest cause analysis when it is on an older page',()=>{
-  const items=[answer('r2','ANSWER','답')];
-  expect(conversationResults(items,{resultId:'r1'}).map(result=>result.resultId)).toEqual(['r1','r2']);
+});
+
+describe('investigation blocks',()=>{
+ const basic=at('b1','2026-10-23T00:00:00Z');
+ const items=[
+  {entryId:'req',type:'BASIC_REQUESTED',placement:basic},
+  {entryId:'ans',type:'AI_ANSWER',placement:basic,data:{analysis:{resultId:'r1'}}},
+  {entryId:'w1',type:'WORK_PROPOSED',placement:at('b1','2026-10-23T00:00:00Z','work:1'),links:{sourceResultId:'r1'},data:{work:{createdBy:'agent',status:'PROPOSED'}}},
+  {entryId:'w2',type:'WORK_PROPOSED',placement:at('b1','2026-10-23T00:00:00Z','work:2'),links:{sourceResultId:'r1'},data:{work:{createdBy:'agent',status:'PROPOSED'}}},
+  {entryId:'q',type:'QUESTION',text:'앞 공정은?',placement:at('b2','2026-10-23T00:05:00Z',null,'QUESTION')},
+  // 질문 뒤에 도착한 늦은 회신은 원래 블록·흐름에 남는다
+  {entryId:'sent',type:'REQUEST_SENT',placement:at('b1','2026-10-23T00:00:00Z','work:2'),links:{requestId:'chk1'},data:{request:{status:'ACCEPTED'}}},
+  {entryId:'rpl',type:'REPLY',placement:at('b1','2026-10-23T00:00:00Z','work:2'),links:{requestId:'chk1'},sourceRef:{type:'REPLY',id:'rp1'}},
+  {entryId:'lost',type:'REPLY',placement:null,occurredAt:'2026-10-23T00:10:00Z'},
+ ];
+ const blocks=buildBlocks(items);
+ it('groups by block in start order and keeps late replies in their original flow',()=>{
+  expect(blocks.map(block=>block.blockId)).toEqual(['b1','b2','entry:lost']);
+  expect(blocks[0].head?.entryId).toBe('req');
+  expect(blocks[0].answers).toHaveLength(1);
+  expect(blocks[0].flows.map(flow=>flow.flowId)).toEqual(['work:1','work:2']);
+  const view=flowView(blocks[0].flows[1]);
+  expect(view.requests[0].replies.map(reply=>reply.entryId)).toEqual(['rpl']);
+  expect(view.history.map(stepLabel)).toEqual(['발송']);
+  expect(blocks[1].head?.text).toBe('앞 공정은?');
  });
- it('folds older cause analyses and shows question answers and progress in place',()=>{
-  const items=[
-   answer('r1','CAUSE_ANALYSIS','예전 분석'),
-   {entryId:'q',type:'QUESTION',occurredAt:'2026-10-23T02:00:00Z',actor:{type:'HUMAN',displayName:'박CMP'},text:'앞 공정은?',currentJob:{status:'RUNNING'}},
-   answer('r2','CAUSE_ANALYSIS','최신 분석'),
-  ];
-  const html=renderToStaticMarkup(<InvestigationConversation items={items} latestCauseId="r2"/>);
-  expect(html).toContain('<summary>이전 기본 분석 결과');
-  expect(html.indexOf('예전 분석')).toBeLessThan(html.indexOf('앞 공정은?'));
-  expect(html.indexOf('앞 공정은?')).toBeLessThan(html.indexOf('최신 분석'));
-  expect(html).toContain('loading-spinner');
+ it('numbers AI suggestions per answer',()=>{
+  expect([...suggestionNumbers(blocks[0].flows).values()]).toEqual([1,2]);
  });
- it('shows immediate feedback before the reanalysis appears',()=>{
-  expect(renderToStaticMarkup(<InvestigationConversation items={[]} startingBasic/>)).toContain('재분석 요청 중…');
+ it('labels each step by its own record type',()=>{
+  expect(stepLabel({type:'APPROVAL_DECIDED',eventType:'REJECTED'})).toBe('승인 거절');
+  expect(stepLabel({type:'WORK_EVENT',eventType:'WORK_DECIDED',text:'업무 결정 REJECT: x'})).toBe('관리자 반려');
+  expect(stepLabel({type:'WORK_EVENT',eventType:'WORK_ADOPTED'})).toBe('채택');
+  expect(stepLabel({type:'REPLY'})).toBe('');
+ });
+ it('lets a result be picked only until an analysis used it',()=>{
+  expect(selectState({sourceRef:{},analysisUse:{successfulCount:0,activeRequestIds:[]}}).selectable).toBe(true);
+  expect(selectState({sourceRef:{},analysisUse:{successfulCount:1,activeRequestIds:[]}}).selectable).toBe(false);
+  expect(selectState({sourceRef:{},analysisUse:{successfulCount:0,activeRequestIds:['ar']}}).label).toContain('진행 중');
+ });
+ it('counts pending approvals and work that sit on pages not loaded yet',()=>{
+  const latest=page([],{pendingApprovals:[{approvalId:'a1'},{approvalId:'a2'}],pendingWorkItems:[{taskId:'t1'}]});
+  expect(pendingOutsidePages([{links:{approvalId:'a1'}},{data:{work:{taskId:'t1'}}}],latest)).toBe(1);
  });
 });
 

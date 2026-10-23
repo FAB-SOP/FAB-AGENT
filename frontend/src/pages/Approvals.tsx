@@ -3,7 +3,7 @@ import {useSearchParams} from 'react-router-dom';
 import {useQuery} from '@tanstack/react-query';
 import {ArrowUpRight,Check} from 'lucide-react';
 import {api,write} from '../api/client';
-import {approvalKindLabels,labels,when,type Incident,type Obj,type Page} from '../api/types';
+import {labels,when,type Incident,type Obj,type Page} from '../api/types';
 import {useAuth} from '../auth';
 import {Badge,Empty,ErrorMessage,Field,Modal,Notice,PageHeading,Panel} from '../components/ui';
 import {PayloadDetails} from '../components/InvestigationContext';
@@ -128,30 +128,15 @@ function useApprovalReview(selected:string,setSelected:(id:string)=>void){
  />:null;
  return {command,openApproval,modal};
 }
-function IncidentApprovalRow({approval,onOpen}:{approval:Obj;onOpen:()=>void}){
- const payload=approval.payload||{};
- const target=[payload.targetProcessCode,payload.equipmentId].filter(Boolean).join(' · ');
- return <button className="request-row" onClick={onOpen}>
-  <div>
-   <span className="approval-kind">{approvalKindLabels[approval.actionType]||approval.actionType}</span>
-   <h3>{payload.question||approval.rationale||labels[approval.actionType]}</h3>
-   <span className="small muted">{target&&target+' · '}{approval.source==='AGENT'?'AI 제안':'사용자 제안'} · {when(approval.createdAt)}</span>
-  </div>
-  <Badge value={approval.status}/>
- </button>;
-}
-/** 사건 화면에서 바로 승인·거절 — 이 사건의 승인 대기 제안만 보여준다 */
-/** 사건 화면의 승인 대기 — conversation API의 pendingApprovals(요청 내용 포함)를 그대로 쓴다 */
-export function IncidentApprovals({approvals:pending}:{approvals:Obj[]}){
+/** 사건 화면 흐름 카드의 승인 검토 버튼 — 승인함과 같은 검토 창 */
+export function ApprovalReviewButton({approvalId,disabled}:{approvalId:string;disabled?:boolean}){
  const [selected,setSelected]=useState('');
  const {command,openApproval,modal}=useApprovalReview(selected,setSelected);
- if(!pending.length&&!command.message)return null;
- return <section className="incident-approvals">
-  <h3>승인 대기 중 {pending.length}건 <span className="small muted">승인해야 실제로 발송·확정됩니다</span></h3>
+ return <>
+  <button className="button" disabled={disabled} onClick={()=>openApproval(approvalId)}>검토하고 승인·거절</button>
   {command.message&&<Notice tone={command.isError?'error':'info'}>{command.message}</Notice>}
-  {pending.map(approval=><IncidentApprovalRow key={approval.approvalId} approval={approval} onOpen={()=>openApproval(approval.approvalId)}/>)}
   {modal}
- </section>;
+ </>;
 }
 export function Approvals(){
  const [params,setParams]=useSearchParams();

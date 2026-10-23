@@ -9,11 +9,9 @@ import {Badge,Empty,ErrorMessage,Field,Modal,Notice,PageHeading,Panel} from '../
 import {ActionWorkspace} from '../components/ActionWorkspace';
 import {incidentStage} from '../domain/actionSources';
 import {AnalysisRequestStatus} from '../components/AnalysisRequestStatus';
-import {ProposedWorkList} from '../components/WorkItems';
-import {ResultReview} from '../components/ResultReview';
-import {IncidentApprovals} from './Approvals';
-import {InvestigationConversation} from '../components/InvestigationConversation';
-import {conversationItems,conversationResults,runningJob,type ConversationPage} from '../domain/incidentConversation';
+import {refKey,SelectionBar} from '../components/ResultReview';
+import {InvestigationBlocks} from '../components/InvestigationBlocks';
+import {buildBlocks,conversationItems,pendingOutsidePages,runningJob,selectState,type ConversationPage} from '../domain/incidentConversation';
 import {canManageInvestigation} from '../domain/permissions';
 import {ErrorMessageIfFailed,useCommand} from './workflowShared';
 const STREAM_EVENTS=[
@@ -186,27 +184,34 @@ function AnalysisTab(props:AnalysisTabProps){
  const {incident,stage,conversation,command}=props;
  const {query,latest,items}=conversation;
  const latestAnalysis=latest?.latestCauseAnalysis;
+ const [selected,setSelected]=useState<string[]>([]);
+ const blocks=buildBlocks(items);
+ // 이미 분석에 쓰였거나 진행 중이 된 결과는 선택에서 뺀다(서버 analysisUse 기준)
+ const picked=items.filter(item=>item.sourceRef&&selected.includes(refKey(item.sourceRef))&&selectState(item).selectable);
+ const toggle=(key:string)=>setSelected(keys=>keys.includes(key)?keys.filter(other=>other!==key):[...keys,key]);
+ const outside=pendingOutsidePages(items,latest);
  const rerunButton=<button className="button secondary" disabled={props.blocked||command.isPending} onClick={props.onRerun}>
   <RefreshCw size={18}/>{props.rerunning?'재분석 중…':'기본 분석 재요청'}
  </button>;
  return <div className="analysis-grid"><Panel title="조사 내용" className="conversation-panel" extra={rerunButton}>
-  {query.hasNextPage&&<button type="button" className="text-button" disabled={query.isFetchingNextPage} onClick={()=>query.fetchNextPage()}>
-   {query.isFetchingNextPage?'불러오는 중…':'이전 기록 더 보기'}
-  </button>}
-  <InvestigationConversation items={items} latestCauseId={latestAnalysis?.resultId} startingBasic={props.startingBasic} loading={query.isPending}/>
+  {query.hasNextPage&&<div className="older-records">
+   {outside>0&&<span className="small">이전 기록에 처리 대기 {outside}건이 있습니다.</span>}
+   <button type="button" className="text-button" disabled={query.isFetchingNextPage} onClick={()=>query.fetchNextPage()}>
+    {query.isFetchingNextPage?'불러오는 중…':'이전 기록 더 보기'}
+   </button>
+  </div>}
+  <InvestigationBlocks blocks={blocks} latestCauseId={latestAnalysis?.resultId} startingBasic={props.startingBasic} loading={query.isPending}
+   incident={incident} canManage={props.canManage} selected={selected} onToggle={toggle}/>
   {query.error&&<ErrorMessage error={query.error}/>}
-  <ProposedWorkList incident={incident} canManage={props.canManage}
-   results={conversationResults(items,latestAnalysis)}
-   afterSuggestions={<QuestionComposer
-    canManage={props.canManage}
-    blocked={props.blocked}
-    pending={command.isPending}
-    question={props.question}
-    onChange={props.onQuestionChange}
-    onSubmit={props.onAsk}
-   />}/>
-  <IncidentApprovals approvals={latest?.pendingApprovals||[]}/>
-  <ResultReview incident={incident} canManage={props.canManage} results={latest?.investigationResults||[]} running={runningJob(latest)}/>
+  <SelectionBar incident={incident} picked={picked} running={runningJob(latest)} onClear={()=>setSelected([])}/>
+  <QuestionComposer
+   canManage={props.canManage}
+   blocked={props.blocked}
+   pending={command.isPending}
+   question={props.question}
+   onChange={props.onQuestionChange}
+   onSubmit={props.onAsk}
+  />
   </Panel><div className="side-stack">
    <Panel title="다음 확인">
     <button className="button secondary full" disabled={!props.canManage||incident.status==='CLOSED'} onClick={props.onReviewActions}>확인·조치 제안 검토</button>
