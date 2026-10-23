@@ -100,6 +100,8 @@ async def finalize(state: AgentState, config) -> dict:
     facts = _contract_facts(submitted)
     causes = _contract_causes(submitted)
     used = _used_evidence_ids(facts, causes) | set(answer_evidence_ids(submitted))  # 답 글에 인용한 근거도 화면이 찾을 수 있게
+    # 업무 후보가 붙인 근거도 싣는다 — backend는 evidenceRefs 밖의 근거를 가진 후보를 막는다
+    used |= {e for item in submitted.get("workSuggestions") or [] for e in item.get("evidenceIds") or []}
     evidence = state.get("evidence", {})
     result = {
         "resultId": f"RESULT-{current_job(state, config)}",

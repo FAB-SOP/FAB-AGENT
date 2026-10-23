@@ -782,3 +782,35 @@ async def test_fixable_proposal_rejection_gets_one_retry(spring_url, kb):
     await _ask(spring_url, display, "앞 공정 확인이 필요해?")
     out = (await poll_once(runner, backend))[-1]
     assert out["status"] == "WAITING_APPROVAL", out
+
+
+class LookupForeverModel:
+    """조회만 거듭하는 모델 — 마지막 호출에서 제출 도구만 받으면 지금 근거로 제출한다"""
+    name = "lookup-forever"
+
+    def __init__(self):
+        self.last_tools: list[str] = []
+
+    async def ainvoke(self, messages, tools):
+        from fab.agent.evidence import runs_by_process, tool_results
+
+        names = [tool["function"]["name"] for tool in tools]
+        if names == ["submit_result"]:
+            self.last_tools = names
+            run = runs_by_process(tool_results(messages))["CMP"]
+            return AIMessage(content="", tool_calls=[{"id": "c-last", "name": "submit_result", "args": {
+                "nextStep": "INSUFFICIENT_EVIDENCE", "observedFacts": [{"text": "CMP run 확인", "evidenceIds": [run["_ev"]]}],
+                "candidateCauses": [], "limitations": ["조회를 끝내지 못했습니다"], "answer": f"지금 근거로는 판단이 어렵습니다({run['_ev']})."}}])
+        return AIMessage(content="", tool_calls=[{"id": f"c{len(messages)}", "name": "get_frozen_limits", "args": {}}])
+
+
+async def test_last_model_call_offers_only_submit_so_the_job_ends_with_an_answer(spring_url, kb):
+    """판단 한도 직전 호출에서는 제출 도구만 주고 마지막이라고 알린다 — 조회만 하다 빈 결과로 멈추지 않게"""
+    model = LookupForeverModel()
+    runner, backend = make_runner(kb, models=(model, None), base=spring_url)
+    display = await fresh_incident("EV-1006", spring_url)
+    await poll_once(runner, backend)
+    await _ask(spring_url, display, "추가로 볼 게 있어?")
+    out = (await poll_once(runner, backend))[-1]
+    assert model.last_tools == ["submit_result"], model.last_tools
+    assert out["status"] == "DONE" and out["result"]["answer"].startswith("지금 근거로는"), out

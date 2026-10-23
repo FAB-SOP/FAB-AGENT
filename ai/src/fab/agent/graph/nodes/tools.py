@@ -89,7 +89,30 @@ async def tools(state: AgentState, config) -> dict:
     return turn.result()
 
 
-def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
+def _final_turn(turn: _Turn) -> bool:
+    """판단 한도의 마지막 호출에서 온 제출인가 — 반려하면 다시 낼 기회가 없다"""
+    return turn.counters.get("modelCalls", 0) >= limits.LIMITS.max_model_calls
+
+
+def _salvaged(turn: _Turn, args: dict) -> tuple[dict, list[str]]:
+    """마지막 제출이 검사를 못 넘으면 넘지 못한 항목만 빼고 받는다 — 반려하면 한도로 빈 결과가 된다(실제 모델 평가에서 본 일).
+    빼는 것: 업무 후보, 근거가 없거나 조회하지 않은 근거만 가진 관측 사실, 원인 후보의 조회하지 않은 근거 ID"""
+    known, dropped = turn.known_ids(), []
+    out = dict(args)
+    if out.get("workSuggestions"):
+        dropped.append(f"업무 후보 {len(out['workSuggestions'])}개")
+        out["workSuggestions"] = []
+    facts = [fact for fact in out.get("observedFacts") or [] if fact.get("evidenceIds") and set(fact["evidenceIds"]) <= known]
+    if len(facts) < len(out.get("observedFacts") or []):
+        dropped.append(f"근거가 확인되지 않은 관측 사실 {len(out['observedFacts']) - len(facts)}개")
+    out["observedFacts"] = facts
+    out["candidateCauses"] = [{**cause, "supportingEvidenceIds": [e for e in cause.get("supportingEvidenceIds") or [] if e in known],
+                               "conflictingEvidenceIds": [e for e in cause.get("conflictingEvidenceIds") or [] if e in known]}
+                              for cause in out.get("candidateCauses") or []]
+    return out, dropped
+
+
+def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = True) -> None:
     """제출 처리 — 결과는 guard가 검사하고 통과해야 접수한다. 보고서는 그대로 접수한다(finalize가 저장)"""
     state = turn.state
     if name == "submit_report":
@@ -97,7 +120,7 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         turn.update["report"] = args
         return
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
-    errs += validate_work_suggestions(args.get("workSuggestions"), _cited(args))
+    errs += validate_work_suggestions(args.get("workSuggestions"), turn.known_ids())
     errs += _once(turn, "claimRejects", CLAIM_ERROR, validate_answer(args, state.get("purpose"), turn.known_ids()))
     errs += guard.validate_seen_ids(args, _seen_text(turn))
     note = ""
@@ -110,6 +133,13 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
     if not errs:
         args, note, change_error = _check_conclusion(turn, args)
         errs = [change_error] if change_error else []
+    if errs and salvage and _final_turn(turn):
+        salvaged, dropped = _salvaged(turn, args)
+        if dropped:
+            turn.rt.tracer.event("final_salvage", errors=errs, dropped=dropped)
+            salvaged = _with_limitation(salvaged, "판단 한도의 마지막 제출이라 검사를 통과하지 못한 항목을 빼고 접수했습니다: "
+                                        + ", ".join(dropped) + ".")
+            return handle_submit(turn, name, salvaged, cid, salvage=False)
     if errs:
         turn.submit_rejected = True
         turn.rt.tracer.event("guard_reject", tool=name, errors=errs)
@@ -214,12 +244,6 @@ def _once(turn: _Turn, counter: str, prefix: str, errors: list[str]) -> list[str
 def _seen_text(turn: _Turn) -> str:
     """조회한 글 — 이번 작업의 앞선 노드 · 이 묶음의 도구 결과와 작업자가 고른 조사 결과"""
     return looked_up_text([*(turn.state.get("messages") or []), *turn.out], turn.state.get("selectedInputs"))
-
-
-def _cited(result: dict) -> set[str]:
-    """답이 인용한 근거 — 관측 사실 · 원인 후보 지지 근거(결과 evidenceRefs가 되는 것)"""
-    return ({e for fact in result.get("observedFacts") or [] for e in fact.get("evidenceIds") or []}
-            | {e for cause in result.get("candidateCauses") or [] for e in cause.get("supportingEvidenceIds") or []})
 
 
 def _check_conclusion(turn: _Turn, args: dict) -> tuple[dict, str, str | None]:
@@ -337,13 +361,13 @@ async def save_proposal(turn: _Turn, name: str, args: dict, cid: str, held: dict
     respond = (lambda text: turn.held_notes.append(text)) if held else (lambda text: turn.say(text, cid, name))
     rejection = _proposal_rejection(turn, name, args, cid, action_type, made_brief)
     fixable = bool(rejection) and not rejection.startswith("[FORBIDDEN]")
+    rejection = rejection or await _incident_block(turn, args, action_type)  # 사건 규칙 반려는 다시 시도해도 같다
     answered = turn.state.get("result") or turn.update.get("result")
-    if not rejection and not answered and not held:
+    if not rejection and not answered and not held:  # 사건 규칙(한도 · 중복)까지 넘은 요청서만 보관한다 — 답을 기다려도 안 바뀐다
         turn.counters["heldProposal"] = {"name": name, "args": args, "cid": cid, "brief": made_brief}
         turn.rt.tracer.event("proposal_held", tool=name)
         return turn.say("[HELD] 요청서를 보관했습니다. submit_result로 질문의 답이 접수되면 Harness가 바로 승인 요청으로 "
                         "넘깁니다 — 같은 요청서를 다시 내지 마세요.", cid, name)
-    rejection = rejection or await _incident_block(turn, args, action_type)  # 사건 규칙 반려는 다시 시도해도 같다
     if not rejection:
         try:
             approval = await _create_proposal(turn, args, cid, action_type, made_brief["brief"])
