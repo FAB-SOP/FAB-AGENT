@@ -1,5 +1,5 @@
 import {type Obj} from '../api/types';
-import {conclusionChange,conclusionFieldLabel,stanceView} from '../domain/analysisMarks';
+import {conclusionChange,conclusionFieldLabel,nextStepView,stanceView} from '../domain/analysisMarks';
 
 /** 후보 지지·반증·판정 보류 — 서버가 보낸 stance만 표시 */
 export function StanceBadge({stance}:{stance?:string|null}){
@@ -16,6 +16,11 @@ export function ConclusionNotice({result}:{result?:Obj|null}){
   {change.reason&&<p>{change.reason}</p>}
   {change.newEvidenceIds.length>0&&<p className="small muted">새 근거 · {change.newEvidenceIds.join(', ')}</p>}
  </div>;
+}
+/** AI가 정한 다음 단계 — 확정이 아니라 AI 판단 */
+export function NextStepNotice({result}:{result?:Obj|null}){
+ const view=nextStepView(result);
+ return view?<p className="next-step"><strong>다음 단계 · {view.label}</strong> <span className="small muted">{view.hint}</span></p>:null;
 }
 /** 결과 종류 — 질문 답 중 원인 분석을 갱신한 것만 표시 */
 export function ResultKindTag({result}:{result?:Obj|null}){

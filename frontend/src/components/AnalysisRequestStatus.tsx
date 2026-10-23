@@ -1,4 +1,4 @@
-import {ConclusionNotice,ResultKindTag,StanceBadge} from './AnalysisMarks';
+import {ConclusionNotice,NextStepNotice,ResultKindTag,StanceBadge} from './AnalysisMarks';
 import {answerText,nextCheck} from '../domain/analysisMarks';
 import {LoaderCircle} from 'lucide-react';
 import {Link} from 'react-router-dom';
@@ -55,6 +55,7 @@ export function ThreadAnswer({answer}:{answer:Obj}){
   <ResultKindTag result={answer}/>
   <ConclusionNotice result={answer}/>
   <p>{answerText(answer)}</p>
+  <NextStepNotice result={answer}/>
   {answer.candidateCauses?.map((cause:Obj,index:number)=><div key={cause.candidateId||cause.causeId||index}>
    <h3>{cause.rank||cause.priority}. {cause.hypothesis||cause.cause} <StanceBadge stance={cause.stance}/></h3>
    {nextCheck(cause)&&<p>{nextCheck(cause)}</p>}

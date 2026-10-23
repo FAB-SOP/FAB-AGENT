@@ -1,7 +1,7 @@
 import {LoaderCircle} from 'lucide-react';
 import {approvalKindLabels,type Obj,when} from '../api/types';
 import {Badge,Empty} from './ui';
-import {ConclusionNotice,StanceBadge} from './AnalysisMarks';
+import {ConclusionNotice,NextStepNotice,StanceBadge} from './AnalysisMarks';
 import {answerText,counterIds,nextCheck} from '../domain/analysisMarks';
 import {EvidenceList} from './InvestigationContext';
 import {statusMessages,ThreadAnswer} from './AnalysisRequestStatus';
@@ -126,6 +126,7 @@ export function AnalysisResultBody({result}:{result:Obj}){
  return <div className="conversation-result">
   <ConclusionNotice result={result}/>
   <p className="analysis-summary">{answerText(result)}</p>
+  <NextStepNotice result={result}/>
   {result.observedFacts?.length>0&&<details className="conversation-evidence">
    <summary>관측 사실 {result.observedFacts.length}건</summary>
    {result.observedFacts.map((fact:Obj,index:number)=><p key={index}>{fact.statement||fact.text||fact.description||fact.label}</p>)}

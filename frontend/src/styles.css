@@ -111,3 +111,4 @@ textarea:disabled{background:#f1f4f5;color:#7c8d95;cursor:not-allowed;border-col
 .previous-analysis{border-top:1px solid #e5ebee;padding:12px 0}.previous-analysis>summary{cursor:pointer;color:#6b848d;font-size:15px}.cause-heading{font-size:15px;margin:20px 0 4px}.rank{width:auto;height:auto;padding:4px 8px;font-size:13px;white-space:nowrap}.work-origin{display:inline-block;margin:0 0 6px;padding:2px 8px;border-radius:999px;background:#eef6f3;color:#307a6b;font-size:13px;font-weight:600}
 .conversation-panel .proposed-work{margin-top:40px;padding-top:28px;border-top:2px solid #d9e3e7}
 .conversation-note .one-line{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next-step{margin:4px 0 14px;padding:10px 14px;border-left:3px solid #197a6d;background:#eef6f3;border-radius:6px;font-size:15px}
