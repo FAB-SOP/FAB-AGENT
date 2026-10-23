@@ -13,11 +13,17 @@ from fab.agent import purpose
 from fab.agent.harness.guard import _PRESCRIBE, _PROB
 
 MAX_CHARS = 600
+CLAIM_ERROR = "answer가 원인 · 추세 · 해결을 확정합니다"
 REQUIRED_FOR = {purpose.QUESTION, purpose.FOLLOWUP, *purpose.HUMAN_REQUESTED}
 _SENTENCE = re.compile(r"[^.。!?\n]+")
-_REFUSAL = re.compile(r"않|없|못|금지|아니|어렵|필요|SOP|승인")
+# 할 수 없다 · 아직 모른다고 밝힌 문장 — 「확정할 수 있는 데이터가 부족해 보류」처럼 근거 부족을 말한 문장도 단정이 아니다
+# 「한계」는 관리한계 · 규격 한계 · 참고 한계(측정 용어)가 아닐 때만 — 「관리한계 상한을 초과해 상승 추세가 확정」을 놓쳤다
+_REFUSAL = re.compile(r"않|없|못|금지|아니|어렵|필요|부족|보류|(?<!관리)(?<!관리 )(?<!규격 )(?<!규격)(?<!참고 )한계|제한|추가 확인|SOP|승인")
 # 「해결되었는지 확인」처럼 묻는 꼴은 단정이 아니다
-_CLAIM = re.compile(r"(?:확정(?:되었|됐|입니다|이다|적|된|이라고|할 수 있)|해결(?:됐|되었|완료|된 것))(?!는지|을지|는가|던지)")
+# 명사 · 부정으로 쓴 「확정」(확정 근거 · 확정은 · 확정할 수 없 · 확정하기)은 단정이 아니다 — 그 밖의 꼴(확정이며 · 확정되었
+# 습니다 · 확정입니다 …)은 단정. 「해결되었는지 확인」처럼 묻는 꼴도 단정이 아니다
+_CLAIM = re.compile(r"(?<![미불])확정(?!\s*(?:근거|여부|은|는|에|을|를|하기|하려|할 수 없|짓|적이지|이라고 (?:볼|하기)))"
+                    r"|해결(?:됐|되었|완료|된 것)(?!는지|을지|는가|던지)")
 _EVIDENCE_ID = re.compile(r"(?<![A-Za-z0-9-])E-[A-Za-z0-9_-]*[A-Za-z0-9_]")
 
 # 할 수 없는 요청의 필수 문구 — 원인 확률 · 설정값을 물으면 답이 「할 수 없다」를 반드시 말한다. 실제 모델은 확률 질문에
@@ -62,7 +68,7 @@ def validate_answer(result: dict, job_purpose: str | None, known_evidence: set[s
     if sentence := hit(_PRESCRIBE):
         errors.append(f"answer가 장비 설정값 변경을 처방합니다(「{sentence[:80]}」). 승인 SOP와 담당자 검토가 필요하다고 답하세요.")
     if sentence := hit(_CLAIM):
-        errors.append(f"answer가 원인 · 추세 · 해결을 확정합니다(「{sentence[:80]}」). Agent는 확정하지 않습니다 — 근거로 볼 수 "
+        errors.append(f"{CLAIM_ERROR}(「{sentence[:80]}」). Agent는 확정하지 않습니다 — 근거로 볼 수 "
                       "있는 것과 확정에 필요한 것(후속 run · 담당자 확인)을 나눠 답하세요.")
     if known_evidence is not None:
         unknown = [e for e in answer_evidence_ids(result) if e not in known_evidence]

@@ -104,7 +104,7 @@ def test_question_answer_without_request_gets_one_nudge_toward_the_backed_reques
                                                                 "hypothesis": "ETCH 챔버 벽 오염"}]}
     handle_submit(turn, "submit_result", result, "c1")
     text = str(turn.out[-1].content)
-    assert text.startswith("[ACCEPTED]") and "propose_cross_process_check(processCode=ETCH)" in text and turn.deferred_retry
+    assert text.startswith("[ACCEPTED]") and "propose_cross_process_check(processCode=ETCH)" in text and turn.nudge_retry
     handle_submit(turn, "submit_result", result, "c2")  # 한 번만 — 다시 내도 또 묻지 않는다
     assert "요청서가 없습니다" not in str(turn.out[-1].content)
 

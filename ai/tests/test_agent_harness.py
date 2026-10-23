@@ -505,12 +505,13 @@ def _turn(state: dict):
     return _Turn(base | state, {"configurable": {"runtime": _Runtime()}})
 
 
-def test_proposal_before_answer_is_rejected():
+def test_proposal_before_answer_is_not_a_rejection_reason():
+    """답보다 먼저 온 요청서는 반려하지 않고 보관한다(내용 검사는 그대로) — 승인 요청은 답이 접수된 뒤에 만든다"""
     from fab.agent.graph.nodes.tools import _proposal_rejection
 
     reason = _proposal_rejection(_turn({}), "propose_maintenance_request", {"processCode": "CMP", "evidenceIds": ["E-1"]},
                                  "c1", "CREATE_MAINTENANCE_REQUEST", {"brief": {}})
-    assert reason and "먼저 submit_result" in reason
+    assert reason and "submit_result" not in reason and "조회하지 않아" in reason  # 내용(근거 run 미조회)으로만 반려
 
 
 def test_current_check_without_proposal_is_accepted():
@@ -705,54 +706,58 @@ class ProposalBeforeAnswerModel:
             self.steps.append("propose-only")
             return AIMessage(content="", tool_calls=[proposal])
         proposal, submit = self.calls
-        if "다시 내세요" in last:
-            self.steps.append("re-propose")
-            return AIMessage(content="", tool_calls=[{**proposal, "id": "c-again"}])
         self.steps.append("submit-only")
         return AIMessage(content="", tool_calls=[{**submit, "id": f"c-submit-{len(self.steps)}"}])
 
 
-async def test_proposal_rejected_for_coming_before_the_answer_is_offered_again(spring_url, kb):
-    """요청서가 「답 먼저」로 반려되고 다음 턴에 답만 오면, 답을 접수하면서 요청서를 다시 낼 기회를 한 번 준다(평가셋 AE01–03)"""
+async def test_proposal_before_the_answer_is_held_until_the_answer_is_accepted(spring_url, kb):
+    """요청서가 답보다 먼저 오면 보관했다가 답이 접수되는 그 묶음에서 승인 요청으로 넘긴다 — 모델이 다시 낼 필요가 없다.
+    예전에는 반려 → 답 → 재제안으로 질문 작업의 모델 호출이 평균 3.1회에서 6.0회로 늘었다(평가셋 v1.2 실제 모델 실행)"""
     model = ProposalBeforeAnswerModel()
     runner, backend = make_runner(kb, models=(model, None), base=spring_url)
     display = await fresh_incident("EV-1009", spring_url)
     await poll_once(runner, backend)
     await _ask(spring_url, display, "앞 공정 확인이 필요해?")
     out = (await poll_once(runner, backend))[-1]
-    assert model.steps == ["propose-only", "submit-only", "re-propose"], model.steps
+    assert model.steps == ["propose-only", "submit-only"], model.steps
     assert out["status"] == "WAITING_APPROVAL", out
 
 
-class WrongTypeAfterAnswerModel(ProposalBeforeAnswerModel):
-    """앞 공정만 정상 변동 밖인 사건에서 — 요청서 먼저(반려) → 답만 → 현재 공정 정비 요청(근거 없음으로 반려) → 안내대로 앞 공정 확인"""
+class WrongTypeFirstModel(ProposalBeforeAnswerModel):
+    """앞 공정만 정상 변동 밖인 사건에서 — 현재 공정 정비 요청(근거 없음으로 반려) → 안내대로 앞 공정 확인(보관) → 답"""
 
     async def ainvoke(self, messages, tools):
         last = str(messages[-1].content) if messages else ""
-        if self.calls is not None and "다시 내세요" in last:
-            proposal, _ = self.calls
+        if self.calls is None:
+            r = await self.rule.ainvoke(messages, tools)
+            proposal = next((c for c in r.tool_calls if c["name"].startswith("propose_")), None)
+            submit = next((c for c in r.tool_calls if c["name"] == "submit_result"), None)
+            if not (proposal and submit):
+                return r
+            self.calls = (proposal, submit)
             self.steps.append("wrong-type")
             wrong = {"processCode": "CMP", "equipmentId": "CMP-PM3", "ownerUserId": "USR-MNT-01", "causeIds": ["CMP_PRESSURE"],
                      "reason": "CMP 두께가 관리한계 위입니다.", "question": "CMP-PM3 헤드 압력 계통 점검 부탁드립니다.",
                      "evidenceIds": proposal["args"].get("evidenceIds", []), "rationale": "현재 공정 확인"}
             return AIMessage(content="", tool_calls=[{"id": "c-wrong", "name": "propose_maintenance_request", "args": wrong}])
-        if self.calls is not None and "propose_cross_process_check(processCode=" in last:
-            proposal, _ = self.calls
+        proposal, submit = self.calls
+        if "propose_cross_process_check(processCode=" in last:
             self.steps.append("follow-hint")
             return AIMessage(content="", tool_calls=[{**proposal, "id": "c-hint"}])
-        return await super().ainvoke(messages, tools)
+        self.steps.append("submit-only")
+        return AIMessage(content="", tool_calls=[{**submit, "id": f"c-submit-{len(self.steps)}"}])
 
 
-async def test_wrong_request_type_after_answer_first_still_gets_its_own_retry(spring_url, kb):
-    """「답 먼저」 재시도는 요청서를 고치는 재시도 기회를 쓰지 않는다 — 다시 낸 요청서가 종류가 틀려 반려되면 안내를 보고
-    한 번 더 고칠 수 있다(평가셋 AE03 실제 모델 실행)"""
-    model = WrongTypeAfterAnswerModel()
+async def test_wrong_request_type_is_rejected_with_a_hint_then_the_right_one_is_held(spring_url, kb):
+    """근거 없는 정비 요청은 내용 검사로 바로 반려하며 앞 공정 확인 요청을 집어 준다 — 고친 요청서는 보관됐다가 답과 함께 승인 요청이 된다
+    (평가셋 AE03 실제 모델 실행)"""
+    model = WrongTypeFirstModel()
     runner, backend = make_runner(kb, models=(model, None), base=spring_url)
     display = await fresh_incident("EV-1009", spring_url)
     await poll_once(runner, backend)
     await _ask(spring_url, display, "앞 공정 확인이 필요해?")
     out = (await poll_once(runner, backend))[-1]
-    assert model.steps == ["propose-only", "submit-only", "wrong-type", "follow-hint"], model.steps
+    assert model.steps == ["wrong-type", "follow-hint", "submit-only"], model.steps
     assert out["status"] == "WAITING_APPROVAL", out
 
 

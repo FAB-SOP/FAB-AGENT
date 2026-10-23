@@ -90,9 +90,14 @@ def test_saying_it_cannot_be_given_is_not_a_prescription_or_probability():
 
 
 def test_answer_does_not_confirm():
-    errors = validate_answer(_answer(answer="헤드 압력이 낮으니 이중 트렌드가 확정되었다고 볼 수 있습니다(E-1)."), "QUESTION")
+    errors = validate_answer(_answer(answer="헤드 압력이 낮으니 상승 추세가 확정되었다고 볼 수 있습니다(E-1)."), "QUESTION")
     assert any("확정" in e for e in errors)
     assert validate_answer(_answer(answer="정비 뒤 두께 이탈이 해결되었습니다(E-1)."), "QUESTION")
+    # 측정 용어 「관리한계」를 거절 표현으로 읽지 않는다(평가셋 v1.2 실제 모델 실행)
+    assert validate_answer(_answer(answer="두께가 관리한계(R1) 상한을 초과하여 상승 추세가 확정되었습니다(E-1)."), "QUESTION")
+    assert validate_answer(_answer(answer="문서의 적용 한계 때문에 원인 확정은 하지 않습니다(E-1)."), "QUESTION") == []
+    assert validate_answer(_answer(answer="관리한계 상한을 초과해 상승 추세가 확정이며 압력이 낮습니다(E-1)."), "QUESTION")
+    assert validate_answer(_answer(answer="확정 근거는 한 장뿐입니다(E-1)."), "QUESTION") == []
 
 
 def test_evidence_cited_in_the_answer_must_have_been_looked_up():
@@ -141,3 +146,20 @@ def test_missing_sentence_is_sent_back_once_then_put_first_by_the_harness():
     handle_submit(turn, "submit_result", _answer(answer="슬러리 공급 저하 가능성이 높습니다(E-1)."), "c2")
     assert str(turn.out[-1].content).startswith("[ACCEPTED]")
     assert turn.update["result"]["answer"].startswith("원인 확률은 숫자로 제시하지 않습니다")
+
+
+def test_saying_the_data_is_not_enough_to_confirm_is_not_a_claim():
+    """「확정할 수 있는 데이터가 부족해 보류」는 근거 부족을 정확히 말한 답이다(평가셋 v1.2 실제 모델 실행 — 세 번 반려돼 한도)"""
+    answer = "막힘 위치를 확정할 수 있는 추가 데이터가 부족하여 원인 확정은 보류해야 합니다(E-1)."
+    assert validate_answer(_answer(answer=answer), "QUESTION") == []
+
+
+def test_claim_rejection_happens_once_per_job():
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    turn = _turn()
+    claim = _answer(answer="헤드 압력 저하로 원인이 확정되었습니다(E-1).")
+    handle_submit(turn, "submit_result", claim, "c1")
+    assert str(turn.out[-1].content).startswith("[REJECTED]") and "확정" in str(turn.out[-1].content)
+    handle_submit(turn, "submit_result", claim, "c2")  # 두 번째는 확정 검사로 반려하지 않는다(한도로 빈 결과가 되지 않게)
+    assert str(turn.out[-1].content).startswith("[ACCEPTED]")

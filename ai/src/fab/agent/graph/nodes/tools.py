@@ -17,7 +17,7 @@ from fab.agent.harness.retry import TransientJobError
 from fab.agent import purpose
 from fab.agent.purpose import may_propose
 from fab.agent.tools import HARNESS_NAMES, PROPOSALS, ToolCallError
-from fab.agent.answer import missing_statements, validate_answer
+from fab.agent.answer import CLAIM_ERROR, missing_statements, validate_answer
 from fab.agent import doc_citation
 from fab.agent.work import validate_work_suggestions
 
@@ -36,7 +36,8 @@ class _Turn:
         self.known = set(state.get("evidence", {}))
         self.submit_rejected = False  # 이 묶음의 답이 반려됐나 — 같은 묶음의 제안 반려 문장을 맞게 고른다
         self.fixable_proposal_reject = False  # 고칠 수 있는 이유(근거 · 브리프 · 담당자 · backend 검증)로 제안이 반려됐나
-        self.deferred_retry = False  # 답보다 먼저 와서 반려된 요청서를 답 접수 뒤 다시 낼 기회 — 위 재시도와 따로 센다
+        self.nudge_retry = False  # 요청서 없는 답에 근거 있는 요청을 알렸나 — 모델에게 한 번 돌려보낸다(요청서 수정 재시도와 따로)
+        self.accepted_cid: str | None = None  # 이 묶음에서 접수된 submit_result 호출 — 보관한 요청서 처리 결과를 그 메시지에 붙인다
 
     def known_ids(self) -> set[str]:
         """이번 작업에서 조회한 근거 — 앞선 노드에서 모은 것 + 이 묶음에서 방금 받은 것"""
@@ -75,6 +76,7 @@ async def tools(state: AgentState, config) -> dict:
             turn.say(f"[FORBIDDEN] {name}는 이 모드에서 쓸 수 없습니다.", cid, name)
         else:
             await run_tool(turn, name, args, cid)
+    await _release_held_proposal(turn)
     order = {call["id"]: i for i, call in enumerate(reply.tool_calls)}
     turn.out.sort(key=lambda message: order.get(message.tool_call_id, len(order)))  # 도구 메시지는 원래 호출 순서로
     # 답은 접수됐는데 요청서가 고칠 수 있는 이유로 반려됐으면 한 번은 모델에게 돌려보낸다(답만 남기고 끝내지 않게)
@@ -82,9 +84,7 @@ async def tools(state: AgentState, config) -> dict:
     fix_retry = bool(turn.fixable_proposal_reject and turn.counters.get("proposalRetries", 0) < 1 and answered)
     if fix_retry:
         turn.counters["proposalRetries"] = turn.counters.get("proposalRetries", 0) + 1
-    # 「답 먼저」 재시도는 순서만 틀린 것이라 요청서 내용을 고치는 재시도 기회를 쓰지 않는다 — 다시 낸 요청서가
-    # 내용 때문에 반려돼도 한 번 더 고칠 수 있게
-    retry = fix_retry or (turn.deferred_retry and answered)
+    retry = fix_retry or (turn.nudge_retry and answered)
     turn.update["retryProposal"] = retry
     return turn.result()
 
@@ -98,7 +98,7 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         return
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
     errs += validate_work_suggestions(args.get("workSuggestions"), _cited(args))
-    errs += validate_answer(args, state.get("purpose"), turn.known_ids())
+    errs += _once(turn, "claimRejects", CLAIM_ERROR, validate_answer(args, state.get("purpose"), turn.known_ids()))
     errs += guard.validate_seen_ids(args, _seen_text(turn))
     note = ""
     if not errs:
@@ -115,20 +115,9 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         turn.rt.tracer.event("guard_reject", tool=name, errors=errs)
         turn.say("[REJECTED] " + " / ".join(err.removeprefix("[REJECTED] ") for err in errs), cid, name)
     else:
-        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + (_deferred_proposal_note(turn) or _missing_proposal_note(turn, args)),
-                 cid, name)
+        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + _missing_proposal_note(turn, args), cid, name)
         turn.update["result"] = args
-
-
-def _deferred_proposal_note(turn: _Turn) -> str:
-    """답보다 먼저 와서 반려된 요청서 — 답이 접수된 지금 한 번 다시 낼 기회를 준다(고칠 수 있는 반려와 같은 재시도)"""
-    deferred = turn.counters.pop("proposalBeforeAnswer", None)
-    if not deferred or turn.update.get("pending") or turn.counters.get("deferredRetries", 0) >= 1:
-        return ""
-    turn.counters["deferredRetries"] = 1
-    turn.deferred_retry = True
-    return (f" 앞서 답보다 먼저 보낸 요청서 제안({deferred})은 반려됐습니다. 답이 접수됐으니 필요하면 같은 제안을 지금 다시 "
-            "내세요(이번 답의 근거로).")
+        turn.accepted_cid = cid
 
 
 def _missing_proposal_note(turn: _Turn, args: dict) -> str:
@@ -137,7 +126,7 @@ def _missing_proposal_note(turn: _Turn, args: dict) -> str:
     state = turn.state
     if (state.get("purpose") != purpose.QUESTION or args.get("nextStep") not in ("CURRENT_CHECK", "UPSTREAM_CHECK")
             or not may_propose(state) or state.get("proposals") or turn.update.get("pending")
-            or turn.counters.get("proposalNudges", 0) >= 1):
+            or turn.counters.get("heldProposal") or turn.counters.get("proposalNudges", 0) >= 1):
         return ""
     reply = state["messages"][-1] if state.get("messages") else None
     if any(call["name"] in PROPOSALS for call in getattr(reply, "tool_calls", None) or []):  # 같은 응답에 요청서가 있다
@@ -147,7 +136,7 @@ def _missing_proposal_note(turn: _Turn, args: dict) -> str:
     if suggestion is None:
         return ""
     turn.counters["proposalNudges"] = 1
-    turn.deferred_retry = True
+    turn.nudge_retry = True
     return (f" 이 답은 {args['nextStep']}인데 요청서가 없습니다. 근거가 있는 요청을 낼지 정하세요 — {suggestion}. "
             "필요 없다고 보면 그대로 두면 됩니다(다시 제출하지 않아도 이 답으로 끝납니다).")
 
@@ -210,6 +199,18 @@ def _with_limitation(args: dict, text: str) -> dict:
     return {**args, "limitations": [*limitations, text]}
 
 
+def _once(turn: _Turn, counter: str, prefix: str, errors: list[str]) -> list[str]:
+    """이 종류의 반려는 한 작업에 한 번만 — 두 번째부터는 뺀다. 확정 단정 검사는 낱말로 보는 거친 검사라 오탐이 나면
+    같은 답을 거듭 반려해 모델 판단 한도에 닿았다(근거 부족을 정확히 말한 답이 빈 결과로 끝났다)"""
+    hits = [error for error in errors if error.startswith(prefix)]
+    if not hits:
+        return errors
+    if turn.counters.get(counter, 0) >= 1:
+        return [error for error in errors if not error.startswith(prefix)]
+    turn.counters[counter] = 1
+    return errors
+
+
 def _seen_text(turn: _Turn) -> str:
     """조회한 글 — 이번 작업의 앞선 노드 · 이 묶음의 도구 결과와 작업자가 고른 조사 결과"""
     return looked_up_text([*(turn.state.get("messages") or []), *turn.out], turn.state.get("selectedInputs"))
@@ -262,14 +263,6 @@ def _proposal_rejection(turn: _Turn, name: str, args: dict, cid: str, action_typ
     if not may_propose(state):
         return ("[FORBIDDEN] 이 작업에서는 요청을 제안할 수 없습니다 — 원인 분석은 nextStep으로 판단만 남기고, "
                 "승인 대기 중인 요청서가 있으면 질문에만 답합니다.")
-    if not (state.get("result") or turn.update.get("result")):  # 답 먼저 — 사람은 답을 보고 승인을 정한다
-        # 답이 접수되면 이 제안을 다시 내라고 알린다 — 실제 모델은 반려 뒤 답만 내고 요청서를 다시 내지 않았다
-        turn.counters["proposalBeforeAnswer"] = name
-        if turn.submit_rejected:
-            return ("[REJECTED] 같은 응답의 submit_result가 반려돼 요청 제안도 받지 않았습니다. "
-                    "답을 고쳐 요청 제안과 함께 다시 내세요.")
-        return ("[REJECTED] 먼저 submit_result로 답을 제출하세요. 요청 제안은 답이 접수된 뒤에만 받습니다 — "
-                "같은 응답에서 submit_result와 함께 호출하면 됩니다.")
     unknown = set(args.get("evidenceIds", [])) - turn.known_ids()
     if unknown:
         return f"[REJECTED] 조회하지 않은 근거 ID: {sorted(unknown)}"
@@ -333,12 +326,23 @@ async def _create_proposal(turn: _Turn, args: dict, cid: str, action_type: str, 
         idempotency_key=f"{job_id}:{cid}")  # 같은 도구 호출을 재시도해도 제안은 하나
 
 
-async def save_proposal(turn: _Turn, name: str, args: dict, cid: str) -> None:
-    """제안 저장 — 검사(모드 · 근거 · 브리프 · 한 번에 하나 · 상한 · 중복)를 통과하면 backend에 저장하고 승인 대기로 둔다"""
+async def save_proposal(turn: _Turn, name: str, args: dict, cid: str, held: dict | None = None) -> None:
+    """제안 저장 — 검사(모드 · 근거 · 브리프 · 한 번에 하나 · 상한 · 중복)를 통과하면 backend에 저장하고 승인 대기로 둔다.
+    답이 아직 접수되지 않았으면 반려하지 않고 보관한다 — 사람은 답을 보고 승인을 정하므로 승인 요청은 답이 접수된 뒤에
+    만든다. 실제 모델은 거의 늘 요청서를 답보다 먼저 보냈고, 예전처럼 반려하면 반려 → 답 → 재제안으로 호출이 두 배가 됐다.
+    held: 보관했던 요청서를 답 접수 뒤 처리할 때 — 결과 문장은 그 답의 접수 메시지에 붙인다(옛 호출에는 답할 수 없다)"""
     write_tool, action_type = PROPOSALS[name]
-    made_brief = (turn.state.get("briefs") or {}).get(cid) or {"errors": ["요청 브리프가 만들어지지 않았습니다."]}
+    made_brief = (held or {}).get("brief") or (turn.state.get("briefs") or {}).get(cid) \
+        or {"errors": ["요청 브리프가 만들어지지 않았습니다."]}
+    respond = (lambda text: turn.held_notes.append(text)) if held else (lambda text: turn.say(text, cid, name))
     rejection = _proposal_rejection(turn, name, args, cid, action_type, made_brief)
     fixable = bool(rejection) and not rejection.startswith("[FORBIDDEN]")
+    answered = turn.state.get("result") or turn.update.get("result")
+    if not rejection and not answered and not held:
+        turn.counters["heldProposal"] = {"name": name, "args": args, "cid": cid, "brief": made_brief}
+        turn.rt.tracer.event("proposal_held", tool=name)
+        return turn.say("[HELD] 요청서를 보관했습니다. submit_result로 질문의 답이 접수되면 Harness가 바로 승인 요청으로 "
+                        "넘깁니다 — 같은 요청서를 다시 내지 마세요.", cid, name)
     rejection = rejection or await _incident_block(turn, args, action_type)  # 사건 규칙 반려는 다시 시도해도 같다
     if not rejection:
         try:
@@ -350,14 +354,28 @@ async def save_proposal(turn: _Turn, name: str, args: dict, cid: str) -> None:
         if rejection.startswith("[LIMIT]"):  # 사람에게도 이유를 보인다 — 결과의 한계로(finalize)
             turn.update["proposalLimit"] = True
         turn.rt.tracer.event("proposal_reject", tool=name, fixable=fixable, reason=rejection[:300])  # 왜 요청서가 없는지 trace에
-        return turn.say(rejection, cid, name)
+        return respond(rejection)
     turn.rt.tracer.event("proposal", approvalId=approval["approvalId"], actionType=action_type)
-    turn.say(f"[PROPOSED] 승인 {approval['approvalId']}로 저장했습니다. 사람의 승인을 기다립니다. "
-             "아직 요청은 등록되지 않았습니다.", cid, name)
+    respond(f"[PROPOSED] 승인 {approval['approvalId']}로 저장했습니다. 사람의 승인을 기다립니다. "
+            "아직 요청은 등록되지 않았습니다.")
     turn.update["pending"] = {"kind": "APPROVAL", "approvalId": approval["approvalId"], "writeTool": write_tool,
                               "approvalVersion": approval["version"], "interruptId": f"INT-APP-{uuid.uuid4().hex[:8]}"}
     turn.update["proposals"] = [{"approvalId": approval["approvalId"], "actionType": action_type,
                                  "ownerUserId": args.get("ownerUserId"), "targetProcessCode": args.get("processCode")}]
+
+
+async def _release_held_proposal(turn: _Turn) -> None:
+    """보관한 요청서 — 이 묶음에서 답이 접수됐으면 지금 처리하고, 결과를 그 답의 접수 메시지 뒤에 붙인다"""
+    held = turn.counters.get("heldProposal")
+    if not held or not turn.accepted_cid or turn.update.get("pending"):
+        return
+    turn.counters.pop("heldProposal")
+    turn.held_notes = []
+    await save_proposal(turn, held["name"], held["args"], held["cid"], held=held)
+    for i, message in enumerate(turn.out):
+        if message.tool_call_id == turn.accepted_cid:
+            turn.out[i] = ToolMessage(content=f"{message.content} 보관한 요청서({held['name']}): {' '.join(turn.held_notes)}",
+                                      tool_call_id=message.tool_call_id, name=message.name)
 
 
 async def run_tool(turn: _Turn, name: str, args: dict, cid: str) -> None:
