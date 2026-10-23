@@ -61,6 +61,8 @@ export const labels:Record<string,string>={
  SUCCEEDED:'분석 완료',
  FAILED:'분석 실패',
  REPLIED:'회신 완료',
+ CANCELLED:'철회됨',
+ CLOSED_UNPERFORMED:'미수행 종결',
  DRAFT:'초안',
  CONFIRMED:'확정',
  NOT_VERIFIED:'효과 미확인',

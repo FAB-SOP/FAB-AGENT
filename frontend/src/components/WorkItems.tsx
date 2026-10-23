@@ -23,7 +23,10 @@ export const workStates:Record<string,string>={
  REJECTED:'관리자 반려',
  REQUESTED:'담당자 회신 대기',
  COMPLETED:'결과 기록 완료',
+ CLOSED_UNPERFORMED:'미수행 종결',
 };
+/** 채택했지만 수행하지 않은 업무 — 사유를 적어 「미수행으로 닫기」할 수 있다(보고서 확정 전 정리) */
+const UNPERFORMED_CLOSABLE=['READY','APPROVED','REQUESTED'];
 const PROCESS_ORDER=['CVD','ETCH','CMP'];
 const usePolicy=()=>useQuery({queryKey:['work-policy'],queryFn:()=>api<Obj>('/api/work-policy'),staleTime:60000});
 const requestLink=(requestId:string)=>'/check-requests?request='+encodeURIComponent(requestId);
@@ -50,8 +53,8 @@ function classifyWorkItems(items:Obj[]){
   .filter(item=>item.status==='PROPOSED')
   .filter((item,index,list)=>list.findIndex(other=>workKey(other)===workKey(item))===index
    &&!items.some(other=>other.status!=='PROPOSED'&&workKey(other)===workKey(item)));
- const adopted=items.filter(item=>item.route!=='TEAM_REQUEST'&&!['PROPOSED','DECLINED','REJECTED'].includes(item.status));
- const archived=items.filter(item=>['DECLINED','REJECTED'].includes(item.status));
+ const adopted=items.filter(item=>item.route!=='TEAM_REQUEST'&&!['PROPOSED','DECLINED','REJECTED','CLOSED_UNPERFORMED'].includes(item.status));
+ const archived=items.filter(item=>['DECLINED','REJECTED','CLOSED_UNPERFORMED'].includes(item.status));
  return {proposed,adopted,archived};
 }
 function useIncidentWork(incidentId:string){
@@ -78,11 +81,14 @@ function ProposedWorkCard({item,disabled,onSelect}:{item:Obj;disabled:boolean;on
   </div>
  </WorkCard>;
 }
-function AdoptedWorkCard({item,canComplete,closed,onComplete}:{item:Obj;canComplete:boolean;closed:boolean;onComplete:()=>void}){
+function AdoptedWorkCard({item,canComplete,canClose,closed,onComplete,onCloseUnperformed}:{
+ item:Obj;canComplete:boolean;canClose:boolean;closed:boolean;onComplete:()=>void;onCloseUnperformed:()=>void;
+}){
  return <WorkCard item={item}>
   {item.approverUserId&&<p className="small muted">승인 담당 · {item.approverUserId}</p>}
   {item.status==='WAITING_MANAGER'&&<p className="work-waiting">관리자가 검토하고 있습니다. 승인 후 수행 결과를 기록할 수 있습니다.</p>}
   {canComplete&&<button className="button" disabled={closed} onClick={onComplete}><CheckCircle2 size={18}/>수행·확인 결과 기록</button>}
+  {canClose&&<button className="button secondary" disabled={closed} onClick={onCloseUnperformed}>미수행으로 닫기</button>}
   {item.requestId&&<Link className="text-button" to={requestLink(item.requestId)}>요청·회신 확인</Link>}
   {item.actionId&&<p className="small muted">수행 기록 · {item.actionId}</p>}
  </WorkCard>;
@@ -100,6 +106,7 @@ export function WorkItemsPanel({incident,sources,results,canManage}:{
   <Plus size={18}/>분석에서 업무 제안
  </button>;
  const canComplete=(item:Obj)=>['READY','APPROVED'].includes(item.status)&&item.assigneeUserId===session?.user.userId&&canManage;
+ const canClose=(item:Obj)=>UNPERFORMED_CLOSABLE.includes(item.status)&&(canManage||item.assigneeUserId===session?.user.userId);
  return <><Panel title="확인·조치 제안" extra={proposeButton}>
   {workItems.error?<ErrorMessage error={workItems.error}/>:proposed.length?proposed.map(item=><ProposedWorkCard
    key={item.taskId} item={item} disabled={!canManage||closed} onSelect={mode=>setSelected({item,mode})}
@@ -108,12 +115,13 @@ export function WorkItemsPanel({incident,sources,results,canManage}:{
   </Empty>}
  </Panel><Panel title="분석·제안별 확인 및 조치">
   {adopted.length?adopted.map(item=><AdoptedWorkCard
-   key={item.taskId} item={item} canComplete={canComplete(item)} closed={closed} onComplete={()=>setSelected({item,mode:'complete'})}
+   key={item.taskId} item={item} canComplete={canComplete(item)} canClose={canClose(item)} closed={closed}
+   onComplete={()=>setSelected({item,mode:'complete'})} onCloseUnperformed={()=>setSelected({item,mode:'unperformed'})}
   />):!requests.data?.items?.length&&<Empty>채택한 업무가 없습니다. 제안을 검토해 확인 목록에 추가하세요.</Empty>}
   {requests.error&&<ErrorMessage error={requests.error}/>}
   {(requests.data?.items||[]).map((request:Obj)=><TeamRequestResult key={request.requestId} request={request}/>)}
  </Panel>{archived.length>0&&<details className="work-archive">
-  <summary>미채택·반려 제안 {archived.length}건</summary>
+  <summary>미채택·반려·미수행 종결 {archived.length}건</summary>
   {archived.map(item=><WorkCard key={item.taskId} item={item}/>)}
  </details>}
  {draft&&<WorkDraft incident={incident} sources={sources} results={results} onClose={()=>setDraft(false)}/>}
@@ -152,6 +160,7 @@ function WorkCard({item,children}:{item:Obj;children?:React.ReactNode}){
    <span>{when(item.createdAt)} KST</span>
   </div>
   {item.decisionComment&&<p className="small">검토 의견 · {item.decisionComment}</p>}
+  {item.closeReason&&<p className="small">미수행 사유 · {item.closeReason} ({item.closedBy})</p>}
   {children}
  </article>;
 }
@@ -229,6 +238,7 @@ const dialogTitles=(item:Obj,isTeam:boolean):Obj=>({
  approve:'변경 계획 승인',
  reject:'변경 계획 반려',
  complete:'수행·확인 결과 기록',
+ unperformed:'미수행으로 닫기',
 });
 const decisionCodes:Obj={decline:'DECLINE',approve:'APPROVE',reject:'REJECT'};
 function useWorkDialogForm(item:Obj){
@@ -248,6 +258,9 @@ function workDialogRequest(item:Obj,mode:string,form:WorkDialogForm,targetIncide
    expectedVersion:item.version,ownerUserId:form.owner,targetProcessCode:form.target,
   });
  }
+ if(mode==='unperformed'){
+  return ()=>write(`/api/work-items/${item.taskId}/unperformed-closures`,{reason:form.comment.trim(),expectedVersion:item.version});
+ }
  if(mode==='complete'){
   if(!targetIncident)return null;
   return ()=>write(`/api/work-items/${item.taskId}/completions`,{
@@ -266,7 +279,7 @@ function isDialogSubmitDisabled(mode:string,isTeam:boolean,busy:boolean,form:Wor
  return busy
   ||isTeam&&!form.owner
   ||mode==='complete'&&(!targetIncident||!form.confirmed||!form.description.trim())
-  ||mode==='reject'&&!form.comment.trim();
+  ||(mode==='reject'||mode==='unperformed')&&!form.comment.trim();
 }
 function TeamRecipientFields({item,form,directory,busy}:{item:Obj;form:WorkDialogForm;directory:Obj[];busy:boolean}){
  const isUpstreamCheck=item.operationCode==='UPSTREAM_CHECK';
@@ -326,6 +339,9 @@ function WorkDialog({item,mode,incident,onClose}:{item:Obj;mode:string;incident?
    {isTeam&&<TeamRecipientFields item={item} form={form} directory={policy.data?.directory||[]} busy={busy}/>}
    {['decline','approve','reject'].includes(mode)&&<Field label={mode==='reject'?'반려 사유':'검토 의견'}>
     <textarea required={mode==='reject'} value={form.comment} disabled={busy} onChange={event=>form.setComment(event.target.value)} maxLength={2000}/>
+   </Field>}
+   {mode==='unperformed'&&<Field label="미수행 사유">
+    <textarea required value={form.comment} disabled={busy} onChange={event=>form.setComment(event.target.value)} maxLength={500}/>
    </Field>}
    {mode==='complete'&&<CompletionFields form={form} busy={busy}/>}
    {incidentQuery.error&&<ErrorMessage error={incidentQuery.error}/>} {command.error&&<ErrorMessage error={command.error}/>}
