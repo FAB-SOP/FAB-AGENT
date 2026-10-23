@@ -1,11 +1,12 @@
 import {Link,NavLink,Outlet,useLocation} from 'react-router-dom';
 import {
- ListTodo,Activity,Bell,BookOpen,CheckCheck,FileText,Layers3,LayoutDashboard,LogOut,MessagesSquare,ShieldCheck,
+ ListTodo,Activity,BookOpen,CheckCheck,FileText,Layers3,LayoutDashboard,LogOut,MessagesSquare,ShieldCheck,
 } from 'lucide-react';
 import {useAuth} from '../auth';
 import {API_MODE} from '../api/client';
 import {DemoPersonaSelect} from './DemoPersonaSelect';
 import {IncidentNotifications} from './IncidentNotifications';
+import {NotificationBell} from './NotificationBell';
 const NAVIGATION=[
  ['/dashboard','공정 대시보드',LayoutDashboard],
  ['/incidents','이상 조사',Activity],
@@ -38,7 +39,7 @@ function Sidebar({visibleProcess,isMock}:{visibleProcess:string;isMock:boolean})
   </div>
  </aside>;
 }
-function Topbar({currentPageName,isMock,scopes,visibleProcess,onProcessChange,displayName,roleLabel,onLogout}:{
+function Topbar({currentPageName,isMock,scopes,visibleProcess,onProcessChange,displayName,roleLabel,onLogout,userKey}:{
  currentPageName:string;
  isMock:boolean;
  scopes:string[];
@@ -47,6 +48,7 @@ function Topbar({currentPageName,isMock,scopes,visibleProcess,onProcessChange,di
  displayName:string;
  roleLabel:string;
  onLogout:()=>void;
+ userKey:string;
 }){
  return <header className="topbar">
   <div className="breadcrumb">FAB CONTEXT <span>/</span> {currentPageName}</div>
@@ -59,7 +61,7 @@ function Topbar({currentPageName,isMock,scopes,visibleProcess,onProcessChange,di
      {scopes.map(scope=><option key={scope}>{scope}</option>)}
     </select>
    </label>
-   <Link to="/check-requests" className="icon-button" aria-label="받은 확인 요청"><Bell size={20}/></Link>
+   <NotificationBell key={userKey}/>
    <span className="user-avatar">{displayName.slice(0,1)}</span>
    <div className="user-name">
     <strong>{displayName}</strong>
@@ -90,6 +92,7 @@ export function Shell({process,setProcess}:{process:string;setProcess:(process:s
     visibleProcess={visibleProcess}
     onProcessChange={setProcess}
     displayName={session!.user.displayName}
+    userKey={session!.user.userId}
     roleLabel={roleLabel}
     onLogout={()=>logout().catch(error=>alert(error.message))}
    />

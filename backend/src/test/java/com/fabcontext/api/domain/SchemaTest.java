@@ -40,6 +40,15 @@ class SchemaTest extends ApiTestSupport {
 	}
 
 	@Test
+	void confirmedReportUniquenessIsPreservedInTheDefaultSchema() {
+		String index = jdbc.queryForObject("""
+			select indexdef from pg_indexes
+			where schemaname = current_schema() and indexname = 'uq_report_confirmed_per_incident'
+			""", String.class);
+		assertThat(index).contains("UNIQUE", "incident_id", "WHERE", "CONFIRMED");
+	}
+
+	@Test
 	void jsonColumnsAndRenamedColumn() {
 		assertThat(jdbc.queryForObject("select current_schema()", String.class)).isEqualTo(SCHEMA);
 		// @JdbcTypeCode(SqlTypes.JSON) 컬럼 33개가 전부 jsonb다(json · text가 아니다)

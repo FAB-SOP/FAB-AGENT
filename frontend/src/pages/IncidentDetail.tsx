@@ -10,13 +10,17 @@ import {ActionWorkspace} from '../components/ActionWorkspace';
 import {loadQuestionThread} from '../domain/questionThreads';
 import {incidentStage} from '../domain/actionSources';
 import {AnalysisRequestStatus} from '../components/AnalysisRequestStatus';
+import {ProposedWorkList} from '../components/WorkItems';
+import {ResultReview} from '../components/ResultReview';
+import {IncidentApprovals} from './Approvals';
 import {InvestigationConversation} from '../components/InvestigationConversation';
-import {conversationEntries} from '../domain/conversation';
+import {conversationEntries,followupEntries} from '../domain/conversation';
 import {canManageInvestigation} from '../domain/permissions';
 import {ErrorMessageIfFailed,useCommand} from './workflowShared';
 const IN_PROGRESS_STATES=['QUEUED','RUNNING','WAITING_APPROVAL','WAITING_REPLY'];
 const STREAM_EVENTS=[
  'snapshot','job.status','analysis.result','approval.created','approval.decided','check-request.replied',
+ 'check-request.created','check-request.decided',
  'action.recorded','action.verified','report.ready','report.confirmed','incident.updated','work-item.updated',
 ];
 const DETAIL_TABS=[['analysis','분석과 추가 질문'],['evidence','관측 근거'],['actions','검토·조치·효과'],['reports','보고서'],['timeline','조사 이력']];
@@ -84,18 +88,32 @@ function useConversation(id:string,incident:Incident|undefined,analysis:Obj|unde
   enabled:!!approvalId&&activeJob?.status==='WAITING_APPROVAL',
   refetchInterval:2000,
  });
- const questions=conversationEntries(incident?.timeline,analysis?.history||[],activeJob);
- const questionJobs=useQueries({queries:questions.map(entry=>({
-  queryKey:['question-thread',id,entry.jobId],
-  queryFn:()=>loadQuestionThread(entry.jobId,threadJobId=>api<Obj>('/api/jobs/'+threadJobId)),
-  refetchInterval:(query:any)=>IN_PROGRESS_STATES.includes(query.state.data?.latestJob?.status)?2000:false,
- }))});
  const answerResults=useQueries({queries:(analysis?.history||[])
   .filter((result:Obj)=>result.resultId!==analysis?.resultId)
   .map((result:Obj)=>({
    queryKey:['analysis-source',id,result.resultId],
    queryFn:()=>api<Obj>(`/api/incidents/${id}/analysis-results?resultId=${encodeURIComponent(result.resultId)}`),
   }))});
+ const threadQuery=(entry:Obj)=>({
+  queryKey:['question-thread',id,entry.jobId],
+  queryFn:()=>loadQuestionThread(entry.jobId,threadJobId=>api<Obj>('/api/jobs/'+threadJobId)),
+  refetchInterval:(query:any)=>IN_PROGRESS_STATES.includes(query.state.data?.latestJob?.status)?2000:false,
+ });
+ const baseEntries=conversationEntries(incident?.timeline,analysis?.history||[],activeJob);
+ const baseJobs=useQueries({queries:baseEntries.map(threadQuery)});
+ // 질문·기본 분석 스레드를 다 불러온 뒤에야 어느 결과가 이미 들어 있는지 알 수 있다(잠깐 중복 표시 방지)
+ const settled=baseJobs.every(query=>!query.isPending);
+ const coveredJobs=new Set<string>([...baseEntries.map(entry=>entry.jobId),...baseJobs.flatMap(query=>query.data?.jobs.map((job:Obj)=>job.jobId)||[])]);
+ const coveredThreads=new Set<string>(baseJobs.flatMap(query=>query.data?.jobs.map((job:Obj)=>job.threadId).filter(Boolean)||[]));
+ const allResults=[...(analysis?[analysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])];
+ // 진행·승인 대기 중인 추가 분석은 아직 결과가 없으므로 작업 자체로 항목을 만든다
+ if(activeJob&&['DEEP','RESUME'].includes(activeJob.kind))allResults.push({...activeJob,createdAt:activeJob.createdAt||new Date().toISOString()});
+ const extraEntries=settled?followupEntries(allResults,coveredJobs,coveredThreads):[];
+ const extraJobs=useQueries({queries:extraEntries.map(threadQuery)});
+ const pairs=[...baseEntries.map((entry,index)=>({entry,query:baseJobs[index]})),...extraEntries.map((entry,index)=>({entry,query:extraJobs[index]}))]
+  .sort((a,b)=>Date.parse(a.entry.createdAt)-Date.parse(b.entry.createdAt));
+ const questions=pairs.map(pair=>pair.entry);
+ const questionJobs=pairs.map(pair=>pair.query);
  return {proposal,questions,questionJobs,answerResults};
 }
 type DetailContext={
@@ -238,6 +256,9 @@ function AnalysisTab(props:AnalysisTabProps){
   {questionJobs.some(query=>query.error)&&<ErrorMessage error={questionJobs.find(query=>query.error)?.error}/>}
   {answerResults.some(query=>query.error)&&<ErrorMessage error={answerResults.find(query=>query.error)?.error}/>}
   {proposal.error&&<ErrorMessage error={proposal.error}/>}
+  <ProposedWorkList incident={incident} canManage={props.canManage}
+   results={[...(latestAnalysis?[latestAnalysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])]}/>
+  <ResultReview incident={incident} canManage={props.canManage} activeJob={activeJob}/>
   <QuestionComposer
    canManage={props.canManage}
    blocked={props.blocked}
@@ -247,6 +268,7 @@ function AnalysisTab(props:AnalysisTabProps){
    onSubmit={props.onAsk}
   />
   </Panel><div className="side-stack">
+   <IncidentApprovals incidentId={incident.incidentId}/>
    <Panel title="다음 확인">
     <button className="button secondary full" disabled={!props.canManage||incident.status==='CLOSED'} onClick={props.onReviewActions}>확인·조치 제안 검토</button>
     <Link className="text-button" to="/approvals">승인 제안 확인 <ArrowRight size={17}/></Link>

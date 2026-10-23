@@ -1,12 +1,29 @@
 import {describe,it,expect} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {MemoryRouter} from 'react-router-dom';
-import {conversationEntries} from '../src/domain/conversation';
+import {conversationEntries,followupEntries} from '../src/domain/conversation';
 import {InvestigationConversation} from '../src/components/InvestigationConversation';
 import {canManageInvestigation} from '../src/domain/permissions';
 import {type Session} from '../src/api/types';
 
 describe('investigation conversation',()=>{
+ it('keeps question entries from the timeline only',()=>{
+  const timeline=[{type:'QUESTION_ASKED',ref:{type:'JOB',id:'job_q'},message:'추가 조사 질문: 앞 공정은?',at:'2026-10-22T02:00:00Z'}];
+  const history=[{kind:'BASIC',jobId:'job_b',createdAt:'2026-10-22T01:00:00Z'},{kind:'DEEP',jobId:'job_f',createdAt:'2026-10-22T03:00:00Z'}];
+  expect(conversationEntries(timeline,history).map(entry=>entry.jobId)).toEqual(['job_b','job_q']);
+ });
+ it('adds follow-up analyses once per thread, including ones finished by a resume after approval',()=>{
+  const results=[
+   {kind:'BASIC',jobId:'job_b',threadId:'t_b',createdAt:'2026-10-22T01:00:00Z'},
+   {kind:'RESUME',jobId:'job_qr',threadId:'t_q',createdAt:'2026-10-22T02:30:00Z'},
+   {kind:'RESUME',jobId:'job_fr',threadId:'t_f',createdAt:'2026-10-22T03:30:00Z'},
+   {kind:'DEEP',jobId:'job_g',threadId:'t_g',createdAt:'2026-10-22T04:00:00Z'},
+   {kind:'RESUME',jobId:'job_gr',threadId:'t_g',createdAt:'2026-10-22T04:30:00Z'},
+  ];
+  const entries=followupEntries(results,new Set(['job_b','job_q']),new Set(['t_b','t_q']));
+  expect(entries.map(entry=>entry.jobId)).toEqual(['job_fr','job_g']);
+  expect(entries[0]).toMatchObject({kind:'DEEP',followup:true});
+ });
  const timeline=[{at:'2026-10-21T01:00:00Z',type:'QUESTION_ASKED',message:'추가 조사 질문: 이전 공정 영향은?',ref:{type:'JOB',id:'q1'}},{at:'2026-10-21T02:00:00Z',type:'ANALYSIS_RERUN',ref:{type:'JOB',id:'b2'}}];
  const history=[{jobId:'b1',resultId:'r1',kind:'BASIC',createdAt:'2026-10-21T00:00:00Z',summary:'최초 분석 결과'},{jobId:'q1',resultId:'r2',kind:'DEEP',createdAt:'2026-10-21T01:01:00Z',summary:'이전 공정 확인 답변'}];
  it('orders the original analysis, each question and later reanalysis by request time',()=>{
