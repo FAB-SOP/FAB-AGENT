@@ -13,6 +13,7 @@ import {
  type CauseReportPage,type CauseStatistics as Stats,
 } from '../api/causeStatistics';
 import {useAuth} from '../auth';
+import {canViewCauseStatistics} from '../domain/permissions';
 import {Empty,ErrorMessage,PageHeading,Panel} from '../components/ui';
 echarts.use([PieChart,BarChart,GridComponent,TooltipComponent,CanvasRenderer]);
 
@@ -73,7 +74,7 @@ function ReportList({year,months,categories}:{year:number;months:number[];catego
   {!items.length&&!reports.isPending&&<Empty>이 조건에 맞는 확정 보고서가 없습니다.</Empty>}
   {items.map(report=><Link key={report.reportId} className="cause-report-row" to={'/reports/'+report.reportId}>
    <div>
-    <strong>{report.incidentDisplayId} · {report.title}</strong>
+    <strong>{report.title}</strong>
     <span className="small muted">발생 {when(report.detectedAt)} · 확정 {report.confirmedAt?when(report.confirmedAt):'—'} · {report.equipmentId}</span>
     {!!report.classification?.equipmentParameters?.length&&<span className="small muted">
      관련 파라미터 · {report.classification.equipmentParameters.map(id=>sensorNames[id]||id).join(', ')}
@@ -90,18 +91,19 @@ function ReportList({year,months,categories}:{year:number;months:number[];catego
   </button>}
  </Panel>;
 }
-/** 원인 통계 — 이상 발생일 기준, 확정 보고서만. 관리자만 (서버도 검사) */
+/** 원인 통계 — 이상 발생일 기준, 확정 보고서만. 관리자·설비정비팀만 (서버도 검사) */
 export function CauseStatistics(){
  const {session}=useAuth();
+ const allowed=canViewCauseStatistics(session);
  const [year,setYear]=useState<number|undefined>();
  const [months,setMonths]=useState<number[]>([]);
  const [categories,setCategories]=useState<string[]>([]);
  const stats=useQuery({
   queryKey:['cause-statistics',year,months],
   queryFn:()=>api<Stats>('/api/cause-statistics'+statisticsQuery({year,months})),
-  enabled:session?.role==='MANAGER',
+  enabled:allowed,
  });
- if(session?.role!=='MANAGER')return <Empty>원인 통계는 관리자만 볼 수 있습니다.</Empty>;
+ if(!allowed)return <Empty>원인 통계는 관리자와 설비정비팀만 볼 수 있습니다.</Empty>;
  const data=stats.data;
  const shownYear=data?.year||year||new Date().getFullYear();
  const reset=()=>{setMonths([]);setCategories([]);};

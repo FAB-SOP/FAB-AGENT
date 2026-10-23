@@ -99,16 +99,17 @@ export function PayloadDetails({value}:{value:Obj}){
   {value?.brief&&<RequestContext value={value}/>}
  </>;
 }
-export function EvidenceList({ids,refs,label}:{ids:unknown[];refs:Obj[];label:string}){
+const evidenceTypes:Record<string,string>={METROLOGY:'계측',SENSOR:'센서',MAINTENANCE:'정비',MATERIAL:'재료',CHANGE:'변경',DOCUMENT:'문서'};
+export function EvidenceList({ids:rawIds,refs,label}:{ids:unknown[];refs:Obj[];label:string}){
+ const ids=[...new Set(rawIds)];
  if(ids.length===0)return null;
  return <div className="evidence-list">
   <strong className="small">{label}</strong>
   {ids.map((id,index)=>{
    const evidence=refs.find(ref=>ref.evidenceId===id);
    return <details key={index}>
-    <summary>{evidence?.description||evidence?.label||'근거 '+(index+1)}</summary>
+    <summary>{evidence?.description||evidence?.label||'근거 '+(index+1)}{evidence?.type&&<span className="small muted"> · {evidenceTypes[evidence.type]||evidence.type}</span>}</summary>
     <p className="small muted">{String(id)}</p>
-    {evidence?.type&&<p className="small">유형 · {evidence.type}</p>}
    </details>;
   })}
  </div>;

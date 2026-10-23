@@ -1,7 +1,7 @@
 import {useEffect,useState,type Dispatch,type SetStateAction} from 'react';
 import {Link,useParams,useSearchParams} from 'react-router-dom';
 import {useQueries,useQuery,useQueryClient} from '@tanstack/react-query';
-import {ArrowRight,ArrowUpRight,FileText,Send,RefreshCw,ChevronLeft} from 'lucide-react';
+import {ArrowUpRight,FileText,Send,RefreshCw,ChevronLeft} from 'lucide-react';
 import {api,API_MODE,write} from '../api/client';
 import {fmt,labels,when,type Incident,type Obj} from '../api/types';
 import {useAuth} from '../auth';
@@ -207,7 +207,7 @@ function IncidentHeader({incident,stage,connected}:{incident:Incident;stage:{cod
  /><div className="incident-summary">
   <Triangle/>
   <p>{incident.summary||'원시 데이터와 분석 결과를 함께 확인해 주세요.'}</p>
-  <span className="small muted">{connected?'SSE 연결됨':API_MODE==='mock'?'모의 분석 · 상태 자동 갱신':'상태 조회로 복구 중'}</span>
+  <span className="small muted">{connected?'실시간 갱신 중':API_MODE==='mock'?'모의 분석 · 상태 자동 갱신':'상태 조회로 복구 중'}</span>
  </div></>;
 }
 function DetailTabs({tab,onChange}:{tab:string;onChange:(tab:string)=>void}){
@@ -251,21 +251,20 @@ function AnalysisTab(props:AnalysisTabProps){
   {answerResults.some(query=>query.error)&&<ErrorMessage error={answerResults.find(query=>query.error)?.error}/>}
   {proposal.error&&<ErrorMessage error={proposal.error}/>}
   <ProposedWorkList incident={incident} canManage={props.canManage}
-   results={[...(latestAnalysis?[latestAnalysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])]}/>
+   results={[...(latestAnalysis?[latestAnalysis]:[]),...answerResults.flatMap(query=>query.data?[query.data]:[])]}
+   afterSuggestions={<QuestionComposer
+    canManage={props.canManage}
+    blocked={props.blocked}
+    pending={command.isPending}
+    question={props.question}
+    onChange={props.onQuestionChange}
+    onSubmit={props.onAsk}
+   />}/>
+  <IncidentApprovals incidentId={incident.incidentId}/>
   <ResultReview incident={incident} canManage={props.canManage} activeJob={activeJob}/>
-  <QuestionComposer
-   canManage={props.canManage}
-   blocked={props.blocked}
-   pending={command.isPending}
-   question={props.question}
-   onChange={props.onQuestionChange}
-   onSubmit={props.onAsk}
-  />
   </Panel><div className="side-stack">
-   <IncidentApprovals incidentId={incident.incidentId}/>
    <Panel title="다음 확인">
     <button className="button secondary full" disabled={!props.canManage||incident.status==='CLOSED'} onClick={props.onReviewActions}>확인·조치 제안 검토</button>
-    <Link className="text-button" to="/approvals">승인 제안 확인 <ArrowRight size={17}/></Link>
    </Panel>
    <Panel title="실행 정보">
     <dl className="facts">

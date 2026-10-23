@@ -159,12 +159,12 @@ export function IncidentApprovals({incidentId}:{incidentId:string}){
   queryFn:()=>api<Obj>('/api/approvals/'+approval.approvalId),
  }))});
  if(!pending.length&&!command.message)return null;
- return <Panel title={`승인 대기 중 ${pending.length}건`} className="incident-approvals">
-  <p className="small muted">승인해야 실제로 발송·확정됩니다.</p>
+ return <section className="incident-approvals">
+  <h3>승인 대기 중 {pending.length}건 <span className="small muted">승인해야 실제로 발송·확정됩니다</span></h3>
   {command.message&&<Notice tone={command.isError?'error':'info'}>{command.message}</Notice>}
   {pending.map((approval,index)=><IncidentApprovalRow key={approval.approvalId} approval={details[index]?.data||approval} onOpen={()=>openApproval(approval.approvalId)}/>)}
   {modal}
- </Panel>;
+ </section>;
 }
 export function Approvals(){
  const [params,setParams]=useSearchParams();

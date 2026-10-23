@@ -12,7 +12,7 @@ import {BriefDetails} from './InvestigationContext';
 
 export const workRoutes:Record<string,string>={
  SELF_CHECK:'내 확인 업무',
- MANAGER_APPROVAL:'관리자 승인 필요',
+ MANAGER_APPROVAL:'관리자 승인 업무',
  TEAM_REQUEST:'다른 팀 요청',
 };
 export const workStates:Record<string,string>={
@@ -80,7 +80,7 @@ function ProposedWorkCard({item,disabled,onSelect}:{item:Obj;disabled:boolean;on
  return <WorkCard item={item}>
   <div className="work-buttons">
    <button className="button" disabled={disabled} onClick={()=>onSelect('adopt')}>{adoptLabel(item)}</button>
-   <button className="button secondary" disabled={disabled} onClick={()=>onSelect('decline')}>미채택</button>
+   <button className="button secondary" disabled={disabled} onClick={()=>onSelect('decline')}>채택 안 함</button>
   </div>
  </WorkCard>;
 }
@@ -132,23 +132,72 @@ export function WorkItemsPanel({incident,sources,results,canManage}:{
  </>;
 }
 /** 분석 결과별로 연결된 제안(sourceResultId)을 상태와 관계없이 모두 보여주고, 상태에 따라 모양만 바꾼다 */
-export function ProposedWorkList({incident,canManage,results}:{incident:Incident;canManage:boolean;results:Obj[]}){
+/** AI 추천 조치안(번호)과 진행 중인 업무를 나눠 보여준다 — 분석에서 나온 업무를 상태와 관계없이 모두 표시 */
+export function ProposedWorkList({incident,canManage,results,afterSuggestions}:{incident:Incident;canManage:boolean;results:Obj[];afterSuggestions?:React.ReactNode}){
  const {workItems}=useIncidentWork(incident.incidentId);
  const [selected,setSelected]=useState<{item:Obj;mode:string}|null>(null);
  const groups=groupBySourceResult(workItems.data?.items||[],results);
- if(!groups.length)return null;
+ if(!groups.length)return <>{afterSuggestions}</>;
  const disabled=!canManage||incident.status==='CLOSED';
- const waiting=groups.reduce((count,group)=>count+group.items.filter((item:Obj)=>item.status==='PROPOSED').length,0);
+ const view=classifyAnalysisWork(groups);
+ const select=(item:Obj)=>(mode:string)=>setSelected({item,mode});
+ const decided=(item:Obj)=>['DECLINED','REJECTED','CLOSED_UNPERFORMED'].includes(item.status);
  return <section className="proposed-work">
-  <h3>추천 조치안 <span className="small muted">채택 대기 {waiting}건 · 진행할 조치를 선택하세요</span></h3>
-  {groups.map(group=><div key={group.resultId} className="proposed-group">
-   <p className="small muted">{group.label}</p>
-   {group.items.map((item:Obj)=>item.status==='PROPOSED'
-    ?<ProposedWorkCard key={item.taskId} item={item} disabled={disabled} onSelect={mode=>setSelected({item,mode})}/>
-    :<WorkCard key={item.taskId} item={item} muted={['DECLINED','REJECTED'].includes(item.status)}/>)}
-  </div>)}
+  {view.aiTotal>0&&<>
+   <h3>AI 추천 조치안 <span className="kind-count">{view.aiTotal}</span> <span className="small muted">채택 대기 {view.aiWaiting}건 · 진행할 조치를 선택하세요</span></h3>
+   {view.aiGroups.map(group=><div key={group.resultId} className="proposed-group">
+    <p className="small muted">{group.label}</p>
+    {group.items.map(({item,number})=><div key={item.taskId} className="ai-suggestion">
+     <span className="suggestion-number">{number}</span>
+     {item.status==='PROPOSED'
+      ?<ProposedWorkCard item={item} disabled={disabled} onSelect={select(item)}/>
+      :<WorkCard item={item} muted={decided(item)}>{item.status!=='DECLINED'&&<p className="small muted">채택됨 · 아래 채택한 업무에서 이어서 확인하세요.</p>}</WorkCard>}
+    </div>)}
+   </div>)}
+  </>}
+  {view.direct.length>0&&<div className="work-kind"><h4>직접 제안 · 채택 대기 <span className="kind-count">{view.direct.length}</span></h4>
+   {view.direct.map(item=>item.status==='PROPOSED'
+    ?<ProposedWorkCard key={item.taskId} item={item} disabled={disabled} onSelect={select(item)}/>
+    :<WorkCard key={item.taskId} item={item} muted/>)}
+  </div>}
+  {afterSuggestions}
+  {view.mine.length+view.team.length>0&&<>
+   <h3 className="progress-title">채택한 업무 <span className="kind-count">{view.mine.length+view.team.length}</span> <span className="small muted">진행 중·완료·반려 모두</span></h3>
+   {view.mine.length>0&&<div className="work-kind"><h4>내 확인·변경 업무 <span className="kind-count">{view.mine.length}</span></h4>
+    {view.mine.map(item=><WorkCard key={item.taskId} item={item} muted={decided(item)} origin={originLabel(item,view.numberOf(item))}/>)}</div>}
+   {view.team.length>0&&<div className="work-kind team"><h4>다른 팀 요청 <span className="kind-count">{view.team.length}</span></h4>
+    {view.team.map(item=><WorkCard key={item.taskId} item={item} muted={decided(item)} origin={originLabel(item,view.numberOf(item))}/>)}</div>}
+  </>}
   {selected&&<WorkDialog item={selected.item} mode={selected.mode} incident={incident} onClose={()=>setSelected(null)}/>}
  </section>;
+}
+const originLabel=(item:Obj,number?:number)=>item.createdBy==='agent'?`AI 추천 ${number??''}번에서 채택`:'직접 제안에서 채택';
+/**
+ * 분석별 업무를 나눈다.
+ * - AI 추천: createdBy가 agent인 것. 분석마다 1번부터 번호(생성 순), 채택 뒤에도 번호 유지
+ * - 직접 제안: 사람이 만든 채택 대기·미채택
+ * - 진행 중: 채택된 것(출처 무관) → 내 확인·변경 업무 / 다른 팀 요청
+ */
+export function classifyAnalysisWork(groups:{resultId:string;label:string;items:Obj[]}[]){
+ const numbers=new Map<string,number>();
+ const aiGroups=groups.map(group=>{
+  const ai=group.items.filter(item=>item.createdBy==='agent')
+   .sort((a,b)=>Date.parse(a.createdAt||'')-Date.parse(b.createdAt||'')||String(a.taskId).localeCompare(String(b.taskId)));
+  ai.forEach((item,index)=>numbers.set(item.taskId,index+1));
+  return {resultId:group.resultId,label:group.label,items:ai.map((item,index)=>({item,number:index+1}))};
+ }).filter(group=>group.items.length);
+ const all=groups.flatMap(group=>group.items);
+ const notAdopted=(item:Obj)=>['PROPOSED','DECLINED'].includes(item.status);
+ const progress=all.filter(item=>!notAdopted(item));
+ return {
+  aiGroups,
+  aiTotal:aiGroups.reduce((count,group)=>count+group.items.length,0),
+  aiWaiting:all.filter(item=>item.createdBy==='agent'&&item.status==='PROPOSED').length,
+  direct:all.filter(item=>item.createdBy!=='agent'&&notAdopted(item)),
+  mine:progress.filter(item=>item.route!=='TEAM_REQUEST'),
+  team:progress.filter(item=>item.route==='TEAM_REQUEST'),
+  numberOf:(item:Obj)=>numbers.get(item.taskId),
+ };
 }
 /** 제안을 근거 분석 결과별로 묶는다 — 최신 분석이 위, 화면에 없는 이전 분석은 '이전 분석'으로 */
 export function groupBySourceResult(items:Obj[],results:Obj[]){
@@ -179,13 +228,14 @@ function TeamRequestResult({request}:{request:Obj}) {
   <Link className="text-button" to={requestLink(request.requestId)}>요청·회신 상세 보기</Link>
  </article>;
 }
-function WorkCard({item,children,muted=false}:{item:Obj;children?:React.ReactNode;muted?:boolean}){
+function WorkCard({item,children,muted=false,origin}:{item:Obj;children?:React.ReactNode;muted?:boolean;origin?:string}){
  return <article className={'work-card'+(muted?' muted':'')}>
   <div className="work-card-header">
    <span className={'work-route '+item.route.toLowerCase()}>{workRoutes[item.route]}</span>
    <Badge value={item.status}>{workStates[item.status]}</Badge>
   </div>
   <h3>{item.title}</h3>
+  {origin&&<p className="work-origin">{origin}</p>}
   <p>{item.reason}</p>
   <div className="work-meta">
    <span>{item.operationLabel}</span>
