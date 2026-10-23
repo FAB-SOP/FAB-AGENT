@@ -10,6 +10,7 @@ import re
 
 from fab.agent.causes import CAUSES, PROCESS_ORDER
 from fab.agent.evidence import data, features_of, runs_by_id, runs_by_process
+from fab.agent.harness.autofix import longer_ids
 from fab.agent.stance import REFUTED, cause_stance
 
 NEXT_STEPS = {"CURRENT_CHECK", "UPSTREAM_CHECK", "OBSERVE", "INSUFFICIENT_EVIDENCE", "NEEDS_DEEP_ANALYSIS"}
@@ -46,7 +47,10 @@ def validate_result(result: dict, known_evidence: set[str], incident_process: st
         cited |= set(cause.get("supportingEvidenceIds") or []) | set(cause.get("conflictingEvidenceIds") or [])
     unknown = cited - known_evidence
     if unknown:
-        errors.append(f"조회하지 않은 근거 ID를 인용했습니다: {sorted(unknown)}. 도구 결과의 evidenceId만 쓰세요.")
+        hints = [f"{evidence_id} → {', '.join(longer_ids(evidence_id, known_evidence))}" for evidence_id in sorted(unknown)
+                 if longer_ids(evidence_id, known_evidence)]
+        errors.append(f"조회하지 않은 근거 ID를 인용했습니다: {sorted(unknown)}. 도구 결과의 evidenceId만 쓰세요."
+                      + (f" 줄여 쓴 ID라면 조회한 ID 중에서 고르세요: {'; '.join(hints)}" if hints else ""))
     text = " ".join([fact.get("text", "") for fact in facts] +
                     [cause.get("hypothesis", "") for cause in result.get("candidateCauses") or []])
     if _PROB.search(text):

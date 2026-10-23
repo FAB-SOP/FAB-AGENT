@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 
 from fab.agent.evidence import looked_up_text, tool_results
 from fab.agent.graph.state import AgentState, current_job, record_evidence, runtime
-from fab.agent.harness import context, guard, incident_rules, limits
+from fab.agent.harness import autofix, context, guard, incident_rules, limits
 from fab.agent.harness.retry import TransientJobError
 from fab.agent import purpose
 from fab.agent.purpose import may_propose
@@ -127,6 +127,9 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
     if not args.get("candidateCauses") and args.get("workSuggestions"):  # 원인 후보 없는 사실 답 — 할 일 후보도 붙이지 않는다
         turn.rt.tracer.event("work_suggestions_dropped", reason="no_causes", count=len(args["workSuggestions"]))
         args = {**args, "workSuggestions": []}
+    args, short_ids = autofix.resolve_short_ids(args, turn.known_ids())  # 줄여 쓴 근거 ID(문서 ID만 등) — 후보가 하나면 바로잡는다
+    if short_ids:
+        turn.rt.tracer.event("auto_fix", shortIds=short_ids)
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
     errs += validate_work_suggestions(args.get("workSuggestions"), turn.known_ids())
     errs += _once(turn, "claimRejects", CLAIM_ERROR, validate_answer(args, state.get("purpose"), turn.known_ids()))
