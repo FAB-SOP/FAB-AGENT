@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
-from fab.agent import followup, report
+from fab.agent import followup
 from fab.agent.graph.state import AgentState, runtime
 from fab.agent.harness import instructions, limits
 
@@ -21,8 +21,6 @@ async def start(state: AgentState, config) -> dict:
         "REPORT": "저장된 기록으로 보고서 초안을 만들어 주세요.",
     }.get(state["mode"], "추가 조사를 해 주세요.")
     messages.append(HumanMessage(content=f"[작업 {state['jobId']} · 모드 {state['mode']} · 사건 {state['incidentId']}]\n{question}"))
-    if state.get("lockedSections"):  # 보고서 다시 만들기 — 사람이 고친 칸은 쓰지 않는다
-        messages.append(HumanMessage(content=report.note(state["lockedSections"])))
     request = state.get("requestInput") or {}
     if request:  # 사람이 연 요청서 작업 — 무엇을 만들지(재생성이면 대체할 승인)
         messages.append(HumanMessage(content="[요청서 작업] " + ", ".join(

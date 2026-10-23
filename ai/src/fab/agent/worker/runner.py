@@ -24,7 +24,6 @@ from fab.agent.harness.retry import PermanentJobError, TransientJobError
 from fab.agent.harness.trace import Tracer
 from fab.agent.models import make_models
 from fab.agent.job_input import resolve
-from fab.agent.report import locked_of
 from fab.agent.summary import make_summary
 from fab.agent.tools import Toolbox
 from fab.common.envelope import FabToolError
@@ -184,7 +183,7 @@ class JobRunner:
         given = resolve(job, question, trigger)  # 실행 목적 — input.purpose 우선, 전환 기간에는 기존 방식도
         return {"incidentId": job["incidentId"], "threadId": job["threadId"], "jobId": job["jobId"],
                 "mode": job["kind"], "purpose": given["purpose"], "question": given["question"] or "",
-                "selectedInputs": given["selectedInputs"], "requestInput": given["request"], "lockedSections": locked_of(job),
+                "selectedInputs": given["selectedInputs"], "requestInput": given["request"],
                 "replyFlow": reply_flow(job)}
 
     async def _outcome(self, job: dict, cfg: dict, tracer: Tracer) -> dict:
@@ -209,8 +208,7 @@ class JobRunner:
         # 계약(AnalysisResult)은 추가 필드를 허용하지 않는다. nextStep 등은 계약 개정 전까지 옵션으로만 싣는다.
         payload = {**result, **analysis} if os.getenv("FAB_RESULT_EXTENSIONS") == "true" else result
         suggestions = final_state.get("workSuggestions") or []
-        await self._event(job, "RESULT_READY", {"result": payload, **({"workSuggestions": suggestions} if suggestions else {}),
-                                                "investigationReady": analysis.get("investigationReady")}, trace)
+        await self._event(job, "RESULT_READY", {"result": payload, **({"workSuggestions": suggestions} if suggestions else {})}, trace)
         return {"status": "DONE", "result": result, "analysis": analysis, "workSuggestions": suggestions, "trace": trace}
 
 

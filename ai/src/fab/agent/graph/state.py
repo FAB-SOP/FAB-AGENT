@@ -40,7 +40,6 @@ class AgentState(TypedDict, total=False):
     report: dict | None
     replyFlow: str | None  # 회신 흐름 — WAIT(회신 대기) · MANUAL(요청 발송 뒤 끝냄). thread를 시작할 때 정해 바뀌지 않는다
     requestSent: str | None  # MANUAL 흐름에서 승인으로 보낸 요청 ID — 결과는 「발송 사실」이다
-    lockedSections: list | None  # 보고서 작업 — 사람이 고친 칸(fab.agent.report). Agent가 쓰지 않는다
     stopReason: str | None
     promptVersion: str
     briefs: dict | None  # tool_call_id → {"brief"} 또는 {"errors"} — request_brief가 만들고 tools가 제안에 붙인다
