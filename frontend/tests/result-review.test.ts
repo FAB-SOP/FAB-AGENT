@@ -8,11 +8,11 @@ describe('result review use state',()=>{
   expect(resultUse({analysisUse:{successfulCount:1,activeRequestIds:['ar_1']}}).code).toBe('running');
   expect(resultUse({}).code).toBe('pending');
  });
- it('blocks follow-up while an analysis runs or waits for approval',()=>{
+ it('blocks follow-up only while an analysis runs, not while an approval waits',()=>{
   expect(followupBlockReason(null)).toBe('');
   expect(followupBlockReason({status:'SUCCEEDED'})).toBe('');
   expect(followupBlockReason({status:'QUEUED'})).toContain('진행 중');
   expect(followupBlockReason({status:'RUNNING'})).toContain('진행 중');
-  expect(followupBlockReason({status:'WAITING_APPROVAL'})).toContain('승인 대기');
+  expect(followupBlockReason({status:'WAITING_APPROVAL'})).toBe('');
  });
 });

@@ -1,6 +1,5 @@
 import {describe,it,expect} from 'vitest';
 import {buildActionChoices,incidentStage,sourceKey} from '../src/domain/actionSources';
-import {loadQuestionThread} from '../src/domain/questionThreads';
 
 describe('linked action sources',()=>{
  it('keeps equal-looking hypotheses from different analysis versions distinct',()=>{
@@ -25,15 +24,5 @@ describe('incident stage labels',()=>{
  it('keeps closed and paused incident states above job states',()=>{
   expect(incidentStage({status:'CLOSED'},{status:'RUNNING'}).label).toBe('처리 종료');
   expect(incidentStage({status:'ON_HOLD'},{status:'SUCCEEDED'}).label).toBe('처리 보류');
- });
-});
-describe('question and answer continuity',()=>{
- it('follows approval and reply resume jobs back to one original question',async()=>{
-  const data:Record<string,any>={q:{jobId:'q',question:'이전 공정 영향은?',status:'SUCCEEDED',resultRef:{type:'RESUME_JOB',id:'r1'}},r1:{jobId:'r1',status:'SUCCEEDED',resultRef:{type:'RESUME_JOB',id:'r2'}},r2:{jobId:'r2',status:'WAITING_REPLY'}};
-  const thread=await loadQuestionThread('q',async id=>data[id]);
-  expect(thread.rootJob.question).toBe('이전 공정 영향은?');expect(thread.latestJob.status).toBe('WAITING_REPLY');expect(thread.jobs.map(job=>job.jobId)).toEqual(['q','r1','r2']);
- });
- it('rejects cyclic resume references instead of hanging',async()=>{
-  await expect(loadQuestionThread('q',async()=>({jobId:'q',resultRef:{type:'RESUME_JOB',id:'q'}}))).rejects.toThrow('순환');
  });
 });

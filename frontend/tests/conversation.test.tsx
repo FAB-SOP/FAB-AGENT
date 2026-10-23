@@ -1,50 +1,54 @@
 import {describe,it,expect} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {MemoryRouter} from 'react-router-dom';
-import {conversationEntries,followupEntries} from '../src/domain/conversation';
+import {conversationItems,conversationResults,runningJob,type ConversationPage} from '../src/domain/incidentConversation';
 import {InvestigationConversation} from '../src/components/InvestigationConversation';
 import {canManageInvestigation} from '../src/domain/permissions';
-import {type Session} from '../src/api/types';
+import {type Obj,type Session} from '../src/api/types';
 
-describe('investigation conversation',()=>{
- it('keeps question entries from the timeline only',()=>{
-  const timeline=[{type:'QUESTION_ASKED',ref:{type:'JOB',id:'job_q'},message:'추가 조사 질문: 앞 공정은?',at:'2026-10-22T02:00:00Z'}];
-  const history=[{kind:'BASIC',jobId:'job_b',createdAt:'2026-10-22T01:00:00Z'},{kind:'DEEP',jobId:'job_f',createdAt:'2026-10-22T03:00:00Z'}];
-  expect(conversationEntries(timeline,history).map(entry=>entry.jobId)).toEqual(['job_b','job_q']);
+const page=(items:Obj[],extra:Partial<ConversationPage>={}):ConversationPage=>({
+ incidentId:'inc',items,nextCursor:null,jobs:[],runningJobs:[],waitingJobs:[],pendingApprovals:[],pendingWorkItems:[],
+ latestCauseAnalysis:null,investigationResults:[],...extra,
+});
+const answer=(id:string,resultKind:string,summary:string,kind='BASIC')=>({
+ entryId:'result:'+id,type:'AI_ANSWER',occurredAt:'2026-10-23T01:00:00Z',actor:{type:'AI'},job:{kind},
+ data:{analysis:{resultId:id,resultKind,summary}},
+});
+
+describe('incident conversation API',()=>{
+ it('puts older pages first, keeps server order and the newest copy of an entry',()=>{
+  const newer=page([{entryId:'b',type:'QUESTION',text:'새 값'},{entryId:'c',type:'AI_ANSWER'}]);
+  const older=page([{entryId:'a',type:'BASIC_REQUESTED'},{entryId:'b',type:'QUESTION',text:'옛 값'}]);
+  const items=conversationItems([newer,older]);
+  expect(items.map(item=>item.entryId)).toEqual(['a','b','c']);
+  expect(items[1].text).toBe('새 값');
  });
- it('adds follow-up analyses once per thread, including ones finished by a resume after approval',()=>{
-  const results=[
-   {kind:'BASIC',jobId:'job_b',threadId:'t_b',createdAt:'2026-10-22T01:00:00Z'},
-   {kind:'RESUME',jobId:'job_qr',threadId:'t_q',createdAt:'2026-10-22T02:30:00Z'},
-   {kind:'RESUME',jobId:'job_fr',threadId:'t_f',createdAt:'2026-10-22T03:30:00Z'},
-   {kind:'DEEP',jobId:'job_g',threadId:'t_g',createdAt:'2026-10-22T04:00:00Z'},
-   {kind:'RESUME',jobId:'job_gr',threadId:'t_g',createdAt:'2026-10-22T04:30:00Z'},
+ it('leaves work, request and action entries to the sections below',()=>{
+  const items=conversationItems([page(['WORK_PROPOSED','WORK_EVENT','REQUEST_SENT','REQUEST_ACCEPTED','ACTION_RESULT','REPLY','QUESTION']
+   .map(type=>({entryId:type,type})))]);
+  expect(items.map(item=>item.type)).toEqual(['REPLY','QUESTION']);
+ });
+ it('blocks new questions only while a job runs',()=>{
+  expect(runningJob(page([],{waitingJobs:[{status:'WAITING_APPROVAL'}]}))).toBeUndefined();
+  expect(runningJob(page([],{runningJobs:[{status:'RUNNING'}]}))?.status).toBe('RUNNING');
+ });
+ it('collects analyses for grouping suggestions, adding the latest cause analysis when it is on an older page',()=>{
+  const items=[answer('r2','ANSWER','답')];
+  expect(conversationResults(items,{resultId:'r1'}).map(result=>result.resultId)).toEqual(['r1','r2']);
+ });
+ it('folds older cause analyses and shows question answers and progress in place',()=>{
+  const items=[
+   answer('r1','CAUSE_ANALYSIS','예전 분석'),
+   {entryId:'q',type:'QUESTION',occurredAt:'2026-10-23T02:00:00Z',actor:{type:'HUMAN',displayName:'박CMP'},text:'앞 공정은?',currentJob:{status:'RUNNING'}},
+   answer('r2','CAUSE_ANALYSIS','최신 분석'),
   ];
-  const entries=followupEntries(results,new Set(['job_b','job_q']),new Set(['t_b','t_q']));
-  expect(entries.map(entry=>entry.jobId)).toEqual(['job_fr','job_g']);
-  expect(entries[0]).toMatchObject({kind:'DEEP',followup:true});
+  const html=renderToStaticMarkup(<InvestigationConversation items={items} latestCauseId="r2"/>);
+  expect(html).toContain('<summary>이전 기본 분석 결과');
+  expect(html.indexOf('예전 분석')).toBeLessThan(html.indexOf('앞 공정은?'));
+  expect(html.indexOf('앞 공정은?')).toBeLessThan(html.indexOf('최신 분석'));
+  expect(html).toContain('loading-spinner');
  });
- const timeline=[{at:'2026-10-21T01:00:00Z',type:'QUESTION_ASKED',message:'추가 조사 질문: 이전 공정 영향은?',ref:{type:'JOB',id:'q1'}},{at:'2026-10-21T02:00:00Z',type:'ANALYSIS_RERUN',ref:{type:'JOB',id:'b2'}}];
- const history=[{jobId:'b1',resultId:'r1',kind:'BASIC',createdAt:'2026-10-21T00:00:00Z',summary:'최초 분석 결과'},{jobId:'q1',resultId:'r2',kind:'DEEP',createdAt:'2026-10-21T01:01:00Z',summary:'이전 공정 확인 답변'}];
- it('orders the original analysis, each question and later reanalysis by request time',()=>{
-  const entries=conversationEntries(timeline,history,{jobId:'b2',kind:'BASIC',status:'RUNNING'});
-  expect(entries.map(entry=>entry.jobId)).toEqual(['b1','q1','b2']);
-  const html=renderToStaticMarkup(<MemoryRouter><InvestigationConversation entries={entries} threads={[undefined,{rootJob:{jobId:'q1'},latestJob:{jobId:'q1',status:'SUCCEEDED'},jobs:[{jobId:'q1'}]},undefined]} results={history} activeJob={{jobId:'b2',kind:'BASIC',status:'RUNNING'}}/></MemoryRouter>);
-  expect(html.indexOf('최초 분석 결과')).toBeLessThan(html.indexOf('이전 공정 영향은?'));
-  expect(html.indexOf('이전 공정 영향은?')).toBeLessThan(html.indexOf('이전 공정 확인 답변'));
-  expect(html.indexOf('이전 공정 확인 답변')).toBeLessThan(html.indexOf('재분석 중…'));
-  expect(html).toContain('role="status"');expect(html).toContain('loading-spinner');
- });
- it('does not duplicate the same reanalysis after the result arrives and removes its loading state',()=>{
-  const result={jobId:'b2',resultId:'r3',kind:'BASIC',createdAt:'2026-10-21T02:01:00Z',summary:'새 분석 결과'};
-  const entries=conversationEntries(timeline,[...history,result]);
-  expect(entries.filter(entry=>entry.jobId==='b2')).toHaveLength(1);
-  const html=renderToStaticMarkup(<MemoryRouter><InvestigationConversation entries={[entries[2]]} threads={[{rootJob:{jobId:'b2'},latestJob:{jobId:'b2',status:'SUCCEEDED'},jobs:[{jobId:'b2'}]}]} results={[result]}/></MemoryRouter>);
-  expect(html).toContain('새 분석 결과');expect(html).not.toContain('재분석 중…');expect(html).not.toContain('loading-spinner');
- });
- it('shows immediate feedback before the reanalysis job has been fetched',()=>{
-  const html=renderToStaticMarkup(<InvestigationConversation entries={[]} threads={[]} results={[]} startingBasic/>);
-  expect(html).toContain('재분석 요청 중…');
+ it('shows immediate feedback before the reanalysis appears',()=>{
+  expect(renderToStaticMarkup(<InvestigationConversation items={[]} startingBasic/>)).toContain('재분석 요청 중…');
  });
 });
 

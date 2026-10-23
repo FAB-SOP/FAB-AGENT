@@ -1,7 +1,7 @@
 import {useState} from 'react';
-import {useInfiniteQuery} from '@tanstack/react-query';
-import {api,write} from '../api/client';
-import {type Incident,type Obj,type Page,when} from '../api/types';
+import {useQueryClient} from '@tanstack/react-query';
+import {write} from '../api/client';
+import {type Incident,type Obj,when} from '../api/types';
 import {Badge,ErrorMessage,Field,Notice} from './ui';
 
 const sourceLabels:Record<string,string>={ACTION:'내 작업 결과',REPLY:'다른 팀 회신',REQUEST_DECISION:'요청 거절 사유'};
@@ -13,26 +13,17 @@ export function resultUse(result:Obj):{code:string;label:string}{
  return {code:'pending',label:'미반영'};
 }
 const refKey=(ref:Obj)=>ref.type+':'+ref.id;
-/** 진행 중인 분석이 있으면 서버가 409로 막으므로 미리 막고 이유를 보여준다 */
-export function followupBlockReason(activeJob?:Obj|null):string{
- if(!activeJob)return '';
- if(['QUEUED','RUNNING'].includes(activeJob.status))return '분석이 진행 중입니다. 끝난 뒤 추가 분석을 요청할 수 있습니다.';
- if(activeJob.status==='WAITING_APPROVAL')return '승인 대기 중인 제안이 있습니다. 먼저 승인·거절한 뒤 요청할 수 있습니다.';
- return '';
+/** 실행 중인 분석이 있으면 서버가 409로 막으므로 미리 막고 이유를 보여준다. 승인 대기는 막지 않는다 */
+export function followupBlockReason(running?:Obj|null):string{
+ return running&&['QUEUED','RUNNING'].includes(running.status)?'분석이 진행 중입니다. 끝난 뒤 추가 분석을 요청할 수 있습니다.':'';
 }
 /** 내 작업 결과·다른 팀 회신을 모아 보고, 고른 결과로만 추가 분석을 요청한다(자동 재분석 없음) */
-export function ResultReview({incident,canManage,activeJob}:{incident:Incident;canManage:boolean;activeJob?:Obj|null}){
- const results=useInfiniteQuery({
-  queryKey:['investigation-results',incident.incidentId],
-  queryFn:({pageParam})=>api<Page<Obj>>(`/api/incidents/${incident.incidentId}/investigation-results?size=20${pageParam?'&cursor='+encodeURIComponent(pageParam):''}`),
-  initialPageParam:'',
-  getNextPageParam:(last:Page<Obj>)=>last.nextCursor||undefined,
- });
+export function ResultReview({incident,canManage,results:items,running}:{incident:Incident;canManage:boolean;results:Obj[];running?:Obj|null}){
+ const queryClient=useQueryClient();
  const [selected,setSelected]=useState<string[]>([]);
  const [question,setQuestion]=useState('');
  const [state,setState]=useState<{busy:boolean;message:string;error:unknown}>({busy:false,message:'',error:null});
- const items=results.data?.pages.flatMap(page=>page.items)||[];
- if(!items.length)return results.error?<ErrorMessage error={results.error}/>:null;
+ if(!items.length)return null;
  const unused=items.filter(item=>resultUse(item).code==='pending').length;
  const toggle=(key:string)=>setSelected(keys=>keys.includes(key)?keys.filter(other=>other!==key):[...keys,key]);
  const submit=async()=>{
@@ -45,12 +36,12 @@ export function ResultReview({incident,canManage,activeJob}:{incident:Incident;c
    });
    setSelected([]);setQuestion('');
    setState({busy:false,message:'선택한 결과로 추가 분석을 요청했습니다. 분석이 끝나면 위 조사 내용에 표시됩니다.',error:null});
-   results.refetch();
+   queryClient.invalidateQueries({queryKey:['conversation',incident.incidentId]});
   }catch(error){
    setState({busy:false,message:'',error});
   }
  };
- const blockReason=followupBlockReason(activeJob);
+ const blockReason=followupBlockReason(running);
  const selectDisabled=!canManage||incident.status==='CLOSED'||state.busy;
  const disabled=selectDisabled||!!blockReason;
  return <section className="result-review">
@@ -69,9 +60,6 @@ export function ResultReview({incident,canManage,activeJob}:{incident:Incident;c
     </div>
    </label>;
   })}
-  {results.hasNextPage&&<button type="button" className="text-button" disabled={results.isFetchingNextPage} onClick={()=>results.fetchNextPage()}>
-   {results.isFetchingNextPage?'불러오는 중…':'이전 결과 더 보기'}
-  </button>}
   <Field label="추가로 물어볼 내용 (선택)">
    <textarea value={question} maxLength={2000} disabled={selectDisabled} placeholder="이 결과를 바탕으로 원인 후보와 다음 확인 사항을 갱신해 주세요."
     onChange={event=>setQuestion(event.target.value)}/>

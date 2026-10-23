@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
-import {useQueries,useQuery} from '@tanstack/react-query';
+import {useQuery} from '@tanstack/react-query';
 import {ArrowUpRight,Check} from 'lucide-react';
 import {api,write} from '../api/client';
 import {labels,when,type Incident,type Obj,type Page} from '../api/types';
@@ -145,24 +145,15 @@ function IncidentApprovalRow({approval,onOpen}:{approval:Obj;onOpen:()=>void}){
  </button>;
 }
 /** 사건 화면에서 바로 승인·거절 — 이 사건의 승인 대기 제안만 보여준다 */
-export function IncidentApprovals({incidentId}:{incidentId:string}){
+/** 사건 화면의 승인 대기 — conversation API의 pendingApprovals(요청 내용 포함)를 그대로 쓴다 */
+export function IncidentApprovals({approvals:pending}:{approvals:Obj[]}){
  const [selected,setSelected]=useState('');
  const {command,openApproval,modal}=useApprovalReview(selected,setSelected);
- const approvals=useQuery({
-  queryKey:['approvals',incidentId],
-  queryFn:()=>api<Page<Obj>>(`/api/approvals?incidentId=${encodeURIComponent(incidentId)}&size=100`),
- });
- const pending=(approvals.data?.items||[]).filter(approval=>approval.status==='PENDING');
- // 목록 응답에는 요청 내용(payload)이 없어 승인 대기 건만 상세를 불러온다 — 검토 창과 같은 캐시
- const details=useQueries({queries:pending.map(approval=>({
-  queryKey:['approval',approval.approvalId],
-  queryFn:()=>api<Obj>('/api/approvals/'+approval.approvalId),
- }))});
  if(!pending.length&&!command.message)return null;
  return <section className="incident-approvals">
   <h3>승인 대기 중 {pending.length}건 <span className="small muted">승인해야 실제로 발송·확정됩니다</span></h3>
   {command.message&&<Notice tone={command.isError?'error':'info'}>{command.message}</Notice>}
-  {pending.map((approval,index)=><IncidentApprovalRow key={approval.approvalId} approval={details[index]?.data||approval} onOpen={()=>openApproval(approval.approvalId)}/>)}
+  {pending.map(approval=><IncidentApprovalRow key={approval.approvalId} approval={approval} onOpen={()=>openApproval(approval.approvalId)}/>)}
   {modal}
  </section>;
 }
