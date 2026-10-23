@@ -26,6 +26,12 @@ class InternalAdvice {
 
 	@ExceptionHandler(ApiException.class)
 	ResponseEntity<Map<String, Object>> api(ApiException e) {
+		if (!e.getDetails().isEmpty() && e.getDetails().containsKey("errors")) {
+			Map<String, Object> error = new LinkedHashMap<>();
+			error.put("code", e.getCode()); error.put("message", e.getMessage());
+			error.put("details", e.getDetails()); error.put("hint", ""); error.put("retryable", false);
+			return ResponseEntity.status(e.getStatus()).body(Map.of("error", error, "meta", Meta.current()));
+		}
 		String code = switch (e.getStatus()) {
 			case NOT_FOUND -> "NOT_FOUND";
 			case FORBIDDEN -> "FORBIDDEN";

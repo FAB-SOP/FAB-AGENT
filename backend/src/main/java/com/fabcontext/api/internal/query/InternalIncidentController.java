@@ -20,10 +20,16 @@ import org.springframework.web.bind.annotation.RestController;
 class InternalIncidentController implements InternalApi {
 
 	private final InternalIncidentQuery query;
+	private final InternalIncidentHistoryQuery history;
 
 	@GetMapping("/incidents/{incidentId}")
 	ApiResponse<Map<String, Object>> incident(@PathVariable String incidentId) {
 		return ApiResponse.of(query.incident(incidentId));
+	}
+
+	@GetMapping("/incidents/{incidentId}/history")
+	ApiResponse<Map<String, Object>> history(@PathVariable String incidentId) {
+		return ApiResponse.of(history.history(incidentId));
 	}
 
 	@GetMapping("/incidents")
