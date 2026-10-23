@@ -1,6 +1,6 @@
 # 승인 대기와 현재 실행 분리 — Backend 연결
 
-브랜치 `feat/approval-resume`, 시작 main `4c237c3`(PR #18·#19 병합). 기존 API와 상태값을 유지하고 대기 작업 조회 및 실행 제어를 확장한다. AI/Python/MCP·Frontend·보고서 모듈 소스는 변경하지 않는다.
+브랜치 `feat/approval-resume`, 시작 main `4c237c3`(PR #18·#19 병합), 최신 main `e3b82d8`(PR #23 테스트 수정 포함) 통합. 기존 API와 상태값을 유지하고 대기 작업 조회 및 실행 제어를 확장한다. AI/Python/MCP·Frontend·보고서 모듈 소스는 변경하지 않는다.
 
 ## 기존 동작과 변경
 
@@ -84,10 +84,11 @@
 
 ## 검증
 
-테스트 DB는 Testcontainers로 격리했으며 실제 서비스 서버·DB·배포는 변경하지 않았다.
+테스트 DB는 Testcontainers로 격리했으며 실제 서비스 서버·DB·배포는 변경하지 않았다. 최신 main `e3b82d8` 통합 뒤 다시 실행했다.
 
-- Backend: `cd backend && ./gradlew test --offline` — 306건 중 304건 통과, 실패 0, 기존 KnowledgeApiTest 2건 건너뜀.
+- Backend: `cd backend && ./gradlew test --offline` — **321건 중 319건 통과, 실패 0, 기존 KnowledgeApiTest 2건 건너뜀**.
 - 신규 9건: 질문 중 승인/거절 저장, 승인 카드 보존, 조기 claim/이벤트/발송 차단, 선행 완료/실패 후 재개, 동시 결정과 실행 경합, Agent 승인 1개 제한, 승인 대기 중 추가 분석, SUMMARY 독립, 시뮬레이터 자동 순차 실행.
-- 기존 Python Agent: `cd ai && uv run --offline pytest -q` — 175건 통과, 데이터 미포함으로 4건 건너뜀, 1건 실패. `test_action_hash_covers_brief`가 같은 사건에 Agent 승인 두 개를 만들어 비교하므로 새 제한에 걸린다. 해시 기능 오류가 아니라 테스트 준비 조건 충돌이며, Backend의 동일 검증은 수동 제안 비교로 통과했다. C가 해당 테스트를 조정하기 전에는 Agent 전체 테스트가 통과한 것으로 보지 않는다.
-- AI/Python 소스·테스트는 수정하지 않았다. C에게 전달할 수정안은 저장소 밖 `/tmp/fab-handoffs/approval-resume-agent-test.patch`에 따로 준비했다. 수정안을 적용한 테스트 함수만 저장소 밖에서 실행해 1건 통과를 확인했으며, 원본 Agent 전체 실행의 1건 실패 기록은 그대로 남긴다.
-- 실제 브라우저의 승인 카드 유지·자동 화면 갱신은 프론트 연결 뒤 통합 검증해야 한다. 이번 검증은 Backend API·DB 동시성 및 규칙 Agent 연동 기준이다.
+- 기존 Python Agent: `cd ai && uv run --offline pytest -q` — **176건 통과, 실패 0, 데이터 미포함으로 4건 건너뜀**. 이전 승인 해시 테스트 충돌은 C가 PR #23에서 수정했고 해당 main 변경을 그대로 통합했다.
+- 실제 Python Agent(규칙 모델) 추가 연동 1건 통과: 기존 승인 대기 → 새 질문 QUEUED → 승인 결정 저장/RESUME QUEUED → 첫 poll에서 질문만 실행 → 다음 poll에서 원래 thread/부모 작업으로 승인 재개 → 요청 1건 발송. 검증 함수는 저장소 밖 `/tmp/fab-handoffs/test_approval_resume_agent_order.py`에서 실행했고 AI 소스·테스트를 이 브랜치에서 새로 수정하지 않았다.
+- 실제 LLM·브라우저의 승인 카드 유지/자동 갱신은 프론트 연결 뒤 통합 검증해야 한다. 이번 검증은 Backend API·DB 동시성 및 규칙 Agent 연동 기준이다.
+- Kafka·새 테이블·새 JobStatus 추가 없음. 통합 대화 조회는 별도 `feat/incident-conversation` 작업이며 이 변경에 포함하지 않는다.
