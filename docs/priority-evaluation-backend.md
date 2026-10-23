@@ -68,7 +68,7 @@ POST /api/events/anomalies
 
 ## 검증 결과
 
-- `cd backend && ./gradlew test --offline`: 총 247건, 통과 245건, 실패/오류 0건, 기존 Knowledge 테스트 2건 건너뜀.
+- `cd backend && ./gradlew test --offline`: 최신 main `d253ee8` 병합 후 총 278건, 통과 276건, 실패/오류 0건, 기존 Knowledge 테스트 2건 건너뜀.
 - 신규 계산/연결 테스트 14건: 최고 등급 집계, 기술 오류와 잠정 중 구분, run 범위, 실제 wafer 경로, 독립 실행, 커밋/롤백, 중복, SSE, 재시도·만료·늦은 완료, AI 오래된 스냅샷 저장 경합.
 - 전체 테스트에서 발견한 우선순위/AI 갱신 충돌을 독립 컬럼 갱신과 DynamicUpdate로 수정한 뒤 전체 재검증했다.
 - 별도 DB·8092 Backend에서 실제 HTTP 신규 사건 PENDING→HIGH(AI는 QUEUED), 이후 AI SUCCEEDED 및 HIGH 유지, 중복 이벤트 200/원래 사건 반환, 목록·상세 일치, 기존 시드 미평가 유지 확인.
