@@ -68,6 +68,29 @@ public class AnalysisResult {
 	@Column(length = 2000)
 	private String summary;
 
+	@Column(columnDefinition = "text")
+	private String answer;
+
+	/** 정식 Agent 판단 정보. 원인 후보 stance는 후보 객체에 별도로 보존한다. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Builder.Default
+	private Map<String, Object> analysis = new java.util.LinkedHashMap<>();
+
+	private String agentResultId;
+	private String previousResultId;
+	private Integer revision;
+
+	public Map<String, Object> getAnalysis() { return analysis == null ? Map.of() : analysis; }
+	public String getResultKind() {
+		Object value = getAnalysis().get("resultKind");
+		if (value != null) return value.toString();
+		return "BASIC".equals(kind) || "RESUME".equals(kind) ? "CAUSE_ANALYSIS" : "ANSWER";
+	}
+	public int getRevision() { return revision == null ? 1 : revision; }
+	public void linkPrevious(AnalysisResult previous) {
+		if (previous != null) { previousResultId = previous.getResultId(); revision = previous.getRevision() + 1; }
+	}
+
 	/** [{factId, statement, evidenceIds}] */
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Builder.Default

@@ -6,9 +6,7 @@ import java.util.Map;
 import java.util.List;
 
 import com.fabcontext.api.common.Ref;
-import com.fabcontext.api.contract.AgentResultMapper;
 import com.fabcontext.api.domain.analysis.AnalysisResult;
-import com.fabcontext.api.domain.analysis.AnalysisResultRepository;
 import com.fabcontext.api.domain.checkrequest.CheckRequestRepositories.CheckRequestRepository;
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
@@ -39,10 +37,9 @@ public class AgentEventService {
 	private final JobService jobService;
 	private final IncidentRepository incidentRepository;
 	private final CheckRequestRepository checkRequestRepository;
-	private final AnalysisResultRepository resultRepository;
+	private final com.fabcontext.api.domain.analysis.AgentResultService analysisResults;
+	private final com.fabcontext.api.domain.approval.ApprovalRepository approvals;
 	private final IncidentStreamHub streamHub;
-	private final AgentResultMapper mapper;
-	private final com.fabcontext.api.domain.work.WorkService work;
 	private final ReportAiSummaryService reportSummaries;
 	private final ProcessedAgentEventRepository processedEvents;
 	private final EntityManager entityManager;
@@ -83,6 +80,18 @@ public class AgentEventService {
 				}
 			}
 			case "APPROVAL_REQUIRED" -> {
+				if (payload.containsKey("result")) {
+					var approval = approvals.findById((String) payload.get("approvalId"))
+						.orElseThrow(() -> com.fabcontext.api.contract.AgentResultContract.invalid("payload.approvalId", "승인이 없습니다."));
+					if (!incident.getIncidentId().equals(approval.getIncidentId()) || !jobId.equals(approval.getJobId()))
+						throw com.fabcontext.api.contract.AgentResultContract.invalid("payload.approvalId", "현재 사건·작업의 승인이 아닙니다.");
+					if (approval.getStatus() != com.fabcontext.api.domain.approval.ApprovalStatus.PENDING)
+						throw com.fabcontext.api.common.ApiException.conflict("APPROVAL_NOT_PENDING", "이미 결정된 승인입니다.", Map.of());
+					if (!(payload.get("approvalVersion") instanceof Number version) || version.longValue() != approval.getVersion() || version.doubleValue() != version.longValue())
+						throw com.fabcontext.api.contract.AgentResultContract.invalid("payload.approvalVersion", "현재 승인 버전과 다릅니다.");
+					var result = analysisResults.store(job, incident, payload);
+					approval.attachSourceResult(result.getResultId());
+				}
 				job.putInput("interruptId", payload.get("interruptId"));
 				jobService.waitFor(job, incident, JobStatus.WAITING_APPROVAL, new Ref("APPROVAL", (String) payload.get("approvalId")));
 			}
@@ -136,17 +145,24 @@ public class AgentEventService {
 	/** 분석 결과 저장 → 업무 제안 반영 → 작업 완료 → 사건 조사 중 표시 · 기록 · 알림 */
 	@SuppressWarnings("unchecked")
 	private void applyResult(Job job, Incident incident, Map<String, Object> payload) {
-		AnalysisResult result = resultRepository.save(mapper.toResult(job, incident, (Map<String, Object>) payload.get("result")));
-		work.importSuggestions(incident, result,
-			(List<Map<String, Object>>) payload.getOrDefault("workSuggestions", List.of()));
+		if (payload.get("analysis") instanceof Map<?, ?> analysis && analysis.get("requestSent") instanceof String requestId) {
+			var request = checkRequestRepository.findById(requestId).orElseThrow(() ->
+				com.fabcontext.api.contract.AgentResultContract.invalid("payload.analysis.requestSent", "발송된 요청이 없습니다."));
+			if (!incident.getIncidentId().equals(request.getIncidentId()) || job.getKind() != JobKind.RESUME)
+				throw com.fabcontext.api.contract.AgentResultContract.invalid("payload.analysis.requestSent", "현재 사건의 승인 재개 작업이 아닙니다.");
+			if (request.getApprovalId() == null || approvals.findById(request.getApprovalId())
+				.filter(a -> java.util.Objects.equals(a.getJobId(), job.getParentJobId())).isEmpty())
+				throw com.fabcontext.api.contract.AgentResultContract.invalid("payload.analysis.requestSent", "부모 승인 작업이 발송한 요청이 아닙니다.");
+			jobService.succeed(job, incident, new Ref("CHECK_REQUEST", requestId));
+			return; // 발송 사실만으로 새 원인 분석을 만들거나 최신 원인 분석을 바꾸지 않는다.
+		}
+		AnalysisResult result = analysisResults.store(job, incident, payload);
 		jobService.succeed(job, incident, new Ref("ANALYSIS_RESULT", result.getResultId()));
 		if (incident.getStatus() == IncidentStatus.OPEN) {
 			incident.setStatus(IncidentStatus.INVESTIGATING);
 		}
-		incident.record(Instant.now(clock), "ANALYSIS_COMPLETED", "agent", "Agent 분석 완료: " + result.getSummary(),
+		incident.record(Instant.now(clock), "ANALYSIS_COMPLETED", "agent", "Agent 분석 완료: " + result.getSummary().substring(0, Math.min(900, result.getSummary().length())),
 			"ANALYSIS_RESULT", result.getResultId());
-		streamHub.publish(incident.getIncidentId(), "analysis.result",
-			Map.of("resultId", result.getResultId(), "jobId", job.getJobId(), "kind", result.getKind()));
 	}
 
 	private void recordFailure(Job job, Incident incident, Map<String, Object> payload) {

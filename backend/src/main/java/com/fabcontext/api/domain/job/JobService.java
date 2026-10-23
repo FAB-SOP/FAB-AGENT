@@ -29,6 +29,7 @@ public class JobService {
 
 	private final com.fabcontext.api.domain.notification.NotificationEvents notificationEvents;
 	private final JobRepository jobRepository;
+	private final JobInputContract inputContract;
 	private final IncidentService incidentService;
 	private final IncidentStreamHub streamHub;
 	private final ApplicationEventPublisher events;
@@ -77,7 +78,7 @@ public class JobService {
 			.parentJobId(parentJobId)
 			.question(question)
 			.scope(scope)
-			.input(input)
+			.input(inputContract.initialize(kind, input, parentJobId == null ? null : load(parentJobId)))
 			.requestedBy(requestedBy)
 			.createdAt(Instant.now(clock))
 			.build();

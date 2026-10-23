@@ -29,7 +29,7 @@ public class AnalysisController {
 	private final IncidentService incidentService;
 	private final AnalysisResultRepository repository;
 
-	@Operation(operationId = "getResults", summary = "분석 결과 이력")
+	@Operation(operationId = "getResults", summary = "분석 결과 이력", description = "latest=true 기본 조회는 최신 원인 분석을 우선합니다. latest=false는 전체 이력과 가장 최근 답변을 반환합니다. resultId 지정 시 해당 결과를 반환합니다. 판단 정보 analysis와 후보 stance는 AI 판단이며 사람의 원인 확정이 아닙니다.")
 	@GetMapping("/api/incidents/{incidentId}/analysis-results")
 	@Transactional(readOnly = true)
 	public ApiResponse<AnalysisResultView> getResults(@AuthenticationPrincipal AuthUser user,
@@ -43,7 +43,7 @@ public class AnalysisController {
 					"jobStatus", String.valueOf(incident.getLatestJobStatus())));
 		}
 		List<HistoryItem> history = latest ? null : results.stream().map(HistoryItem::from).toList();
-		AnalysisResult selected = resultId == null ? results.getFirst() : results.stream()
+		AnalysisResult selected = resultId == null ? (latest ? repository.latestCauseAnalysis(incidentId).orElse(results.getFirst()) : results.getFirst()) : results.stream()
 			.filter(r -> resultId.equals(r.getResultId())).findFirst()
 			.orElseThrow(() -> ApiException.notFound("analysis result", resultId));
 		return ApiResponse.of(AnalysisResultView.from(selected, history));

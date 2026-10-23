@@ -54,14 +54,14 @@ public final class ApprovalDtos {
 			ApprovalActionType actionType, Map<String, Object> payload, String rationale, List<String> evidenceIds,
 			String actionHash, ApprovalStatus status, long version, Instant expiresAt, String jobId, String source,
 			String createdBy, Instant createdAt, String decidedBy, Instant decidedAt, String decisionComment,
-			Ref executionRef, String resumeJobId, Map<String, Object> decisionInput) {
+			Ref executionRef, String resumeJobId, Map<String, Object> decisionInput, String sourceResultId) {
 
 		public static ApprovalView from(Approval a) {
 			return new ApprovalView(a.getApprovalId(), a.getIncidentId(), a.getProcessCode(), a.getActionType(),
 				Map.copyOf(a.getPayload()), a.getRationale(), List.copyOf(a.getEvidenceIds()), a.getActionHash(),
 				a.getStatus(), a.getVersion(), a.getExpiresAt(), a.getJobId(), a.getSource(), a.getCreatedBy(),
 				a.getCreatedAt(), a.getDecidedBy(), a.getDecidedAt(), a.getDecisionComment(), a.executionRef(),
-				a.getResumeJobId(), a.getDecisionInput() == null ? null : Map.copyOf(a.getDecisionInput()));
+				a.getResumeJobId(), a.getDecisionInput() == null ? null : Map.copyOf(a.getDecisionInput()), a.getSourceResultId());
 		}
 	}
 
