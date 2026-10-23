@@ -21,7 +21,8 @@ class _EvidenceFetcher:
         self.evidence: dict = {}
         self.data_version = data_version
 
-    async def run(self, name, args):
+    async def run(self, name, args, optional: bool = False):
+        """optional — 없어도 조사를 이어 갈 수 있는 근거(점검 문서 검색). 일시 장애여도 작업을 재시도로 넘기지 않는다"""
         call_id = f"req_{uuid.uuid4().hex[:8]}"
         self.messages.append(AIMessage(content="(Harness가 필수 근거를 조회합니다)",
                                        tool_calls=[{"id": call_id, "name": name, "args": args}]))
@@ -33,7 +34,7 @@ class _EvidenceFetcher:
             self.messages.append(ToolMessage(content=context.to_tool_text(result, name), tool_call_id=call_id, name=name))
             return result
         except ToolCallError as e:
-            if e.retryable:  # 필수 근거가 일시 장애면 작업 단위 재시도(RETRY_SCHEDULED)로 넘긴다
+            if e.retryable and not optional:  # 필수 근거가 일시 장애면 작업 단위 재시도(RETRY_SCHEDULED)로 넘긴다
                 raise TransientJobError(e.text) from e
             self.messages.append(ToolMessage(content=e.text, tool_call_id=call_id, name=name))
             return None
@@ -62,13 +63,37 @@ async def _fetch_route_evidence(fetcher: _EvidenceFetcher, data: dict) -> None:
         if ((run_result or {}).get("data") or {}).get("amountWithinNormalVariation") is False:
             outside.append(step)
     current = next((step for step in steps if step["processCode"] == data.get("processCode")), None)
+    current_sensors = []
     if current:
-        await fetcher.run("get_run_features", {"runId": current["runId"]})
+        current_features = await fetcher.run("get_run_features", {"runId": current["runId"]})
+        current_sensors = _outside_sensors(current_features)
     # 제거 · 증착량이 정상 변동 밖인 앞 공정 run은 센서 특징까지 본다 — 센서가 정상이면 센서 태그 없는 원인
     # (예: ETCH_WALL)과 센서 원인(ETCH_RF 등)을 가를 근거가 된다
     for step in outside:
         if step is not current:
             await fetcher.run("get_run_features", {"runId": step["runId"]})
+    await _fetch_playbooks(fetcher, current, current_sensors, outside)
+
+
+def _outside_sensors(features: dict | None) -> list[str]:
+    return [item["sensorId"] for item in ((features or {}).get("data") or {}).get("items") or []
+            if item.get("outsideReferenceBand") and item.get("sensorId")]
+
+
+async def _fetch_playbooks(fetcher: _EvidenceFetcher, current: dict | None, current_sensors: list[str], outside: list[dict]) -> None:
+    """정상 범위 밖 공정의 점검 문서 — 원인 후보의 원인 ID · 다음 확인이 문서 근거를 갖게 늘 대화에 넣는다.
+    실제 모델은 업무 근거가 다 있으면 지식 검색 없이 바로 제출했다(기본 분석 12건 중 검색 0건). 현재 공정이 이상이면
+    그 공정 · 첫 이탈 센서로, 아니면 정상 변동 밖인 앞 공정으로 찾는다. 셋 다 정상이면(관찰) 찾지 않는다"""
+    if current and (current in outside or current_sensors):
+        process, focus = current["processCode"], current_sensors[0] if current_sensors else "제거량 감소"
+        query = f"{process} {focus} 확인 점검"
+    else:
+        upstream = next((step for step in outside if step is not current), None)
+        if upstream is None:
+            return
+        process = upstream["processCode"]
+        query = f"{process} 제거량 변화 챔버 세정 확인"
+    await fetcher.run("search_applicable_playbooks", {"query": query, "process": process, "topK": 5}, optional=True)
 
 
 async def required_evidence(state: AgentState, config) -> dict:

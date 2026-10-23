@@ -40,11 +40,10 @@ public class FollowupAnalysisService {
 		Incident incident=incidents.loadForWrite(incidentId,user);
 		em.refresh(incident,LockModeType.PESSIMISTIC_WRITE);
 		incident.requireNotClosed(); incident.checkVersion(body.expectedIncidentVersion());
-		if(jobs.existsByIncidentIdAndStatusIn(incidentId,java.util.EnumSet.of(JobStatus.QUEUED,JobStatus.RUNNING)))
+		if(jobService.hasInProgressInvestigation(incidentId))
 			throw ApiException.conflict("ANALYSIS_IN_PROGRESS","이미 진행 중인 작업이 있습니다.",Map.of());
 		List<Job> pending=jobs.findByIncidentIdOrderByCreatedAtDesc(incidentId).stream()
-			.filter(j->j.getStatus()==JobStatus.WAITING_REPLY || j.getStatus()==JobStatus.WAITING_APPROVAL).toList();
-		if(pending.stream().anyMatch(j->j.getStatus()==JobStatus.WAITING_APPROVAL)) throw ApiException.conflict("PENDING_APPROVAL_REQUIRED","대기 중인 승인을 먼저 처리하세요.",Map.of());
+			.filter(j->j.getStatus()==JobStatus.WAITING_REPLY).toList();
 		if(pending.size()>1) throw ApiException.conflict("ANALYSIS_RESUME_UNAVAILABLE","여러 체크포인트의 재개 순서를 확인해야 합니다.",Map.of());
 		if(new HashSet<>(body.sourceRefs()).size()!=body.sourceRefs().size()) throw ApiException.unprocessable("DUPLICATE_SOURCE_REF","같은 결과를 중복 선택할 수 없습니다.");
 		List<Map<String,Object>> snapshots=body.sourceRefs().stream().map(ref->snapshot(incidentId,ref)).toList();

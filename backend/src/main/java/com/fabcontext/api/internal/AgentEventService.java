@@ -17,7 +17,6 @@ import com.fabcontext.api.domain.job.JobKind;
 import com.fabcontext.api.domain.job.JobService;
 import com.fabcontext.api.domain.job.JobStatus;
 import com.fabcontext.api.domain.job.ProcessedAgentEvent;
-import com.fabcontext.api.domain.job.ProcessedAgentEventRepository;
 import com.fabcontext.api.domain.report.ReportAiSummaryService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -27,8 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 외부 Agent 이벤트 수신 — contracts/schemas/agent-event.schema.json 그대로 받는다.
- * Kafka(analysis.events)를 붙이기 전까지 HTTP(POST /internal/jobs/{jobId}/events)로 같은 이벤트를 받는 임시 다리다.
- * Kafka 소비자를 붙여도 이 클래스의 handle()을 그대로 부르면 된다.
+ * HTTP(POST /internal/jobs/{jobId}/events)로 수신한다. 이번 구성에서는 Kafka를 사용하지 않는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -41,7 +39,7 @@ public class AgentEventService {
 	private final com.fabcontext.api.domain.approval.ApprovalRepository approvals;
 	private final IncidentStreamHub streamHub;
 	private final ReportAiSummaryService reportSummaries;
-	private final ProcessedAgentEventRepository processedEvents;
+	private final AgentEventDeduplication deduplication;
 	private final EntityManager entityManager;
 	private final Clock clock;
 
@@ -55,19 +53,24 @@ public class AgentEventService {
 		// 확정 · 추가 분석과 같은 잠금 순서(사건 → 작업). 기다리는 동안 바뀐 상태도 다시 읽는다.
 		entityManager.refresh(incident, LockModeType.PESSIMISTIC_WRITE);
 		entityManager.refresh(job, LockModeType.PESSIMISTIC_WRITE);
-		if (processedEvents.existsById(eventId)) {
-			return ignored(jobId, "DUPLICATE_EVENT");
-		}
+		String type = String.valueOf(event.get("type"));
+		String hash = AgentEventFingerprint.of(job, event);
+		var duplicate = deduplication.check(job, eventId, attempt, type, hash);
+		if (duplicate != null) return duplicate;
 		if (attempt != job.getAttempt()) {
 			return ignored(jobId, "ATTEMPT_MISMATCH");
 		}
-		String type = String.valueOf(event.get("type"));
 		Map<String, Object> payload = (Map<String, Object>) event.getOrDefault("payload", Map.of());
 		if (job.getStatus() == JobStatus.SUCCEEDED || job.getStatus() == JobStatus.FAILED) {
 			return ignored(jobId, "JOB_FINISHED");
 		}
+		if (job.getStatus() == JobStatus.QUEUED && java.util.Set.of("JOB_STARTED", "ANALYSIS_PROGRESS", "RESULT_READY", "APPROVAL_REQUIRED", "WAITING_REPLY", "REPORT_DRAFT_READY").contains(type)
+				&& !jobService.canStart(job, incident))
+			throw new InternalError("CONFLICT", "현재 사건의 다른 작업이 끝난 뒤 이벤트를 처리할 수 있습니다.", "실행 가능한 작업만 claim하세요.");
 		// 처리 중 예외가 나면 수신 기록과 업무 변경이 함께 롤백되어 같은 ID로 다시 처리할 수 있다.
-		entityManager.persist(new ProcessedAgentEvent(eventId, jobId, attempt, type, Instant.now(clock)));
+		var receipt = new ProcessedAgentEvent(eventId, jobId, attempt, type, Instant.now(clock));
+		receipt.fingerprint(hash);
+		entityManager.persist(receipt);
 		// 선택 필드 — 작업을 끝내거나 멈추는 이벤트에 실린 이번 시도의 trace 요약(Observability)
 		if (event.get("metrics") instanceof Map<?, ?> metrics) {
 			job.recordMetrics((Map<String, Object>) metrics);

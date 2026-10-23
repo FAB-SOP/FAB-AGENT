@@ -10,6 +10,16 @@ from fab.agent.harness.retry import call_with_recovery
 from fab.agent.purpose import may_propose
 
 
+LAST_CALL = ("[Harness] 이번이 이 작업의 마지막 판단입니다. 더 조회하지 말고 지금까지 조회한 근거로 submit_result를 내세요 — "
+             "근거가 모자라면 nextStep을 INSUFFICIENT_EVIDENCE로, 확인하지 못한 것은 한계(limitations)에 적습니다.")
+
+
+def _last_call(state: AgentState, counters: dict) -> bool:
+    """판단 한도의 마지막 호출이고 아직 접수된 답이 없나 — 실제 모델은 조회를 거듭하다 한도에 닿아 빈 결과로 끝나곤 했다.
+    답이 이미 있으면(요청서 재시도 등) 도구를 줄이지 않는다"""
+    return counters["modelCalls"] == limits.LIMITS.max_model_calls - 1 and not state.get("result") and state["mode"] != "REPORT"
+
+
 async def agent(state: AgentState, config) -> dict:
     job_runtime = runtime(config)
     counters = dict(state["counters"])
@@ -19,6 +29,10 @@ async def agent(state: AgentState, config) -> dict:
         return {"stopReason": reason}
     messages = context.fit_budget(state["messages"])
     tools = job_runtime.toolbox.model_tools(state["mode"], allow_proposals=may_propose(state))
+    if _last_call(state, counters):  # 한도 직전 — 조회 대신 지금 근거로 답하게(빈 결과로 멈추지 않게)
+        job_runtime.tracer.event("last_call", modelCalls=counters["modelCalls"])
+        tools = [tool for tool in tools if tool["function"]["name"] in ("submit_result", "submit_report")]
+        messages = [*messages, HumanMessage(content=LAST_CALL)]
     with job_runtime.tracer.span("llm", node="agent") as span_record:
         reply, used = await call_with_recovery(job_runtime.primary, job_runtime.fallback, messages, tools, job_runtime.tracer)
         usage = getattr(reply, "usage_metadata", None) or {}

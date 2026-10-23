@@ -10,4 +10,6 @@ public interface ActiveJobLookup {
 
 	/** jobId가 null이거나 작업이 없으면 null */
 	ActiveJob find(String jobId);
+
+	default java.util.List<ActiveJob> waitingForIncident(String incidentId) { return java.util.List.of(); }
 }

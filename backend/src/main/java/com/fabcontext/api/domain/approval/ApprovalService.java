@@ -47,6 +47,7 @@ public class ApprovalService {
 	private final IncidentStreamHub streamHub;
 	private final FabProperties properties;
 	private final Clock clock;
+	private final jakarta.persistence.EntityManager entityManager;
 
 	@Transactional
 	public PageResponse<ApprovalSummary> list(AuthUser user, String status, String incidentId, String cursor,
@@ -88,11 +89,15 @@ public class ApprovalService {
 	@Transactional
 	public ApprovalDecisionResult decide(String approvalId, AuthUser user, ApprovalDecision body) {
 		Approval approval = loadForUser(approvalId, user);
-		incidentService.loadForWrite(approval.getIncidentId(), user);
+		Incident incident = incidentService.loadForWrite(approval.getIncidentId(), user);
+		// WorkItem 채택은 같은 트랜잭션에서 승인을 만들고 결정한다. 새 행·누적 기록을 flush한 뒤 잠금 재조회한다.
+		entityManager.flush();
+		entityManager.refresh(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		entityManager.refresh(approval, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		Instant now = Instant.now(clock);
 		requireDecidable(approval, body, now);
-		Incident incident = incidentRepository.findById(approval.getIncidentId()).orElseThrow();
 		Job waitingJob = approval.getJobId() == null ? null : jobService.load(approval.getJobId());
+		if (waitingJob != null) entityManager.refresh(waitingJob, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		boolean agentWaiting = waitingJob != null && waitingJob.getStatus() == JobStatus.WAITING_APPROVAL
 				&& approvalId.equals(waitingJob.getWaitingRefId());
 
@@ -196,6 +201,11 @@ public class ApprovalService {
 	@Transactional
 	public Ref executeApproved(String approvalId, ApprovalActionType expected, String idempotencyKey) {
 		Approval approval = repository.findById(approvalId).orElseThrow(() -> ApiException.notFound("approval", approvalId));
+		Incident incident = incidentRepository.findById(approval.getIncidentId()).orElseThrow();
+		// WorkItem 채택은 같은 트랜잭션에서 승인을 만들고 결정한다. 새 행·누적 기록을 flush한 뒤 잠금 재조회한다.
+		entityManager.flush();
+		entityManager.refresh(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		entityManager.refresh(approval, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		if (approval.getActionType() != expected) {
 			throw ApiException.forbidden("APPROVAL_ACTION_MISMATCH",
 				"승인 " + approvalId + "는 " + approval.getActionType() + " 실행용입니다.");
@@ -213,8 +223,13 @@ public class ApprovalService {
 			throw ApiException.conflict("APPROVAL_EXPIRED", "승인 " + approvalId + "의 실행 기한이 지났습니다. 새로 제안하세요.",
 				Map.of("expiresAt", approval.getExpiresAt().toString()));
 		}
-		Incident incident = incidentRepository.findById(approval.getIncidentId()).orElseThrow();
+
 		incident.requireNotClosed();
+		if (approval.getResumeJobId() != null) {
+			Job resume = jobService.load(approval.getResumeJobId());
+			if (resume.getStatus() == JobStatus.QUEUED && !jobService.canStart(resume, incident))
+				throw ApiException.conflict("JOB_START_DEFERRED", "현재 질문이 끝난 뒤 승인된 요청을 발송합니다.", Map.of("resumeJobId",resume.getJobId()));
+		}
 		String threadId = approval.getJobId() == null ? null : jobService.load(approval.getJobId()).getThreadId();
 		Ref execution = execute(approval, incident, approval.getDecidedBy(), threadId);
 		approval.markExecuted(execution, idempotencyKey, now);
@@ -232,16 +247,25 @@ public class ApprovalService {
 	@Transactional
 	public Approval createAgentProposal(Incident incident, Job job, ApprovalActionType type, Map<String, Object> payload,
 			String rationale, List<String> evidenceIds, String requestedBy, String idempotencyKey) {
+		entityManager.lock(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		incident.requireNotClosed();
 		if (idempotencyKey != null) {
 			var existing = repository.findByProposalKey(idempotencyKey);
 			if (existing.isPresent()) {
 				return existing.get();
 			}
 		}
+		if (hasPendingAgent(incident.getIncidentId())) throw ApiException.conflict("AGENT_APPROVAL_PENDING", "이 사건의 Agent 승인 요청이 대기 중입니다. 기존 카드를 유지하고 답변만 제공하세요.", Map.of());
 		Approval approval = create(incident, type, payload, rationale, evidenceIds, job.getJobId(), "AGENT",
 			requestedBy == null ? "agent" : requestedBy);
 		approval.assignProposalKey(idempotencyKey);
 		return approval;
+	}
+
+	@Transactional(readOnly = true)
+	public boolean hasPendingAgent(String incidentId) {
+		return repository.findByIncidentIdAndStatus(incidentId, ApprovalStatus.PENDING).stream()
+			.anyMatch(a -> "AGENT".equals(a.getSource()));
 	}
 
 	@Transactional(readOnly = true)

@@ -5,6 +5,9 @@ from __future__ import annotations
 from fab.agent.graph.state import AgentState, current_job, runtime
 from fab.agent.tools import REPORT_SECTIONS
 from fab.agent.harness.limits import LIMITS
+from fab.agent.answer import answer_evidence_ids
+from fab.agent.evidence import looked_up_text
+from fab.agent.harness.guard import not_found_limitation, unanswered_question_ids
 from fab.agent.stance import cause_stance
 from fab.agent.work import contract_suggestions, without_proposed
 
@@ -89,14 +92,22 @@ async def finalize(state: AgentState, config) -> dict:
     if submitted is None:  # 한도 초과 등으로 제출 없이 끝남 — 지금까지의 근거로 부분 결과
         submitted = {"nextStep": "INSUFFICIENT_EVIDENCE", "observedFacts": [], "candidateCauses": [], "limitations": []}
         limitations.append(f"조사가 끝나기 전에 멈췄습니다: {state.get('stopReason')}")
+    # 질문에 나온 대상이 조회되지 않았는데 답이 말하지 않은 채 끝났으면(한도로 멈춘 경우 포함) Harness가 남긴다
+    missing = unanswered_question_ids(state.get("question"), submitted,
+                                      looked_up_text(state.get("messages") or [], state.get("selectedInputs")))
+    if missing and not any(ids in " ".join(as_list(submitted.get("limitations"))) for ids in missing):
+        limitations.append(not_found_limitation(missing))
     facts = _contract_facts(submitted)
     causes = _contract_causes(submitted)
-    used = _used_evidence_ids(facts, causes)
+    used = _used_evidence_ids(facts, causes) | set(answer_evidence_ids(submitted))  # 답 글에 인용한 근거도 화면이 찾을 수 있게
+    # 업무 후보가 붙인 근거도 싣는다 — backend는 evidenceRefs 밖의 근거를 가진 후보를 막는다
+    used |= {e for item in submitted.get("workSuggestions") or [] for e in item.get("evidenceIds") or []}
     evidence = state.get("evidence", {})
     result = {
         "resultId": f"RESULT-{current_job(state, config)}",
         "jobId": current_job(state, config), "incidentId": state["incidentId"],
         "dataVersion": state.get("dataVersion") or "UNKNOWN",
+        **({"answer": str(submitted["answer"]).strip()} if str(submitted.get("answer") or "").strip() else {}),
         "observedFacts": facts, "candidateCauses": causes,
         "limitations": as_list(submitted.get("limitations")) + limitations + _segment_limit(submitted, facts),
         "evidenceRefs": [_contract_ref(evidence[evidence_id], state.get("dataVersion"))

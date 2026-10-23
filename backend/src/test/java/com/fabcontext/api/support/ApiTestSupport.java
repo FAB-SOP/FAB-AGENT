@@ -36,7 +36,9 @@ import org.testcontainers.utility.DockerImageName;
 		// 묶음 경로는 코드 기본값이 없다 — 테스트 설정이 넣는다(backend 폴더 기준)
 		"fab.pack-dir=../data/fab-causal-pack-v2", "fab.rag-dir=../data/fab-rag-real-documents-v1",
 		"spring.jpa.properties.hibernate.default_schema=" + ApiTestSupport.SCHEMA,
-		"spring.datasource.hikari.schema=" + ApiTestSupport.SCHEMA})
+		"spring.datasource.hikari.schema=" + ApiTestSupport.SCHEMA,
+		// 캐시된 컨텍스트마다 풀을 따로 잡는다 — 기본 10개면 컨텍스트가 늘 때 Postgres 연결 한도(100)를 넘는다
+		"spring.datasource.hikari.maximum-pool-size=4"})
 @AutoConfigureMockMvc
 public abstract class ApiTestSupport {
 

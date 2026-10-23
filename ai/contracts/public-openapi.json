@@ -6568,6 +6568,12 @@
           "dataVersion": {
             "type": "string"
           },
+          "answer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600,
+            "description": "질문에 대한 1~3문장 직접 답(선택 — 질문 · 추가 분석 · 요청서 작업은 Agent가 늘 채운다, 기본 분석은 없을 수 있다). 할 수 없는 요청은 할 수 없다고 먼저 밝힌다"
+          },
           "observedFacts": {
             "type": "array",
             "items": {

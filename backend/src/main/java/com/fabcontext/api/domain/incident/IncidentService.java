@@ -71,7 +71,7 @@ public class IncidentService {
 	@Transactional(readOnly = true)
 	public IncidentDetail detail(String incidentId, AuthUser user) {
 		Incident incident = loadForUser(incidentId, user);
-		return IncidentDetail.from(incident, activeJobs.find(incident.getActiveJobId()));
+		return IncidentDetail.from(incident, activeJobs.find(incident.getActiveJobId()), activeJobs.waitingForIncident(incidentId));
 	}
 
 	@Transactional

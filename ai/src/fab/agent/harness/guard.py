@@ -5,10 +5,11 @@
 
 from __future__ import annotations
 
+import bisect
 import re
 
 from fab.agent.causes import CAUSES, PROCESS_ORDER
-from fab.agent.evidence import features_of, runs_by_process
+from fab.agent.evidence import data, features_of, runs_by_id, runs_by_process
 from fab.agent.stance import REFUTED, cause_stance
 
 NEXT_STEPS = {"CURRENT_CHECK", "UPSTREAM_CHECK", "OBSERVE", "INSUFFICIENT_EVIDENCE", "NEEDS_DEEP_ANALYSIS"}
@@ -100,6 +101,81 @@ def _cause_rules(result: dict, incident_process: str | None) -> list[str]:
     return errors
 
 
+OPEN_STEPS = {"INSUFFICIENT_EVIDENCE", "NEEDS_DEEP_ANALYSIS"}  # 불확실하다고 남기는 것은 늘 허용
+
+
+def _route_state(seen: dict, incident_process: str | None):
+    """사건 웨이퍼의 실제 경로(Harness가 처음 조회한 lineage)로 본 상태 — (사건 공정 run, 참고 범위 밖 센서, 정상 변동 밖인 앞 공정 run).
+    경로 run을 다 보지 못했으면 None"""
+    lineage = (seen.get("get_wafer_lineage") or [None])[0]
+    steps = data(lineage).get("steps") or []
+    if not steps or incident_process not in PROCESS_ORDER:
+        return None
+    runs = runs_by_id(seen)
+    route = [(step.get("processCode"), runs.get(step.get("runId"))) for step in steps]
+    if any(run is None or process not in PROCESS_ORDER for process, run in route):
+        return None
+    current = next((run for process, run in route if process == incident_process), None)
+    if current is None:
+        return None
+    items = (data(features_of(seen, current["runId"])).get("items")) or []
+    sensors = [item.get("sensorId") for item in items if item.get("outsideReferenceBand")]
+    upstream = [run | {"processCode": process} for process, run in route
+                if PROCESS_ORDER.index(process) < PROCESS_ORDER.index(incident_process) and run.get("amountWithinNormalVariation") is False]
+    return current, sensors, upstream
+
+
+def suggested_request(seen: dict, incident_process: str | None, next_step: str | None) -> str | None:
+    """답의 nextStep에 맞고 조회 데이터에 근거가 있는 요청 — 없으면 None(그때는 요청을 권하지 않는다)"""
+    state = _route_state(seen, incident_process)
+    if state is None:
+        return None
+    current, sensors, upstream = state
+    word = "증착량" if current.get("amountKind") == "DEPOSITED" else "제거량"
+    if next_step == "CURRENT_CHECK" and (current.get("amountWithinNormalVariation") is False or sensors):
+        why = f"센서 {', '.join(sensors)} 참고 범위 밖" if sensors else f"{word} 정상 변동 밖"
+        return (f"propose_maintenance_request(processCode={incident_process}) — {current.get('equipmentId')} run의 {why}")
+    if next_step == "UPSTREAM_CHECK" and upstream:
+        run = upstream[-1]
+        return (f"propose_cross_process_check(processCode={run['processCode']}) — {run.get('equipmentId')} run의 "
+                f"{'증착량' if run.get('amountKind') == 'DEPOSITED' else '제거량'} 정상 변동 밖")
+    return None
+
+
+def evidence_next_steps(seen: dict, incident_process: str | None) -> tuple[set[str], str] | None:
+    """조회한 데이터가 허용하는 nextStep — 사건 웨이퍼의 실제 경로(Harness가 처음 조회한 lineage) run으로 정한다.
+    현재 공정 run이 정상 변동 밖이거나 센서가 참고 범위 밖 → CURRENT_CHECK(앞 공정도 밖이면 UPSTREAM_CHECK도),
+    현재 공정은 정상이고 앞 공정 run이 정상 변동 밖 → UPSTREAM_CHECK, 셋 다 정상 → OBSERVE. 실제 모델은 셋 다 정상인데
+    CURRENT_CHECK를 내거나(평가셋 AE09) 앞 공정만 밖인데 CURRENT_CHECK를 냈다(AE03). 경로 run을 다 보지 못했으면 판단하지 않는다"""
+    state = _route_state(seen, incident_process)
+    if state is None:
+        return None
+    current, sensors, upstream_runs = state
+    current_out = current.get("amountWithinNormalVariation") is False or bool(sensors)
+    upstream_out = [run["processCode"] for run in upstream_runs]
+    if current_out:
+        why = (f"사건 공정({incident_process}) run이 " + ("정상 변동 밖" if current.get("amountWithinNormalVariation") is False
+                                                     else f"센서 {', '.join(sensors)} 참고 범위 밖"))
+        return {"CURRENT_CHECK", *({"UPSTREAM_CHECK"} if upstream_out else set())} | OPEN_STEPS, why
+    if upstream_out:
+        return {"UPSTREAM_CHECK"} | OPEN_STEPS, (f"사건 공정({incident_process}) run은 정상 변동 안 · 센서 정상이고, "
+                                                 f"앞 공정 {', '.join(upstream_out)} run이 정상 변동 밖")
+    return {"OBSERVE"} | OPEN_STEPS, "경로의 세 공정 run이 모두 정상 변동 안이고 사건 공정 센서도 정상 참고 범위 안"
+
+
+def _upstream_hint(runs: dict, target: str | None, word) -> str:
+    """근거 없는 정비 요청의 다음 할 일 — 정상 변동 밖인 앞 공정 run이 있으면 그 공정 확인 요청을 하라고 집어 준다.
+    실제 모델은 앞 공정만 정상 변동 밖인 사건에서 현재 공정 정비 요청을 거듭 냈다(평가셋 AE03)"""
+    upstream = [run for process, run in runs.items() if target in PROCESS_ORDER and process in PROCESS_ORDER
+                and PROCESS_ORDER.index(process) < PROCESS_ORDER.index(target) and run.get("amountWithinNormalVariation") is False]
+    if not upstream:
+        return "근거가 있는 공정을 보거나 요청 없이 submit_result로 정리하세요."
+    run = upstream[-1]  # 사건 공정에 가장 가까운 앞 공정
+    return (f"대신 앞 공정 {run['processCode']} {run.get('equipmentId')} run의 {word(run)}이 정상 변동 밖입니다 — "
+            f"propose_cross_process_check(processCode={run['processCode']})로 앞 공정 확인 요청을 내세요"
+            f"(causeIds는 {run['processCode']} 원인 ID).")
+
+
 def validate_proposal(action_type: str, args: dict, seen: dict, incident_process: str | None) -> list[str]:
     """제안 정합성 — 제안의 종류 · 대상이 이번 조사에서 받은 도구 결과(seen = evidence.tool_results)와 맞는지 본다.
 
@@ -121,7 +197,7 @@ def validate_proposal(action_type: str, args: dict, seen: dict, incident_process
             outside = [feature.get("sensorId") for feature in items if feature.get("outsideReferenceBand")]
             if run.get("amountWithinNormalVariation") is not False and not outside:
                 errors.append(f"{target} {run.get('equipmentId')} run의 {word(run)}이 정상 변동 안이고 센서도 정상 참고 범위 안입니다 — "
-                              "정비 요청의 근거가 없습니다. 근거가 있는 공정을 보거나 요청 없이 submit_result로 정리하세요.")
+                              "정비 요청의 근거가 없습니다. " + _upstream_hint(runs, target, word))
     elif action_type == "CREATE_CHECK_REQUEST":
         if incident_process in PROCESS_ORDER and (target not in PROCESS_ORDER
                                                   or PROCESS_ORDER.index(target) >= PROCESS_ORDER.index(incident_process)):
@@ -148,6 +224,25 @@ def _numbers(text: str) -> list[float]:
     return [float(number) for number in _NUM.findall(text.replace(",", ""))]
 
 
+def _seen_number(token: str, tool_text: str) -> bool:
+    """요청 이유의 숫자가 조회한 값인가 — 그대로(부호를 뗀 값 포함, 「5.3% 낮고」), 또는 같은 도구 결과 안의 두 값의 차이
+    (「기준 대비 약 250 Å 적음」 = 4999.43 − 4749.0). 차이는 한 도구 결과 안에서만 본다 — 결과 전체의 숫자 쌍으로 넓히면
+    지어낸 숫자도 거의 다 어떤 두 값의 차이가 된다"""
+    value = float(token)
+    decimals = len(token.split(".")[1]) if "." in token else 0
+    half = 0.5 * 10 ** -decimals
+    for chunk in tool_text.split("\n"):
+        seen = _numbers(chunk)
+        if any(round(abs(known), decimals) == abs(value) for known in seen):
+            return True
+        ordered = sorted(seen)
+        for a in ordered:
+            i = bisect.bisect_left(ordered, a + abs(value) - half)
+            if i < len(ordered) and ordered[i] < a + abs(value) + half and abs(value) > 0:
+                return True
+    return False
+
+
 def validate_brief(brief: dict, known_evidence: set[str], tool_text: str) -> list[str]:
     """요청 브리프 검사 — 받는 사람이 보는 글이므로 결과 제출과 같은 규칙에, 숫자 · 근거 출처와 처방 금지를 더한다."""
     errors: list[str] = []
@@ -156,12 +251,10 @@ def validate_brief(brief: dict, known_evidence: set[str], tool_text: str) -> lis
         errors.append("요청 이유(reason)를 1~2문장으로 적으세요 — 받는 사람이 왜 요청받는지 알 수 있게.")
     elif len(reason) > 400:
         errors.append("요청 이유(reason)는 400자 이내 1~2문장으로 줄이세요.")
-    seen = _numbers(tool_text)
     for token in _NUM.findall(reason.replace(",", "")):
-        v = float(token)
-        decimals = len(token.split(".")[1]) if "." in token else 0
-        if not any(round(known, decimals) == v for known in seen):
-            errors.append(f"요청 이유의 숫자 {token}는 이번 조사의 도구 결과에 없습니다. 도구 결과의 값만 쓰세요.")
+        if not _seen_number(token, tool_text):
+            errors.append(f"요청 이유의 숫자 {token}는 이번 조사의 도구 결과에 없습니다. 도구 결과의 값(또는 같은 결과 안 두 값의 "
+                          "차이)만 쓰세요.")
     text = " ".join([reason, *[str(item) for item in brief.get("askFor") or []]])
     if _PROB.search(text):
         errors.append("원인 확률을 숫자로 표시하지 않습니다.")
@@ -176,3 +269,52 @@ def validate_brief(brief: dict, known_evidence: set[str], tool_text: str) -> lis
     if unknown:
         errors.append(f"관련 기록의 근거 ID {unknown}는 이번 조사에서 조회하지 않았습니다.")
     return errors
+
+
+# 대상 ID — 로트(CURRENT-L006 · 접두어 없이 L006도) · 웨이퍼(W-CURRENT-006-3) · run(RUN-W-CURRENT-006-3-CMP)
+# 경계는 ASCII로 본다 — \b는 한글 조사(「L088도」)를 낱말로 읽어 경계를 놓친다
+_TARGET_ID = re.compile(r"(?<![A-Za-z0-9-])(?:RUN-W-[A-Z]+-\d{3}-\d+-[A-Z]+|W-[A-Z]+-\d{3}-\d+|(?:[A-Z]+-)?L\d{3})(?![A-Za-z0-9])")
+# 조회되지 않았다고 밝힌 문장은 그 ID를 써도 된다 — 「CURRENT-L088는 조회되지 않아 비교할 수 없습니다」
+_NOT_FOUND = re.compile(r"조회되지\s*않|조회\s*결과가\s*없|찾을\s*수\s*없|확인할\s*수\s*없|확인되지\s*않|존재하지\s*않|"
+                        r"(?:데이터|자료|기록)가\s*없|없는\s*(?:로트|웨이퍼|run)")
+_SENTENCE = re.compile(r"[^.。!?\n]+")
+# 후속 확인 run — 분석 시점 이후 자료라 내부 API가 막는다. 조회하지 않고 「후속 run에서 정상으로 돌아왔다」고 쓰면 지어낸 관측이다
+_FOLLOWUP = re.compile(r"후속\s*(?:확인\s*)?(?:run|런|계측|결과)|FOLLOWUP")
+_NOT_YET = re.compile(r"없|않|못|아직|이후\s*자료|필요|전이|전에|기다|확인해야|봐야")
+
+
+def unanswered_question_ids(question: str | None, result: dict, seen_text: str) -> list[str]:
+    """질문에 나온 대상 중 조회되지 않은 것을 답이 말하지 않았으면 그 ID들 — 없는 대상을 묻는 질문의 답은 「없다」이다"""
+    answer = str(result.get("answer") or "")
+    asked = dict.fromkeys(i for i in _TARGET_ID.findall(question or "") if i not in seen_text)
+    short = {i: re.sub(r"^[A-Z]+-(?=L\d{3}$)", "", i) for i in asked}  # 로트는 접두어 없이(L088) 써도 같은 대상
+    return [i for i in asked if i not in answer and short[i] not in answer]
+
+
+def not_found_limitation(ids: list[str]) -> str:
+    return f"질문의 {', '.join(ids)}는 이번 조회 결과에 없어 확인하지 않았습니다(조회되지 않음)."
+
+
+def validate_seen_ids(result: dict, seen_text: str) -> list[str]:
+    """조회하지 않은 대상 — 답 · 관측 사실 · 원인 가설에 나온 로트 · 웨이퍼 · run ID가 이번 작업의 도구 결과에 없으면 반려.
+    없는 로트를 이번 사건과 같은 원인이라고 답한 일(평가셋 AE07) — 조회되지 않았다고 밝힌 문장은 받는다"""
+    texts = [str(result.get("answer") or "")]
+    texts += [str(fact.get("text") or "") for fact in result.get("observedFacts") or []]
+    texts += [str(cause.get("hypothesis") or "") for cause in result.get("candidateCauses") or []]
+    unseen = []
+    for sentence in (s for text in texts for s in _SENTENCE.findall(text)):
+        if _NOT_FOUND.search(sentence):
+            continue
+        unseen += [i for i in _TARGET_ID.findall(sentence) if i not in seen_text and i not in unseen]
+    followup = None
+    if "FOLLOWUP" not in seen_text:
+        followup = next((s.strip() for text in texts for s in _SENTENCE.findall(text)
+                         if _FOLLOWUP.search(s) and not _NOT_YET.search(s)), None)
+    errors = []
+    if followup:
+        errors.append(f"후속 확인 run은 조회하지 않았습니다(분석 시점 이후 자료라 조회되지 않습니다) — 「{followup[:80]}」처럼 그 결과를 "
+                      "관측으로 쓰지 않습니다. 후속 run 결과는 아직 볼 수 없다고 답하세요.")
+    if not unseen:
+        return errors
+    return errors + [f"조회하지 않은 대상 {', '.join(unseen)}가 결과에 있습니다. 도구로 조회해 확인하거나, 조회되지 않으면 "
+            "「조회되지 않아 확인할 수 없다」고 답하세요 — 조회하지 않은 대상에 대해 원인 · 상태를 말하지 않습니다."]
