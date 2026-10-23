@@ -42,7 +42,7 @@ def test_selected_results_become_statement_evidence():
     evidence = evidence_of(INPUTS, "PACK-1")
     assert evidence["E-REQ-req_1"] | {} == {"evidenceId": "E-REQ-req_1", "sourceType": "REPLY", "sourceId": "rpl_1",
                                          "dataVersion": "PACK-1", "synthetic": True}
-    assert evidence["E-ACT-act_1"]["sourceType"] == "CHANGE"  # 계약 근거 종류에 ACTION이 없다 — 조치 기록으로 둔다
+    assert evidence["E-ACT-act_1"]["sourceType"] == "ACTION"  # 내 작업 결과 — 계약 근거 종류 ACTION
 
 
 def test_followup_purpose_follows_question_rules_and_updates_cause_analysis():

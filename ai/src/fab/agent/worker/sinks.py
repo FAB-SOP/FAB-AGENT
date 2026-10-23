@@ -29,8 +29,9 @@ class HttpSink(EventSink):
         self.backend = backend
 
     async def emit(self, event):
+        """backend 응답 {applied, reason}을 돌려준다 — Worker가 내용 충돌(EVENT_CONTENT_CONFLICT)을 경고로 남긴다"""
         self.events.append(event)
-        await self.backend.post_event(event["jobId"], event)
+        return await self.backend.post_event(event["jobId"], event)
 
     async def dead_letter(self, job, error):  # JOB_FAILED 이벤트가 backend에 실패를 남긴다
         self.dlq.append({"job": job, "error": error, "at": _now()})
