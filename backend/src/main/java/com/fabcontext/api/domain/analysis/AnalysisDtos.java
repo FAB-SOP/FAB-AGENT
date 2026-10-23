@@ -26,7 +26,7 @@ public final class AnalysisDtos {
 			Instant createdAt, List<HistoryItem> history, String answer, Map<String, Object> analysis, String resultKind,
 			String previousResultId, int revision) {
 
-		static AnalysisResultView from(AnalysisResult r, List<HistoryItem> history) {
+		public static AnalysisResultView from(AnalysisResult r, List<HistoryItem> history) {
 			return new AnalysisResultView(r.getResultId(), r.getIncidentId(), r.getJobId(), r.getThreadId(),
 				r.getKind(), r.getQuestion(), r.getSummary(), List.copyOf(r.getObservedFacts()),
 				List.copyOf(r.getCandidateCauses()), List.copyOf(r.getLimitations()), List.copyOf(r.getEvidenceRefs()),

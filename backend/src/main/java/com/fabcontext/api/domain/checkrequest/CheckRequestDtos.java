@@ -41,7 +41,7 @@ public final class CheckRequestDtos {
 	public record ReplyView(String replyId, String requestId, String findings, List<String> evidenceIds,
 			String authorUserId, boolean confirmedByUser, Instant createdAt, String resumeJobId) {
 
-		static ReplyView from(Reply r) {
+		public static ReplyView from(Reply r) {
 			return new ReplyView(r.getReplyId(), r.getRequestId(), r.getFindings(), List.copyOf(r.getEvidenceIds()),
 				r.getAuthorUserId(), r.isConfirmedByUser(), r.getCreatedAt(), r.getResumeJobId());
 		}
@@ -62,7 +62,7 @@ public final class CheckRequestDtos {
 	public record DecisionInput(@Schema(allowableValues={"ACCEPT","REJECT"}, example="ACCEPT") @NotBlank @jakarta.validation.constraints.Pattern(regexp="ACCEPT|REJECT") String decision,
 		@Size(max=2000) String comment, @NotNull Long expectedVersion) {}
 
-	static List<String> allowed(CheckRequest r, String userId) {
+	public static List<String> allowed(CheckRequest r, String userId) {
 		if (!userId.equals(r.getOwnerUserId())) return List.of();
 		return switch(r.getStatus()) { case OPEN -> List.of("ACCEPT","REJECT"); case ACCEPTED -> List.of("REPLY"); default -> List.of(); };
 	}
