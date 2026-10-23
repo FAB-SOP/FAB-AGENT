@@ -1,6 +1,6 @@
 import {Link,NavLink,Outlet,useLocation} from 'react-router-dom';
 import {
- ListTodo,Activity,BookOpen,CheckCheck,FileText,Layers3,LayoutDashboard,LogOut,MessagesSquare,ShieldCheck,
+ ListTodo,Activity,BookOpen,ChartPie,CheckCheck,FileText,Layers3,LayoutDashboard,LogOut,MessagesSquare,ShieldCheck,
 } from 'lucide-react';
 import {useAuth} from '../auth';
 import {API_MODE} from '../api/client';
@@ -16,7 +16,9 @@ const NAVIGATION=[
  ['/reports','조사 보고서',FileText],
  ['/knowledge','참고 문서',BookOpen],
 ] as const;
-function Sidebar({visibleProcess,isMock}:{visibleProcess:string;isMock:boolean}){
+/** 관리자에게만 보이는 메뉴 — 서버도 MANAGER만 허용한다 */
+const MANAGER_NAVIGATION=[['/cause-statistics','원인 통계',ChartPie]] as const;
+function Sidebar({visibleProcess,isMock,isManager}:{visibleProcess:string;isMock:boolean;isManager:boolean}){
  return <aside className="sidebar">
   <Link to="/dashboard" className="brand">
    <span className="brand-mark"><Layers3 size={24}/></span>
@@ -27,7 +29,7 @@ function Sidebar({visibleProcess,isMock}:{visibleProcess:string;isMock:boolean})
    <strong>라인 A · {visibleProcess}</strong>
   </div>
   <nav aria-label="주 메뉴">
-   {NAVIGATION.map(([href,name,Icon])=><NavLink key={href} to={href}><Icon size={20}/><span>{name}</span></NavLink>)}
+   {[...NAVIGATION,...(isManager?MANAGER_NAVIGATION:[])].map(([href,name,Icon])=><NavLink key={href} to={href}><Icon size={20}/><span>{name}</span></NavLink>)}
   </nav>
   <div className="sidebar-bottom">
    <div className="workspace-health">
@@ -77,13 +79,13 @@ export function Shell({process,setProcess}:{process:string;setProcess:(process:s
  const visibleProcess=scopes.includes(process)?process:scopes[0];
  const location=useLocation();
  const isMock=API_MODE==='mock';
- const currentPageName=NAVIGATION.find(([href])=>location.pathname.startsWith(href))?.[1]||'공정 조사';
+ const currentPageName=[...NAVIGATION,...MANAGER_NAVIGATION].find(([href])=>location.pathname.startsWith(href))?.[1]||'공정 조사';
  const roleLabel=session!.role==='MANAGER'
   ?'운영 관리자'
   :session!.investigationProcessScopes?.length===0?session!.user.team+' · 조회 전용':visibleProcess+' 공정 담당자';
  return <div className="app-shell">
   <a className="skip-link" href="#main">본문으로 이동</a>
-  <Sidebar visibleProcess={visibleProcess} isMock={isMock}/>
+  <Sidebar visibleProcess={visibleProcess} isMock={isMock} isManager={session!.role==='MANAGER'}/>
   <div className="workspace">
    <Topbar
     currentPageName={currentPageName}

@@ -3,7 +3,7 @@
 ## 기준과 담당 범위
 
 - 통계 Backend만 추가한다. 기존 보고서 생성·편집·확정·일반 검색과 AI·프론트는 변경하지 않는다.
-- 로그인한 **MANAGER**의 허용 공정만 조회한다. 공정 생략은 허용 공정 전체이며, 명시한 타 공정·설비는 403이다. UI 메뉴 숨김과 별개로 서버가 검사한다.
+- 로그인한 **관리자(MANAGER) 또는 정비사(ENGINEER + team=설비정비팀)**의 허용 공정만 조회한다. 일반 공정 ENGINEER는 허용하지 않는다. 공정 생략은 허용 공정 전체이며, 명시한 타 공정·설비는 403이다. UI 메뉴 숨김과 별개로 서버가 검사한다.
 - **확정 보고서가 있는 사건만 사건당 1건** 집계한다. 초안·미작성 사건은 제외한다.
 - 구버전 데이터에 같은 사건의 확정본이 여러 개면 version이 가장 큰 확정본 하나를 선택한다(동률은 reportId 내림차순). 이후 초안이 있어도 확정본은 포함한다. 원인 필터는 이 선택 이후 적용한다.
 - 날짜는 **사건 detectedAt, 한국 시간** 기준이다. 9월 발생·10월 확정 사건은 9월에 들어간다. 뒤늦게 확정하면 과거 월 통계가 늘어날 수 있다.
@@ -137,7 +137,7 @@ GET /api/cause-statistics/reports?year=2026&months=9&months=10&categories=MACHIN
 | 400 | INVALID_YEAR, INVALID_MONTH, INVALID_PROCESS_CODE, INVALID_CAUSE_CATEGORY, INVALID_FILTER, INVALID_EQUIPMENT_ID, INVALID_PAGE_SIZE |
 | 400 | INVALID_PARAMETER: 숫자 등 파라미터 형식 오류 |
 | 401 | UNAUTHENTICATED |
-| 403 | MANAGER_ROLE_REQUIRED, PROCESS_SCOPE_DENIED |
+| 403 | CAUSE_STATISTICS_ACCESS_DENIED, PROCESS_SCOPE_DENIED |
 
 필터와 맞는 데이터가 없으면 200, 0건·빈 목록이다. 알 수 없는 설비는 400이다. 설비 이름 접두사로 권한을 추정하지 않고 DB의 사건·run 소속 공정으로 확인한다.
 
@@ -150,4 +150,11 @@ GET /api/cause-statistics/reports?year=2026&months=9&months=10&categories=MACHIN
 
 ## Swagger
 
-통계 브랜치 Backend의 `/swagger-ui/index.html`에서 **cause-statistics** 태그를 확인한다. `/v3/api-docs`에는 응답 DTO·배열 파라미터·오류 설명이 포함된다. Swagger UI의 Try it out은 같은 Backend 세션의 관리자 로그인이 필요하다.
+통계 브랜치 Backend의 `/swagger-ui/index.html`에서 **cause-statistics** 태그를 확인한다. `/v3/api-docs`에는 응답 DTO·배열 파라미터·오류 설명이 포함된다. Swagger UI의 Try it out은 같은 Backend 세션의 관리자 또는 설비정비팀 로그인이 필요하다.
+
+
+## 정비사 접근 확장 — 2026-10-23
+
+Backend 허용 조건은 `role === MANAGER || (role === ENGINEER && team === 설비정비팀)`이다. 기존 공정·설비 범위 검사는 유지한다. 일반 공정 담당 ENGINEER는 403 CAUSE_STATISTICS_ACCESS_DENIED이다. 통계 두 GET의 경로·쿼리·성공 응답은 바뀌지 않는다. 다른 관리자 전용 기능의 권한은 변경하지 않는다.
+
+프론트 전달: Shell.tsx의 원인 통계 메뉴 표시와 CauseStatistics.tsx의 query enabled/페이지 접근 제한을 같은 조건으로 변경한다. `session.role`과 `session.user.team`을 사용하고, ENGINEER 전체 허용이나 investigationProcessScopes가 비었다는 이유만으로 허용하지 않는다. 사용자의 processScopes 범위는 서버가 계속 검증한다.

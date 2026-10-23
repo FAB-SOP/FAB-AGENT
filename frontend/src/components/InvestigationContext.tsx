@@ -26,6 +26,15 @@ function DetailValue({value}:{value:unknown}){
  </dl>;
  return <>{String(value)}</>;
 }
+/** 편차 기준 문구 — 관리한계(CONTROL_LIMIT)는 정상 평균·σ가 아니라 관리 중심값·관리한계로 보여준다 */
+export function deviationBasis(deviation:Obj):string{
+ if(deviation.thresholdKind==='CONTROL_LIMIT'){
+  const limits=deviation.lcl!=null&&deviation.ucl!=null?` · 관리한계 ${fmt(deviation.lcl,1)}~${fmt(deviation.ucl,1)}`:'';
+  return (deviation.baselineMean==null?'—':`관리 중심 ${fmt(deviation.baselineMean,1)}`)+limits;
+ }
+ if(deviation.baselineMean==null)return '—';
+ return `정상 평균 ${fmt(deviation.baselineMean,3)}`+(deviation.z!=null?` / ${fmt(deviation.z,2)}σ`:'');
+}
 function DeviationTable({deviations}:{deviations:Obj[]}){
  return <div className="table-wrap">
   <table>
@@ -33,7 +42,7 @@ function DeviationTable({deviations}:{deviations:Obj[]}){
     <tr>
      <th>설비·지표</th>
      <th>관측값</th>
-     <th>정상 평균·편차</th>
+     <th>기준·편차</th>
     </tr>
    </thead>
    <tbody>
@@ -41,8 +50,9 @@ function DeviationTable({deviations}:{deviations:Obj[]}){
      <td>{deviation.equipmentId} · {metricLabels[deviation.metric]||deviation.metric}<span className="table-sub">{deviation.runId}</span></td>
      <td>{typeof deviation.value==='number'?fmt(deviation.value,deviation.unit==='Å'?1:3):String(deviation.value??'—')} {deviation.unit}</td>
      <td>
-      {deviation.baselineMean==null?'—':fmt(deviation.baselineMean,3)} {deviation.z!=null&&` / ${fmt(deviation.z,2)}σ`}
+      {deviationBasis(deviation)}
       {deviation.withinNormal===true&&<span className="table-sub">참고 범위 내</span>}
+      {deviation.thresholdKind==='CONTROL_LIMIT'&&deviation.withinNormal===false&&<span className="table-sub">관리한계 이탈</span>}
      </td>
     </tr>)}
    </tbody>
@@ -50,10 +60,14 @@ function DeviationTable({deviations}:{deviations:Obj[]}){
  </div>;
 }
 export function RequestContext({value}:{value:Obj}){
- const brief=value.brief;
  return <div className="request-context">
   <p><strong>{value.requestType==='MAINTENANCE'?'설비 정비 요청':'공정 확인 요청'}</strong> · {value.equipmentId||value.incident?.equipmentId||value.targetProcessCode}</p>
-  {brief&&<>
+  {value.brief&&<BriefDetails brief={value.brief}/>}
+ </div>;
+}
+/** 요청·승인의 조사 맥락(brief) — 요청 이유, 편차, 미확정 후보, 관련 기록, 확인할 항목. 다른 팀 요청과 상급자 승인에 같이 쓴다 */
+export function BriefDetails({brief}:{brief:Obj}){
+ return <>
    <h3>요청 이유</h3>
    <p>{brief.reason}</p>
    {brief.deviations?.length>0&&<>
@@ -72,8 +86,7 @@ export function RequestContext({value}:{value:Obj}){
     <h3>확인할 항목</h3>
     <ul>{brief.askFor.map((item:unknown,index:number)=><li key={index}><DetailValue value={item}/></li>)}</ul>
    </>}
-  </>}
- </div>;
+ </>;
 }
 export function PayloadDetails({value}:{value:Obj}){
  return <>
