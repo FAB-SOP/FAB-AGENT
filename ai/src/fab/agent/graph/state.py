@@ -39,6 +39,7 @@ class AgentState(TypedDict, total=False):
     workSuggestions: list | None  # 답과 함께 내는 업무 후보(fab.agent.work) — RESULT_READY.payload.workSuggestions
     report: dict | None
     replyFlow: str | None  # 회신 흐름 — WAIT(회신 대기) · MANUAL(요청 발송 뒤 끝냄). thread를 시작할 때 정해 바뀌지 않는다
+    proposalLimit: bool | None  # 사건당 Agent 요청 한도에 닿아 요청서를 만들지 못했나 — 결과에 이유를 남긴다
     requestSent: str | None  # MANUAL 흐름에서 승인으로 보낸 요청 ID — 결과는 「발송 사실」이다
     stopReason: str | None
     promptVersion: str

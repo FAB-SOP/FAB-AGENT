@@ -529,7 +529,7 @@ def test_purpose_mapping():
     assert p.purpose_of("BASIC", None) == p.BASIC and p.purpose_of("REPORT", None) == p.REPORT
     assert p.purpose_of("DEEP", None) == p.QUESTION
     assert p.purpose_of("DEEP", "WORK_REPLY") == p.REPLY and p.purpose_of("DEEP", "REPLY") == p.REPLY
-    assert p.purpose_of("DEEP", "REQUEST_BUTTON") == p.REQUEST and p.purpose_of("DEEP", "REGENERATE") == p.REQUEST
+    assert p.purpose_of("DEEP", "REQUEST_BUTTON") == p.REQUEST
     assert [p.can_propose(x, False) for x in (p.BASIC, p.REPLY, p.QUESTION, p.REQUEST, p.REPORT)] == \
         [False, False, True, True, False]
     assert p.can_propose(p.QUESTION, True) is False and p.can_propose(p.REQUEST, True) is True

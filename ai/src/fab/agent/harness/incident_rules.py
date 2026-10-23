@@ -53,6 +53,14 @@ def proposal_block(action_type: str, target_process: str | None, requests: list[
     return None
 
 
+def request_scope_error(action_type: str, target_process: str | None, request_input: dict | None) -> str | None:
+    """사람이 연 요청서 작업의 범위 — 지정한 대상 공정(input.request.targetProcessCode)으로만. 어긋나면 모델에게 돌려줄 문장"""
+    wanted = (request_input or {}).get("targetProcessCode")
+    if wanted and target_process and wanted != target_process:
+        return (f"[REJECTED] 이 요청서 작업의 대상 공정은 {wanted}입니다. {target_process}가 아니라 {wanted} 대상으로 요청서를 만드세요.")
+    return None
+
+
 # ---- 결론 변경 검사 — 결론은 새 근거로만 바뀐다. 기준 = 사건의 가장 최근 원인 분석(사건 기록 조회가 채운다)
 
 def _top(causes: list[dict]) -> dict:

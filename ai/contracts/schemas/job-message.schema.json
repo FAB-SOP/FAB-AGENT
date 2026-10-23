@@ -88,10 +88,9 @@
             "QUESTION",
             "FOLLOWUP",
             "REQUEST",
-            "REGENERATE",
             "REPORT"
           ],
-          "description": "실행 목적 — kind BASIC은 BASIC, REPORT는 REPORT, DEEP은 QUESTION · FOLLOWUP · REQUEST · REGENERATE. SUMMARY는 kind와 summaryRef로 구분하고 purpose를 쓰지 않는다. 전환 기간에 맥락 trigger · 질문 칸 방식과 함께 오면 purpose가 우선이고, 모순이면 Agent가 INVALID_INPUT으로 실패시킨다"
+          "description": "실행 목적 — kind BASIC은 BASIC, REPORT는 REPORT, DEEP은 QUESTION · FOLLOWUP · REQUEST. SUMMARY는 kind와 summaryRef로 구분하고 purpose를 쓰지 않는다. 전환 기간에 맥락 trigger · 질문 칸 방식과 함께 오면 purpose가 우선이고, 모순이면 Agent가 INVALID_INPUT으로 실패시킨다"
         },
         "followup": {
           "type": "object",
@@ -179,7 +178,7 @@
         },
         "request": {
           "type": "object",
-          "description": "요청서 생성(REQUEST) · 재생성(REGENERATE) — 재생성은 대체할 승인이 필수",
+          "description": "요청서 생성(REQUEST) — 사람이 정한 대상 공정 · 원인. 재생성 · 대체는 이번 MVP에서 제외(승인 거절 뒤 새 요청서)",
           "properties": {
             "causeIds": {
               "type": "array",
@@ -194,10 +193,6 @@
                 "ETCH",
                 "CMP"
               ]
-            },
-            "supersedesApprovalId": {
-              "type": "string",
-              "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
             }
           },
           "additionalProperties": false
@@ -362,41 +357,6 @@
             "required": [
               "followup"
             ]
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "input": {
-            "properties": {
-              "purpose": {
-                "const": "REGENERATE"
-              }
-            },
-            "required": [
-              "purpose"
-            ]
-          }
-        },
-        "required": [
-          "input"
-        ]
-      },
-      "then": {
-        "properties": {
-          "input": {
-            "required": [
-              "request"
-            ],
-            "properties": {
-              "request": {
-                "required": [
-                  "supersedesApprovalId"
-                ]
-              }
-            }
           }
         }
       }

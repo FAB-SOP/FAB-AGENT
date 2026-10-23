@@ -36,6 +36,8 @@ public class InternalViews {
 	public static final String MAINTENANCE_TEAM = "설비정비팀";
 
 	private final ReplyRepository replyRepository;
+	private final com.fabcontext.api.domain.approval.ApprovalRepository approvals;
+	private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
 	private final ProcessEvidenceService evidence;
 	private final DataVersion dataVersion;
 
@@ -61,6 +63,12 @@ public class InternalViews {
 	public Map<String, Object> requestView(CheckRequest r) {
 		Map<String, Object> m = new LinkedHashMap<>();
 		m.put("requestId", r.getRequestId());
+		m.put("origin", requestOrigin(r));
+		m.put("decisionAt", iso(r.getDecisionAt()));
+		m.put("decisionComment", r.getDecisionComment());
+		m.put("repliedAt", iso(r.getRepliedAt()));
+		m.put("withdrawnAt", iso(r.getWithdrawnAt()));
+		m.put("withdrawReason", r.getWithdrawReason());
 		m.put("requestType", r.getRequestType());
 		m.put("incidentId", r.getIncidentId());
 		m.put("ownerUserId", r.getOwnerUserId());
@@ -77,6 +85,12 @@ public class InternalViews {
 		List<Reply> replies = replyRepository.findByRequestIdOrderByCreatedAtAsc(r.getRequestId());
 		m.put("reply", replies.isEmpty() ? null : replyView(replies.getLast()));
 		return m;
+	}
+
+	public String requestOrigin(CheckRequest request) {
+		if (workItems.findByRequestId(request.getRequestId()).isPresent()) return "WORK_ITEM";
+		return request.getApprovalId() == null ? "UNKNOWN" : approvals.findById(request.getApprovalId())
+			.map(a -> "AGENT".equals(a.getSource()) ? "AGENT_PROPOSAL" : "USER_PROPOSAL").orElse("UNKNOWN");
 	}
 
 	public Map<String, Object> replyView(Reply p) {
@@ -139,6 +153,7 @@ public class InternalViews {
 		m.put("comment", a.getDecisionComment());
 		m.put("executionRef", a.executionRef());
 		m.put("resumeJobId", a.getResumeJobId());
+		m.put("sourceResultId", a.getSourceResultId());
 		return m;
 	}
 

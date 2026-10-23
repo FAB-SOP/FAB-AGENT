@@ -108,6 +108,12 @@ public class Approval {
 
 	private String resumeJobId;
 
+	/** 요청서 판단 당시 결과. 승인 뒤 새 답변이 생겨도 바꾸지 않는다. */
+	private String sourceResultId;
+	public void attachSourceResult(String resultId) {
+		if (sourceResultId == null) sourceResultId = resultId;
+	}
+
 	/** Agent 제안의 멱등 키 — 같은 키로 다시 제안하면 이 승인을 돌려준다 */
 	private String proposalKey;
 

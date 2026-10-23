@@ -133,6 +133,9 @@ class InvestigationApiTest extends ApiTestSupport {
 						+ incidentVersion(etch, id) + "}", id), "$.data.jobId");
 		awaitJob(etch, jobId, "SUCCEEDED");
 		getAs(etch, "/api/incidents/{id}/analysis-results", id)
+			.andExpect(jsonPath("$.data.kind").value("BASIC"))
+			.andExpect(jsonPath("$.data.resultKind").value("CAUSE_ANALYSIS"));
+		getAs(etch, "/api/incidents/{id}/analysis-results?latest=false", id)
 			.andExpect(jsonPath("$.data.kind").value("DEEP"))
 			.andExpect(jsonPath("$.data.question").value(containsString("헤드 압력")))
 			.andExpect(jsonPath("$.data.limitations[0]").value(AnalysisFactory.NOT_ANALYSIS));
