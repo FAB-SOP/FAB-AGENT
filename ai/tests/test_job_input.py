@@ -77,3 +77,29 @@ def test_job_message_schema_accepts_the_structured_inputs(contract_validators):
     assert not list(job_validator.iter_errors(followup)) and not list(job_validator.iter_errors(regenerate))
     assert list(job_validator.iter_errors(base | {"input": {"purpose": "FOLLOWUP"}}))  # 선택 결과 없는 추가 분석
     assert list(job_validator.iter_errors(base | {"input": {"purpose": "NOPE"}}))
+
+
+async def test_regenerate_looks_up_the_replaced_approval_once():
+    """재생성 작업은 대체할 승인을 조회해 범위를 맞춘다 — 같은 묶음에서 제안이 여러 번이어도 조회는 한 번"""
+    from fab.agent.graph.nodes.tools import _request_scope
+
+    calls = []
+
+    class _Backend:
+        async def get_approval(self, approval_id):
+            calls.append(approval_id)
+            return {"approvalId": approval_id, "actionType": "CREATE_CHECK_REQUEST", "payload": {"targetProcessCode": "ETCH"}}
+
+    class _Tracer:
+        def event(self, *a, **k):
+            pass
+
+    class _Runtime:
+        backend, tracer = _Backend(), _Tracer()
+
+    class _TurnStub:
+        rt, state, cache = _Runtime(), {"purpose": "REGENERATE", "requestInput": {"supersedesApprovalId": "apr_1"}}, {}
+    turn = _TurnStub()
+    assert await _request_scope(turn, "CREATE_CHECK_REQUEST", "ETCH") is None
+    assert "apr_1" in await _request_scope(turn, "CREATE_MAINTENANCE_REQUEST", "CMP")
+    assert calls == ["apr_1"]

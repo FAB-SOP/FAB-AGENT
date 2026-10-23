@@ -134,3 +134,28 @@ def test_request_rejected_by_owner_blocked_until_cause_changes():
     assert reason and "거절" in reason
     assert proposal_block(CHECK, "ETCH", requests, [], lambda _at: True, 3) is None
     assert proposal_block(CHECK, "ETCH", requests, [], _never, 3, human_requested=True) is None
+
+
+# ---- 사람이 연 요청서 작업의 범위 — 지정한 대상 공정, 재생성이면 대체할 승인과 같은 팀 · 종류
+
+from fab.agent.harness.incident_rules import request_scope_error  # noqa: E402
+
+SUPERSEDED = {"approvalId": "apr_1", "actionType": CHECK, "payload": {"targetProcessCode": "ETCH"}, "status": "PENDING"}
+
+
+def test_request_for_a_named_process_stays_on_it():
+    assert request_scope_error(CHECK, "ETCH", {"targetProcessCode": "ETCH"}, None) is None
+    reason = request_scope_error(CHECK, "CVD", {"targetProcessCode": "ETCH"}, None)
+    assert reason and "ETCH" in reason
+
+
+def test_regenerate_keeps_the_team_and_kind_of_the_replaced_approval():
+    assert request_scope_error(CHECK, "ETCH", {"supersedesApprovalId": "apr_1"}, SUPERSEDED) is None
+    other_kind = request_scope_error(MNT, "CMP", {"supersedesApprovalId": "apr_1"}, SUPERSEDED)
+    other_target = request_scope_error(CHECK, "CVD", {"supersedesApprovalId": "apr_1"}, SUPERSEDED)
+    assert other_kind and "apr_1" in other_kind and other_target and "apr_1" in other_target
+
+
+def test_plain_request_without_scope_is_free():
+    assert request_scope_error(MNT, "CMP", {}, None) is None
+    assert request_scope_error(MNT, "CMP", None, None) is None

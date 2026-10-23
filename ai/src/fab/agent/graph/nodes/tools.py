@@ -18,6 +18,7 @@ from fab.agent import purpose
 from fab.agent.purpose import may_propose
 from fab.agent.tools import HARNESS_NAMES, PROPOSALS, ToolCallError
 from fab.agent.work import validate_work_suggestions
+from fab.common.envelope import FabToolError
 
 
 class _Turn:
@@ -34,6 +35,7 @@ class _Turn:
         self.known = set(state.get("evidence", {}))
         self.submit_rejected = False  # 이 묶음의 답이 반려됐나 — 같은 묶음의 제안 반려 문장을 맞게 고른다
         self.fixable_proposal_reject = False  # 고칠 수 있는 이유(근거 · 브리프 · 담당자 · backend 검증)로 제안이 반려됐나
+        self.cache: dict = {}  # 이 묶음에서 조회한 것(재생성의 대체할 승인)
 
     def known_ids(self) -> set[str]:
         """이번 작업에서 조회한 근거 — 앞선 노드에서 모은 것 + 이 묶음에서 방금 받은 것"""
@@ -192,10 +194,34 @@ async def _incident_block(turn: _Turn, args: dict, action_type: str) -> str | No
                   "status": "PENDING" if proposal.get("approvalId") == pending.get("approvalId") else "APPROVED"}
                  for proposal in state.get("proposals") or [] if isinstance(proposal, dict)]
     target = args.get("processCode") or (state.get("incidentProcess") if "MAINTENANCE" in action_type else None)
+    scope = await _request_scope(turn, action_type, target)
+    if scope:  # 사람이 연 요청서 작업 — 지정한 대상 공정 · 재생성이면 대체할 승인과 같은 팀 · 종류만
+        return scope
     # 원인 분석이 언제 바뀌었는지는 사건 기록 조회(backend 내부 API)가 붙어야 안다 — 그 전에는 「바뀌지 않음」으로 본다
     return incident_rules.proposal_block(action_type, target, requests, approvals, lambda _at: False,
                                          limits.LIMITS.max_proposals,
                                          human_requested=state.get("purpose") in purpose.HUMAN_REQUESTED)
+
+
+async def _request_scope(turn, action_type: str, target: str | None) -> str | None:
+    """요청서 작업의 범위 검사 — 재생성이면 대체할 승인을 한 묶음(도구 호출 한 번)에서 한 번만 조회한다(turn.cache)"""
+    state = turn.state
+    if state.get("purpose") not in purpose.HUMAN_REQUESTED:
+        return None
+    request = state.get("requestInput") or {}
+    superseded = None
+    approval_id = request.get("supersedesApprovalId")
+    if state.get("purpose") == purpose.REGENERATE and approval_id:
+        if approval_id not in turn.cache:
+            try:
+                turn.cache[approval_id] = await turn.rt.backend.get_approval(approval_id)
+            except FabToolError as e:
+                if e.retryable:
+                    raise TransientJobError(e.raw) from e
+                turn.rt.tracer.event("superseded_approval_unavailable", approvalId=approval_id, error=e.raw[:200])
+                return f"[REJECTED] 대체할 승인 {approval_id}를 조회하지 못했습니다({e.code}). 요청서를 만들지 말고 지금 근거로 답하세요."
+        superseded = turn.cache[approval_id]
+    return incident_rules.request_scope_error(action_type, target, request, superseded)
 
 
 async def _create_proposal(turn: _Turn, args: dict, cid: str, action_type: str, brief: dict) -> dict:
