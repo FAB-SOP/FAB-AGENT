@@ -303,3 +303,73 @@ speckit 명령이 만든 산출물이다. 블록은 `<!-- ARTIFACT:<기능>:<문
 - **T040(README 「검증 현황」)** — 기존 문서 수정이라 사용자 확인 대기
 
 <!-- ARTIFACT:001-report-4m-classification:implementation-notes.md END -->
+
+<!-- ARTIFACT:002-report-title-search:implementation-notes.md BEGIN -->
+# Implementation Notes: 조사 보고서 제목 검색 · 서버 목록 조회
+
+
+## T001 기준선 (2026-10-22, 001 반영 후 · 변경 전)
+
+| 대상 | 결과 |
+|------|------|
+| backend `./gradlew test` | 134 tests · 2 skipped · 0 failed |
+| frontend `npm test && npm run build` | 43 passed, build 성공 |
+
+
+## T025 측정 (2026-10-22, 임시 컨테이너 fab-explain-pg · pgvector/pg16 · 고정 시드)
+
+`ops/tools/report_search_explain.sh postgresql://fab:fab@127.0.0.1:55434/fab backend` 출력:
+
+▶ 측정 데이터 생성: 사건 20,000 · 보고서 100,000 (setseed 0.42)
+
+  report 100001 건 · incident 20009 건
+
+### 인덱스 없음 (기존 incident_id 인덱스만)
+| 쿼리 | 주요 계획 노드 | 결과 행 | 실행 시간(ms, 3회 중 최소) |
+|------|----------------|---------|---------------------------|
+| ① 검색어 없는 첫 페이지 | Index Scan using idx39sdjnmwf6bojr2shp475b89u on report, Parallel Seq Scan on incident | 21 | 3.059 |
+| ② 사건 번호 검색(EV-1123) | Index Scan using incident_pkey on incident, Seq Scan on report | 21 | 40.108 |
+| ③ 현상 검색(관리한계) + Machine + 기간 | Index Scan using idx39sdjnmwf6bojr2shp475b89u on report, Parallel Seq Scan on incident | 21 | 4.168 |
+| ③-1 흔한 단어 검색만(관리한계, 보고서 20%) | Index Scan using idx39sdjnmwf6bojr2shp475b89u on report, Parallel Seq Scan on incident | 21 | 3.894 |
+| ④ 결과 없는 검색 | Index Scan using incident_pkey on incident, Seq Scan on report | 0 | 43.834 |
+| ⑤ 깊은 페이지(offset 20000) | Seq Scan on incident, Seq Scan on report | 21 | 35.203 |
+
+### 인덱스 있음 (pg_trgm GIN 제목 + incident(process_code, detected_at desc, incident_id))
+| 쿼리 | 주요 계획 노드 | 결과 행 | 실행 시간(ms, 3회 중 최소) |
+|------|----------------|---------|---------------------------|
+| ① 검색어 없는 첫 페이지 | Index Scan using idx_incident_process_detected on incident, Index Scan using idx39sdjnmwf6bojr2shp475b89u on report | 21 | 0.290 |
+| ② 사건 번호 검색(EV-1123) | Bitmap Heap Scan on report, Bitmap Index Scan on idx_report_title_trgm, Index Scan using incident_pkey on incident | 21 | 1.284 |
+| ③ 현상 검색(관리한계) + Machine + 기간 | Index Scan using idx_incident_process_detected on incident, Index Scan using idx39sdjnmwf6bojr2shp475b89u on report | 21 | 2.733 |
+| ③-1 흔한 단어 검색만(관리한계, 보고서 20%) | Index Scan using idx_incident_process_detected on incident, Index Scan using idx39sdjnmwf6bojr2shp475b89u on report | 21 | 0.948 |
+| ④ 결과 없는 검색 | Bitmap Heap Scan on report, Bitmap Index Scan on idx_report_title_trgm, Index Scan using incident_pkey on incident | 0 | 0.051 |
+| ⑤ 깊은 페이지(offset 20000) | Seq Scan on incident, Seq Scan on report | 21 | 37.187 |
+
+인덱스 크기: idx_report_title_trgm 5136 kB · idx_incident_process_detected 984 kB
+
+### 판단
+
+- **채택 `idx_report_title_trgm`(pg_trgm GIN, 5.1 MB)** — 선택적인 검색(②)이 40 → 1.3ms(31배), 결과 없는 검색(④)이 44 → 0.05ms. 전체 탐색(Seq Scan on report)이 Bitmap Index Scan으로 바뀜
+- **채택 `idx_incident_process_detected`(1.0 MB)** — 검색어 없는 첫 페이지(①)가 3.1 → 0.3ms. 이상 감지일 최신순으로 사건 인덱스를 읽고 20건에서 멈춘다(Nested Loop + Index Scan)
+- **쿼리 수정(측정으로 발견)**: 처음엔 `r.process_code`만 걸어 ①이 사건 인덱스를 못 쓰고 17ms(Hash Join + 정렬)였다. 사건 쪽 `i.process_code`도 함께 걸도록 `ReportSearchQuery`를 바꿨다(보고서 · 사건 공정 불일치 0건 확인 — 결과 동일)
+- **흔한 단어(③ · ③-1, 보고서 20%가 포함)**는 인덱스 없이도 최신순으로 읽다가 20건에서 멈춰 4ms 안팎 → 인덱스로 1–3ms. spec SC-002의 「10배」는 선택적인 검색에서 충족(②31배 · ④860배), 흔한 단어는 원래 빨라 10배 여지가 없음 — 모두 100ms 이내
+- **2글자 검색**(예: 「두께」)은 trigram을 만들 수 없어 인덱스가 쓰이지 않는다(결과는 정확) — spec 가정과 같음
+- **깊은 페이지(⑤ offset 20000)**는 인덱스와 무관하게 35ms 안팎(offset이 앞의 2만 행을 읽고 버림). 「더 보기」 사용 범위에서는 문제없음. 필요해지면 키셋 커서로 바꾼다
+- 측정 데이터는 임시 컨테이너에만 있었고 측정 뒤 컨테이너를 지운다(spec FR-012)
+
+
+## 마무리 검증 (2026-10-22)
+
+| 항목 | 결과 |
+|------|------|
+| backend `./gradlew test --rerun-tasks` | **142 · 2 skipped · 0 failed** (기준선 134 + 새 8: ReportSearchApiTest 4 · ReportSearchConditionTest 4) |
+| frontend `npm test && npm run build` | **8 files · 47 passed**, build 성공 (기준선 43 + 새 4) |
+| ai `uv run pytest -q` (회귀만) | 41 passed · 2 skipped — 변경 없음 |
+| 스모크(새로 시드한 서버) | **106 passed · 0 failed** — 이전 107과 1개 차이는 62행의 조건부 검사(시드 사건의 첫 분석이 이미 끝났으면 기다리지 않음, 타이밍)로 이번 변경과 무관 |
+| `openapi_diff` | `GET /api/reports` 계약 반영 후 **새 차이 0건** — 남은 행은 001 마무리 때와 같은 목록(work-items · comparisons · MAINTENANCE_REQUEST enum) |
+| `java_pkgdeps` | 새 순환 없음(기존 action · checkrequest · work 순환은 그대로) |
+| API 확인(설비정비팀) | CMP 목록 최신순 · Slice 모양, `q=pm3`(소문자) → EV-1009 CMP-PM3 보고서, Machine + slurry_flow → 시드 보고서 |
+
+- 계약 문서화: `Pageable`이 서버 문서에 객체 하나(`pageable`, 필수)로 나와 프론트에 혼동을 줄 수 있어, 새 컨트롤러에 `@ParameterObject`를 붙여 `page` · `size` · `sort`(선택) 쿼리 파라미터로 문서화했다(동작은 같음). 계약에는 서버 문서를 그대로 옮기고 설명(description)에 정렬 고정 · size 최대 100 · hasNext만을 적었다
+- 화면 수동 확인(T031) · README(T032, 기존 문서 수정)는 사용자 확인 대기
+
+<!-- ARTIFACT:002-report-title-search:implementation-notes.md END -->
