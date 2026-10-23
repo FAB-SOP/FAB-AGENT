@@ -17,7 +17,11 @@ export function conclusionChange(result?:Obj|null):{reason:string;fields:string[
 export const answerText=(result?:Obj|null)=>result?.answer||result?.summary||'';
 /** 반대 근거·다음 확인은 새 이름(conflictingEvidenceIds·nextCheck)과 기존 이름을 함께 읽는다 */
 export const counterIds=(cause:Obj)=>cause.conflictingEvidenceIds||cause.counterEvidence||cause.counterEvidenceIds||[];
-export const nextCheck=(cause:Obj)=>cause.nextCheck||cause.check||'';
+export const nextCheck=(cause:Obj)=>{
+ const value=cause.nextCheck||cause.check||'';
+ // Agent가 후보 확인 항목에 다음 단계 코드(UPSTREAM_CHECK 등)를 넣는 경우가 있어 이름으로 바꾼다
+ return nextSteps[value]?.label||value;
+};
 const nextSteps:Record<string,{label:string;hint:string}>={
  CURRENT_CHECK:{label:'현재 공정 확인',hint:'이상이 난 공정에서 먼저 확인합니다.'},
  UPSTREAM_CHECK:{label:'앞 공정 확인',hint:'앞 공정 담당자의 확인이 먼저 필요합니다.'},

@@ -27,5 +27,6 @@ describe('agent v2 analysis marks',()=>{
   expect(counterIds({counterEvidenceIds:['b']})).toEqual(['b']);
   expect(nextCheck({nextCheck:'n'})).toBe('n');
   expect(nextCheck({check:'c'})).toBe('c');
+  expect(nextCheck({nextCheck:'UPSTREAM_CHECK'})).toBe('앞 공정 확인');
  });
 });
