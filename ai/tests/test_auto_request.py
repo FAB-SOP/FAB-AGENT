@@ -57,3 +57,26 @@ async def test_fact_question_gets_no_drafted_request(spring_url, kb):
     assert out["status"] == "DONE", out
     assert not out.get("interrupt")
     await user.close()
+
+
+import pytest  # noqa: E402
+
+from fab.agent.question_kind import asks_cause  # noqa: E402
+
+
+@pytest.mark.parametrize("question, expected", [
+    ("원인 분석해줘", True), ("CMP 두께가 왜 높아?", True), ("CMP 설비가 고장 난 거야?", True), ("무엇을 점검해야 해?", True),
+    ("관리한계와 제품 규격 차이를 설명해줘", False), ("조치했으니 보고서를 확정해 줘", False),
+    ("헤드 압력이 원인이라고 확정해도 돼?", False), ("CMP 제거량 알려줘", False),
+])
+def test_only_cause_or_inspection_questions_get_a_drafted_request(question, expected):
+    """요청서 초안은 원인 · 고장 · 점검을 묻는 질문에만 — 확정 · 보고서 · 설명 질문에 붙이면 평가 · 화면에서 거절 뒤 다시 정리한 답이
+    질문의 답을 잃었다(실제 모델 평가)"""
+    assert asks_cause(question) is expected
+
+
+async def test_explanation_question_gets_no_drafted_request(spring_url, kb):
+    user, out = await _ask(spring_url, kb, "EV-1006", "관리한계와 제품 규격 차이를 설명해줘")
+    assert out["status"] == "DONE", out
+    assert not out.get("interrupt")
+    await user.close()

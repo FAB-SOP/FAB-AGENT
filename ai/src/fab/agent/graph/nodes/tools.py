@@ -14,7 +14,7 @@ from fab.agent.evidence import looked_up_text, tool_results
 from fab.agent.graph.state import AgentState, current_job, record_evidence, runtime
 from fab.agent.harness import autofix, context, guard, incident_rules, limits
 from fab.agent.harness.retry import TransientJobError
-from fab.agent import purpose
+from fab.agent import purpose, question_kind
 from fab.agent.purpose import may_propose
 from fab.agent.tools import HARNESS_NAMES, PROPOSALS, ToolCallError
 from fab.agent.answer import CLAIM_ERROR, missing_statements, validate_answer
@@ -190,6 +190,7 @@ def _missing_request(turn: _Turn, args: dict) -> str:
     state = turn.state
     if (state.get("purpose") != purpose.QUESTION or args.get("nextStep") not in ("CURRENT_CHECK", "UPSTREAM_CHECK")
             or not args.get("candidateCauses")  # 원인을 묻지 않은 사실 답에는 요청서를 내지 않는다
+            or not question_kind.asks_cause(state.get("question"))  # 원인 · 고장 · 점검을 묻는 질문에만
             or not may_propose(state) or state.get("proposals") or turn.update.get("pending")
             or turn.counters.get("heldProposal") or turn.counters.get("proposalNudges", 0) >= 1):
         return ""
