@@ -41,7 +41,8 @@ def _context(n_requests: int = 1, findings: str = "확인했습니다.", analysi
 
 ANALYSIS = {"resultId": "res_1", "answer": "앞 공정 ETCH 영향이 1순위입니다.", "nextStep": "UPSTREAM_CHECK",
             "candidateCauses": [{"candidateId": f"C{i}", "stance": "REFUTED" if i == 2 else "SUPPORTED",
-                                 "hypothesis": "가설 설명 " * 40, "conflictingEvidenceIds": ["E-RUN-CMP"]} for i in range(4)],
+                                 "hypothesis": "가설 설명 " * 40, "counterEvidenceIds": ["E-RUN-CMP"],
+                                 "nextChecks": ["세정 이력 확인"]} for i in range(4)],
             "limitations": ["한계 설명 " * 30 for _ in range(3)]}
 
 
@@ -87,3 +88,76 @@ def test_shrink_drops_listed_fields_before_whole_items():
     out = shrink(obj, 1200, drop_order=(("rows", "*", "extra"),), protected=(("rows", "*", "keep"),))
     assert size(out) <= 1200 and len(out["rows"]) == 5 and all("keep" in row for row in out["rows"])  # 항목은 그대로
     assert out["_omitted"]["items"]["rows.*.extra"] >= 1 and "rows" not in out["_omitted"]["items"]
+
+
+# ---- 최신 원인 분석 — 분석 있음 · null · 예전 결과(칸 없음) 세 경우 (Backend report-context의 latestCauseAnalysis)
+
+LATEST = {"resultId": "res_01", "resultKind": "CAUSE_ANALYSIS", "createdAt": "2026-10-23T03:00:00Z",
+          "answer": "앞 공정 ETCH 영향이 1순위입니다.", "summary": "요약", "observedFacts": [{"factId": "f1", "statement": "ETCH 제거량 낮음",
+                                                                                        "evidenceIds": ["E-RUN-ETCH"], "label": "x"}],
+          "candidateCauses": [
+              {"candidateId": "ETCH_WALL", "rank": 1, "cause": "ETCH 챔버 벽", "hypothesis": "ETCH 챔버 벽 상태 변화",
+               "causeIds": ["ETCH_WALL"], "stance": "SUPPORTED", "supportingEvidenceIds": ["E-RUN-ETCH"], "counterEvidenceIds": [],
+               "nextChecks": ["세정 · 시즈닝 이력 확인"], "missingData": ["모니터 웨이퍼 결과"], "status": "OPEN", "verify": "v"},
+              {"candidateId": "CMP_PRESSURE", "rank": 2, "hypothesis": "CMP 헤드 압력", "causeIds": ["CMP_PRESSURE"], "stance": "REFUTED",
+               "supportingEvidenceIds": [], "counterEvidenceIds": ["E-FEAT-CMP"], "nextChecks": [], "missingData": []}],
+          "evidenceRefs": [{"evidenceId": "E-RUN-ETCH", "type": "METROLOGY", "ref": "RUN-ETCH"},
+                           {"evidenceId": "E-FEAT-CMP", "type": "SENSOR", "ref": "RUN-CMP"}],
+          "limitations": ["제어부 점검 결과가 아직 없습니다."],
+          "analysis": {"resultKind": "CAUSE_ANALYSIS", "nextStep": "UPSTREAM_CHECK", "conclusion": {"changed": False}, "promptVersion": "p"}}
+OLD = {"resultId": "res_00", "createdAt": "2026-10-20T03:00:00Z", "answer": None, "summary": "Agent BASIC 분석: 가설 1건",
+       "candidateCauses": [{"rank": 1, "cause": "ETCH 제거량 감소", "hypothesis": "ETCH 제거량 감소", "supportingEvidenceIds": ["E-1"],
+                            "counterEvidenceIds": [], "nextChecks": ["ETCH 확인"], "missingData": []}],
+       "evidenceRefs": [], "limitations": [], "analysis": {}}
+
+
+def _report_args(analysis="absent") -> dict:
+    from fab.agent.models.rule import _report_step
+
+    raw = _context(analysis=analysis)
+    return _report_step({"get_report_context": [raw]}, "EV-1009").tool_calls[0]["args"]
+
+
+def test_rule_report_uses_the_latest_cause_analysis():
+    args = _report_args(LATEST)
+    sections = args["sections"]
+    assert sections["investigation"].startswith("앞 공정 ETCH 영향이 1순위입니다.")
+    assert "후보 1: ETCH 챔버 벽 상태 변화 [지지] — 미확정 가설" in sections["investigation"]
+    assert "후보 2: CMP 헤드 압력 [반증] — 미확정 가설" in sections["investigation"]  # 반증 후보도 남긴다
+    assert sections["investigation"].endswith("(분석 res_01, 2026-10-23T03:00:00Z 기준 · 원인 확정 아님)")
+    for item in ("제어부 점검 결과가 아직 없습니다.", "세정 · 시즈닝 이력 확인", "부족한 자료: 모니터 웨이퍼 결과", "해결 완료로 보지 않음"):
+        assert item in sections["unresolved"]
+    assert args["evidenceIds"] == ["E-RPTCTX-EV-1009", "E-RUN-ETCH", "E-FEAT-CMP"]  # 기존 값 뒤에 분석 근거를 중복 없이
+
+
+def test_rule_report_without_analysis_says_no_record_not_no_cause():
+    for analysis in (None, "absent"):  # null · Backend 반영 전(칸 없음)
+        investigation = _report_args(analysis)["sections"]["investigation"]
+        assert investigation.startswith("원인 분석 기록 없음 · 근거 부족") and "해결 완료" not in investigation
+
+
+def test_rule_report_reads_old_results_without_guessing():
+    sections = _report_args(OLD)["sections"]
+    assert sections["investigation"].startswith("Agent BASIC 분석: 가설 1건")  # answer가 없으면 summary
+    assert "후보 1: ETCH 제거량 감소 — 미확정 가설" in sections["investigation"] and "[" not in sections["investigation"].split("—")[0]
+    assert "ETCH 확인" in sections["unresolved"]
+
+
+def test_model_view_of_the_analysis_keeps_only_what_the_report_needs():
+    view = json.loads(to_tool_text(_context(analysis=LATEST), "get_report_context"))["data"]["latestCauseAnalysis"]
+    assert set(view) == {"resultId", "resultKind", "createdAt", "answer", "limitations", "candidateCauses", "analysis",
+                         "observedFacts", "evidenceIds"}  # 답이 있으면 summary는 싣지 않는다
+    assert view["analysis"] == {"nextStep": "UPSTREAM_CHECK", "conclusion": {"changed": False}}
+    assert "status" not in view["candidateCauses"][0] and view["candidateCauses"][1]["counterEvidenceIds"] == ["E-FEAT-CMP"]
+    assert view["evidenceIds"] == ["E-RUN-ETCH", "E-FEAT-CMP"]
+    old = json.loads(to_tool_text(_context(analysis=OLD), "get_report_context"))["data"]["latestCauseAnalysis"]
+    assert old["summary"] and "answer" in old and "stance" not in old["candidateCauses"][0]  # 없는 판정은 만들지 않는다
+    assert json.loads(to_tool_text(_context(analysis=None), "get_report_context"))["data"]["latestCauseAnalysis"] is None
+
+
+def test_analysis_evidence_becomes_citable_for_the_draft():
+    from fab.agent.graph.state import record_evidence
+
+    evidence, _ = record_evidence(_context(analysis=LATEST))
+    assert {"E-RPTCTX-EV-1009", "E-RUN-ETCH", "E-FEAT-CMP"} <= set(evidence)
+    assert set(record_evidence(_context(analysis=None))[0]) == {"E-RPTCTX-EV-1009"}
