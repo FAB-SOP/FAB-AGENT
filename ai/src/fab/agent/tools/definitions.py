@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from fab.agent.causes import CAUSE_IDS
+from fab.agent.work import AGENT_OPERATIONS, MAX_SUGGESTIONS
 
 WRITE_TOOLS = {"create_cross_process_check_request", "create_maintenance_request", "confirm_report"}
 
@@ -88,6 +89,18 @@ HARNESS_TOOLS = [
                                      "description": "이전 원인 분석(사건 기록)의 1순위 원인 · nextStep · 대상 공정을 바꿀 때만 — 바뀐 이유"},
                     "changeEvidenceIds": {"type": "array", "items": {"type": "string"},
                                           "description": "결론을 바꾼 새 근거 — 이번에 조회했고 이전 결론이 인용하지 않은 evidenceId"},
+                    "workSuggestions": {
+                        "type": "array", "maxItems": MAX_SUGGESTIONS,
+                        "description": ("답 다음에 할 일 후보(선택, 최대 5) — 작업자가 후보별로 수락 · 거절한다. 채택 · 발송이 아니다. "
+                                        "내 할 일(REVIEW_SENSOR_DATA · REVIEW_PROCESS_HISTORY · COMPARE_METROLOGY) · "
+                                        "상급자 검토(REVIEW_REQUIRED) · 다른 팀 요청(EQUIPMENT_INSPECTION · "
+                                        "FACILITY_INSPECTION · UPSTREAM_CHECK). 근거는 이 답이 인용한 evidenceId만"),
+                        "items": {"type": "object", "properties": {
+                            "operationCode": {"type": "string", "enum": list(AGENT_OPERATIONS)},
+                            "title": {"type": "string", "description": "할 일 한 줄 — 확인 · 점검 항목, 설정값 처방 금지"},
+                            "reason": {"type": "string", "description": "이 답의 어떤 근거 때문에 하는지 1문장"},
+                            "evidenceIds": {"type": "array", "items": {"type": "string"}}},
+                            "required": ["operationCode", "title", "reason", "evidenceIds"]}},
                 },
                 "required": ["nextStep", "observedFacts", "candidateCauses", "limitations"],
             },

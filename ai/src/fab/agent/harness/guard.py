@@ -9,6 +9,7 @@ import re
 
 from fab.agent.causes import CAUSES, PROCESS_ORDER
 from fab.agent.evidence import features_of, runs_by_process
+from fab.agent.stance import REFUTED, cause_stance
 
 NEXT_STEPS = {"CURRENT_CHECK", "UPSTREAM_CHECK", "OBSERVE", "INSUFFICIENT_EVIDENCE", "NEEDS_DEEP_ANALYSIS"}
 _PROB = re.compile(r"(\d+(\.\d+)?\s*%\s*(의\s*)?(확률|가능성))|(확률\s*(은|이|:)?\s*\d)")
@@ -39,7 +40,9 @@ def validate_result(result: dict, known_evidence: set[str], incident_process: st
     fact_errors, cited = _fact_rules(facts)
     errors += fact_errors
     for cause in result.get("candidateCauses") or []:
-        cited |= set(cause.get("supportingEvidenceIds") or [])
+        # 반대 근거도 조회한 것만. 같은 ID가 지지 · 반대 양쪽에 있어도 받는다 — 센서 특징 결과 하나에 센서 여럿이 들어 있어
+        # 「이 센서는 벗어남(지지) · 저 센서는 정상(반대)」이 같은 ID를 가리킨다(10-22 실제 모델 비교에서 반려 4번 · 한도 멈춤 1번)
+        cited |= set(cause.get("supportingEvidenceIds") or []) | set(cause.get("conflictingEvidenceIds") or [])
     unknown = cited - known_evidence
     if unknown:
         errors.append(f"조회하지 않은 근거 ID를 인용했습니다: {sorted(unknown)}. 도구 결과의 evidenceId만 쓰세요.")
@@ -77,7 +80,10 @@ def _cause_rules(result: dict, incident_process: str | None) -> list[str]:
     if step not in ("CURRENT_CHECK", "UPSTREAM_CHECK") or not causes:
         return errors
     top = min(causes, key=lambda cause: cause.get("priority") or 99)
-    cause_ids = [cause_id for cause_id in top.get("causeIds") or [] if cause_id in CAUSES]
+    if cause_stance(top) == REFUTED:
+        errors.append("1순위 가설이 반증(반대 근거가 지지 근거보다 많음)입니다. 지지 근거가 더 많은 가설을 1순위로 두고, "
+                      "반증된 가설은 2순위 이하에 반대 근거와 함께 남기세요.")
+    cause_ids =[cause_id for cause_id in top.get("causeIds") or [] if cause_id in CAUSES]
     if not cause_ids:
         errors.append("nextStep이 CURRENT_CHECK · UPSTREAM_CHECK이면 1순위 가설에 causeId가 하나 이상 있어야 합니다.")
         return errors

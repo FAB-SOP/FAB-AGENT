@@ -7,6 +7,7 @@ import json
 from langchain_core.messages import HumanMessage
 from langgraph.types import interrupt
 
+from fab.agent import followup
 from fab.agent.graph.state import AgentState, runtime
 from fab.agent.harness import guard, limits
 
@@ -20,8 +21,14 @@ async def reply_wait(state: AgentState, config) -> dict:
     body = json.dumps({"findings": reply.get("findings", {}), "memo": reply.get("memo", "")}, ensure_ascii=False)
     note = HumanMessage(content=f"[시스템 알림] 담당자 회신({pending['requestId']}, 근거 ID {eid} — 담당자 진술이며 측정 근거와 구분):\n"
                                 + guard.untrusted("check-request-reply", body))
-    runtime(config).tracer.event("reply", requestId=pending["requestId"])
-    return {"messages": [note], "pending": None, "counters": limits.new_window(), "result": None,
+    # 작업자가 회신을 골라 추가 분석으로 재개했으면 memo에 함께 고른 결과(내 작업 결과 등) · 추가 질문이 온다
+    extra_question, selected = followup.memo_inputs(reply.get("memo"))
+    selected = [item for item in selected if item["evidenceId"] != eid]
+    messages = [note] + ([HumanMessage(content=f"[작업자의 추가 질문]\n{extra_question}")] if extra_question else []) \
+        + ([HumanMessage(content=followup.note(selected))] if selected else [])
+    runtime(config).tracer.event("reply", requestId=pending["requestId"], selected=len(selected))
+    return {"messages": messages, "pending": None, "counters": limits.new_window(), "result": None,
             "previousResult": state.get("result") or state.get("previousResult"),
             "evidence": {eid: {"evidenceId": eid, "sourceType": "REPLY", "sourceId": pending["requestId"],
-                               "dataVersion": state.get("dataVersion"), "synthetic": True}}}
+                               "dataVersion": state.get("dataVersion"), "synthetic": True},
+                         **followup.evidence_of(selected, state.get("dataVersion"))}}

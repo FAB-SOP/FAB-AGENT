@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
+from fab.agent import followup
 from fab.agent.graph.state import AgentState, runtime
 from fab.agent.harness import instructions, limits
 
@@ -20,6 +21,10 @@ async def start(state: AgentState, config) -> dict:
         "REPORT": "저장된 기록으로 보고서 초안을 만들어 주세요.",
     }.get(state["mode"], "추가 조사를 해 주세요.")
     messages.append(HumanMessage(content=f"[작업 {state['jobId']} · 모드 {state['mode']} · 사건 {state['incidentId']}]\n{question}"))
+    selected = state.get("selectedInputs") or []
+    if selected:  # 추가 분석 — 작업자가 고른 결과를 진술 근거로 넣는다(인용할 수 있게 근거로 등록)
+        messages.append(HumanMessage(content=followup.note(selected)))
     runtime(config).tracer.event("node", node="start", mode=state["mode"], promptVersion=prompt_version)
     return {"messages": messages, "counters": limits.new_window(), "result": None, "previousResult": None, "analysis": None, "report": None, "conclusion": None,
-            "stopReason": None, "promptVersion": prompt_version}
+            "stopReason": None, "promptVersion": prompt_version,
+            **({"evidence": followup.evidence_of(selected, state.get("dataVersion"))} if selected else {})}

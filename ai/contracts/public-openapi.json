@@ -6394,7 +6394,8 @@
               "BASIC",
               "DEEP",
               "RESUME",
-              "REPORT"
+              "REPORT",
+              "SUMMARY"
             ]
           },
           "parentJobId": {
@@ -7673,6 +7674,72 @@
         ],
         "additionalProperties": false
       },
+      "ReportAiSummary": {
+        "type": "object",
+        "description": "확정 보고서의 AI 요약 — 보고서 상태(DRAFT · CONFIRMED)와 따로 간다. 요약이 FAILED여도 보고서는 CONFIRMED 그대로. 실패는 사건 타임라인이 아니라 이 칸과 Job 기록에만 남는다",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "READY",
+              "FAILED"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+            }
+          },
+          "generatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "model",
+              "rule",
+              null
+            ]
+          },
+          "snapshotRef": {
+            "type": "string"
+          },
+          "jobId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "generatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "snapshotRef"
+        ],
+        "additionalProperties": false
+      },
       "Report": {
         "type": "object",
         "properties": {
@@ -7727,6 +7794,17 @@
               "type": "string",
               "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
             }
+          },
+          "aiSummary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReportAiSummary"
+              }
+            ],
+            "description": "확정 보고서에만 — 초안과 요약 기능 이전 확정본은 null"
           },
           "sourceRevision": {
             "type": "integer"
