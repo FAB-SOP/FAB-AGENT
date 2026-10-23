@@ -101,7 +101,8 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         args, doc_error = _check_documents(turn, args)
         args, id_error = _check_question_ids(turn, args)
         args, statement_error = _check_statements(turn, args)
-        errs = [e for e in (doc_error, id_error, statement_error) if e]
+        args, step_error = _check_next_step(turn, args)
+        errs = [e for e in (doc_error, id_error, statement_error, step_error) if e]
     if not errs:
         args, note, change_error = _check_conclusion(turn, args)
         errs = [change_error] if change_error else []
@@ -110,8 +111,18 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         turn.rt.tracer.event("guard_reject", tool=name, errors=errs)
         turn.say("[REJECTED] " + " / ".join(err.removeprefix("[REJECTED] ") for err in errs), cid, name)
     else:
-        turn.say("[ACCEPTED] 결과를 접수했습니다." + note, cid, name)
+        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + _deferred_proposal_note(turn), cid, name)
         turn.update["result"] = args
+
+
+def _deferred_proposal_note(turn: _Turn) -> str:
+    """답보다 먼저 와서 반려된 요청서 — 답이 접수된 지금 한 번 다시 낼 기회를 준다(고칠 수 있는 반려와 같은 재시도)"""
+    deferred = turn.counters.pop("proposalBeforeAnswer", None)
+    if not deferred or turn.update.get("pending") or turn.counters.get("proposalRetries", 0) >= 1:
+        return ""
+    turn.fixable_proposal_reject = True
+    return (f" 앞서 답보다 먼저 보낸 요청서 제안({deferred})은 반려됐습니다. 답이 접수됐으니 필요하면 같은 제안을 지금 다시 "
+            "내세요(이번 답의 근거로).")
 
 
 def _check_documents(turn: _Turn, args: dict) -> tuple[dict, str | None]:
@@ -148,6 +159,22 @@ def _check_statements(turn: _Turn, args: dict) -> tuple[dict, str | None]:
         return args, ("질문이 할 수 없는 요청(원인 확률 · 설정값)을 묻습니다. answer 첫 문장에 할 수 없다고 밝히세요 — 예: "
                       + " / ".join(f"「{sentence}」" for sentence in missing) + " 그다음에 근거로 할 수 있는 것을 씁니다.")
     return {**args, "answer": " ".join([*missing, str(args.get("answer") or "").strip()]).strip()}, None
+
+
+def _check_next_step(turn: _Turn, args: dict) -> tuple[dict, str | None]:
+    """nextStep이 조회한 데이터와 맞는지 — 한 번 반려하고, 두 번째는 받되 어긋남을 한계에 남긴다(한도 안에 끝나게)"""
+    seen = tool_results([*(turn.state.get("messages") or []), *turn.out])
+    allowed = guard.evidence_next_steps(seen, turn.state.get("incidentProcess"))
+    step = args.get("nextStep")
+    if allowed is None or step in allowed[0]:
+        return args, None
+    steps, why = allowed
+    expected = " · ".join(sorted(steps - guard.OPEN_STEPS))
+    if turn.counters.get("nextStepRejects", 0) == 0:
+        turn.counters["nextStepRejects"] = 1
+        return args, (f"nextStep {step}이 조회한 데이터와 맞지 않습니다 — {why}이므로 {expected}입니다(근거가 모자라면 "
+                      "INSUFFICIENT_EVIDENCE). 1순위 원인 후보와 nextStep을 데이터에 맞게 고치세요.")
+    return _with_limitation(args, f"nextStep {step}은 조회 데이터({why})로 보면 {expected}에 해당합니다 — 검증되지 않은 판단입니다."), None
 
 
 def _with_limitation(args: dict, text: str) -> dict:
@@ -209,6 +236,8 @@ def _proposal_rejection(turn: _Turn, name: str, args: dict, cid: str, action_typ
         return ("[FORBIDDEN] 이 작업에서는 요청을 제안할 수 없습니다 — 원인 분석은 nextStep으로 판단만 남기고, "
                 "승인 대기 중인 요청서가 있으면 질문에만 답합니다.")
     if not (state.get("result") or turn.update.get("result")):  # 답 먼저 — 사람은 답을 보고 승인을 정한다
+        # 답이 접수되면 이 제안을 다시 내라고 알린다 — 실제 모델은 반려 뒤 답만 내고 요청서를 다시 내지 않았다
+        turn.counters["proposalBeforeAnswer"] = name
         if turn.submit_rejected:
             return ("[REJECTED] 같은 응답의 submit_result가 반려돼 요청 제안도 받지 않았습니다. "
                     "답을 고쳐 요청 제안과 함께 다시 내세요.")

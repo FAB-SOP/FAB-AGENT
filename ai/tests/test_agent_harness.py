@@ -349,6 +349,21 @@ def test_guard_rejects_brief_with_unseen_numbers_or_evidence():
                                                    {"E-CHG-ETCH-PM2"}, tool_text))
 
 
+def test_brief_may_state_the_gap_between_two_looked_up_values():
+    """「기준 대비 약 250 Å 적음」(4999.43 − 4749.0) · 「5.3% 낮고」(-5.28%) — 조회한 값에서 바로 나온 숫자다(평가셋 AE01 실제 모델 실행)"""
+    from fab.agent.harness.guard import validate_brief
+
+    run = '{"data":{"removalAmount":4749.0,"pmMean":4999.43}}'
+    features = '{"data":{"items":[{"sensorId":"head_pressure","mean":2.84,"setpoint":3.0,"deviationPct":-5.28}]}}'
+    tool_text = run + "\n" + features
+    brief = {"reason": "CMP-PM3 제거량이 기준 대비 약 250 Å 적고 헤드 압력이 5.3% 낮습니다.", "askFor": ["압력 계통 점검"],
+             "suspectedCauses": [{"causeId": "CMP_PRESSURE", "confirmed": False}], "relatedRecords": []}
+    assert validate_brief(brief, set(), tool_text) == []
+    # 다른 도구 결과의 값끼리 뺀 숫자(4999.43 − 2.84 ≈ 4997)는 받지 않는다 — 지어낸 숫자를 막는 검사가 헐거워지지 않게
+    assert any("4997" in e for e in validate_brief(brief | {"reason": "기준 대비 4997 Å 차이"}, set(), tool_text))
+    assert any("300" in e for e in validate_brief(brief | {"reason": "기준 대비 약 300 Å 적습니다"}, set(), tool_text))
+
+
 async def test_action_hash_covers_brief(spring_url, kb):
     u, a = await _first_proposal(spring_url, kb, "EV-1009", "앞 공정 확인해줘")
     payload = dict(a["payload"]) | {"brief": a["payload"]["brief"] | {"reason": "받는 사람에게 다른 이유를 보여 준다"}}
@@ -668,6 +683,45 @@ class FixProposalOnceModel:
             broken = {**proposal, "args": {**proposal["args"], "evidenceIds": ["E-NOT-FETCHED"]}}
             return AIMessage(content="", tool_calls=[broken if c is proposal else c for c in r.tool_calls])
         return r
+
+
+class ProposalBeforeAnswerModel:
+    """실제 모델에서 본 순서 — 요청서만 먼저 내고(「답 먼저」로 반려), 다음엔 답만 내고, 다시 내라는 말을 들어야 요청서를 낸다"""
+
+    def __init__(self):
+        from fab.agent.models.rule import RuleModel
+
+        self.rule, self.name, self.steps, self.calls = RuleModel(), "proposal-first", [], None
+
+    async def ainvoke(self, messages, tools):
+        last = str(messages[-1].content) if messages else ""
+        if self.calls is None:
+            r = await self.rule.ainvoke(messages, tools)
+            proposal = next((c for c in r.tool_calls if c["name"].startswith("propose_")), None)
+            submit = next((c for c in r.tool_calls if c["name"] == "submit_result"), None)
+            if not (proposal and submit):  # 조사 중이거나 기본 분석 — 규칙 모델 그대로
+                return r
+            self.calls = (proposal, submit)
+            self.steps.append("propose-only")
+            return AIMessage(content="", tool_calls=[proposal])
+        proposal, submit = self.calls
+        if "다시 내세요" in last:
+            self.steps.append("re-propose")
+            return AIMessage(content="", tool_calls=[{**proposal, "id": "c-again"}])
+        self.steps.append("submit-only")
+        return AIMessage(content="", tool_calls=[{**submit, "id": f"c-submit-{len(self.steps)}"}])
+
+
+async def test_proposal_rejected_for_coming_before_the_answer_is_offered_again(spring_url, kb):
+    """요청서가 「답 먼저」로 반려되고 다음 턴에 답만 오면, 답을 접수하면서 요청서를 다시 낼 기회를 한 번 준다(평가셋 AE01–03)"""
+    model = ProposalBeforeAnswerModel()
+    runner, backend = make_runner(kb, models=(model, None), base=spring_url)
+    display = await fresh_incident("EV-1009", spring_url)
+    await poll_once(runner, backend)
+    await _ask(spring_url, display, "앞 공정 확인이 필요해?")
+    out = (await poll_once(runner, backend))[-1]
+    assert model.steps == ["propose-only", "submit-only", "re-propose"], model.steps
+    assert out["status"] == "WAITING_APPROVAL", out
 
 
 async def test_fixable_proposal_rejection_gets_one_retry(spring_url, kb):
