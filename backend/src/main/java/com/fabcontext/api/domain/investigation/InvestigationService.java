@@ -24,10 +24,12 @@ public class InvestigationService {
 	private final IncidentService incidentService;
 	private final JobService jobService;
 	private final Clock clock;
+	private final jakarta.persistence.EntityManager entityManager;
 
 	@Transactional
 	public Accepted ask(String incidentId, AuthUser user, Query body) {
 		Incident incident = incidentService.loadForWrite(incidentId, user);
+		entityManager.refresh(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		incident.requireNotClosed();
 		incident.checkVersion(body.expectedIncidentVersion());
 		jobService.assertNoRunningJob(incident);
@@ -41,6 +43,7 @@ public class InvestigationService {
 	@Transactional
 	public Accepted rerunBasic(String incidentId, AuthUser user, BasicAnalysisRequest body) {
 		Incident incident = incidentService.loadForWrite(incidentId, user);
+		entityManager.refresh(incident, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 		incident.requireNotClosed();
 		incident.checkVersion(body.expectedIncidentVersion());
 		jobService.assertNoRunningJob(incident);

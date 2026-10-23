@@ -42,10 +42,10 @@ class AgentEventDeliveryApiTest extends ApiTestSupport {
 	@Autowired ProcessedAgentEventRepository processedEvents;
 	@Autowired JdbcTemplate jdbc;
 
-	private Job newJob() {
-		String incidentId = jdbc.queryForObject("select incident_id from incident where display_id = 'EV-1009'", String.class);
-		return jobs.save(Job.builder().jobId("job_delivery_" + UUID.randomUUID()).incidentId(incidentId)
-			.kind(JobKind.DEEP).attempt(1).threadId("thr_" + UUID.randomUUID()).createdAt(Instant.now()).build());
+	private Job newJob() throws Exception {
+		// 실행 직렬화가 적용되므로 공유 시드 사건에 여러 실행을 직접 끼워 넣지 않는다.
+		// 각 테스트가 실제 접수 경로로 독립 사건·기본 작업 하나를 만든다.
+		return jobs.findById(externalIncident().jobId()).orElseThrow();
 	}
 
 	private Map<String, Object> event(Job job, String id, int attempt, String type, Map<String, Object> payload) {

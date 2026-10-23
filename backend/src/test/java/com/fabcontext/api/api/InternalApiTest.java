@@ -155,7 +155,11 @@ class InternalApiTest extends ApiTestSupport {
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.data.payload.brief.suspectedCauses[0].confirmed").value(false))
 			.andExpect(jsonPath("$.data.payload.causeIds", contains("ETCH_WALL"))), "$.data.approvalId");
-		String a2 = json(ipost("/internal/jobs/{id}/proposals", tpl.formatted("문장만 다른 브리프", "brief-2"), jobId), "$.data.approvalId");
+		// Agent 승인은 사건당 하나다. 해시 비교용 두 번째 문서는 독립적인 사람의 수동 제안으로 만든다.
+		java.util.Map<String,Object> otherPayload = com.jayway.jsonpath.JsonPath.read(tpl.formatted("문장만 다른 브리프", "brief-2"), "$.payload");
+		String a2 = json(postAs(cmp, "/api/incidents/{id}/proposals", com.fabcontext.api.common.Json.write(java.util.Map.of(
+			"actionType","CHECK_REQUEST", "payload",otherPayload, "rationale","r", "jobId",jobId,
+			"expectedIncidentVersion",incidentVersion(cmp,id))), id).andExpect(status().isCreated()), "$.data.approvalId");
 		// 승인 화면(P08)에 브리프가 보이고, 해시가 브리프까지 덮는다 — 문장 하나만 달라도 해시가 다르다
 		String h1 = json(getAs(cmp, "/api/approvals/{id}", a1).andExpect(jsonPath("$.data.payload.brief.reason").value("Etch 제거량이 정상 변동 밖"))
 			.andExpect(jsonPath("$.data.payload.brief.deviations[0].value").value(4896.3)), "$.data.actionHash");

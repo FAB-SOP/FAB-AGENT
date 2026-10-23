@@ -88,6 +88,7 @@ public class AgentJobService {
 
 	public List<Map<String, Object>> queuedJobs() {
 		return jobRepository.findByStatusOrderByCreatedAtAsc(JobStatus.QUEUED).stream()
+			.filter(j -> jobService.canStart(j, incidentRepository.findById(j.getIncidentId()).orElseThrow()))
 			.map(j -> jobContext(j.getJobId())).toList();
 	}
 
@@ -106,6 +107,7 @@ public class AgentJobService {
 			throw new InternalError("CONFLICT", "작업 " + jobId + "은 이미 " + job.getStatus() + " 상태입니다.",
 				"중복 전달이면 건너뜁니다.");
 		}
+		if (!jobService.canStart(job, incident)) throw new InternalError("CONFLICT", "현재 사건의 다른 작업이 끝난 뒤 실행합니다.", "지금은 claim하지 않고 다음 대기열 조회를 기다리세요.");
 		Instant now = Instant.now();
 		if (!job.claim(attempt, workerId, now, Duration.ofSeconds(leaseSeconds))) {
 			throw new InternalError("CONFLICT", "작업 " + jobId + "(attempt " + attempt + ")은 이미 처리 중이거나 처리됐습니다.",

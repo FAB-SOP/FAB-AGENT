@@ -17,6 +17,12 @@ public class ActiveJobs implements ActiveJobLookup {
 		return jobId == null ? null : jobRepository.findById(jobId).map(ActiveJobs::view).orElse(null);
 	}
 
+	@Override
+	public java.util.List<ActiveJob> waitingForIncident(String incidentId) {
+		return jobRepository.findByIncidentIdOrderByCreatedAtDesc(incidentId).stream()
+			.filter(j -> j.getKind().affectsInvestigationState() && j.getStatus().isWaiting()).map(ActiveJobs::view).toList();
+	}
+
 	static ActiveJob view(Job job) {
 		return new ActiveJob(job.getJobId(), job.getKind().name(), job.getStatus().name(), job.getAttempt(), job.waitingRef());
 	}
