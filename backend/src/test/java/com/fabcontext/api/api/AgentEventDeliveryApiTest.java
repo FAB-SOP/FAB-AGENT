@@ -279,4 +279,136 @@ class AgentEventDeliveryApiTest extends ApiTestSupport {
 		assertThat(processedEvents.existsById(id)).isTrue();
 		getAs(engineer, "/api/reports/{id}", reportId).andExpect(jsonPath("$.data.summary.status").value("READY"));
 	}
+    private Map<String, Object> result(Job job, String answer) {
+        return Map.of("result", Map.of("answer", answer, "observedFacts", List.of(), "candidateCauses", List.of(),
+                "evidenceRefs", List.of(), "limitations", List.of()), "analysis", Map.of("resultKind", "CAUSE_ANALYSIS"));
+    }
+
+    @Test
+    void telemetryChangesDoNotConflictAndProgressEventsKeepTheirOwnIds() throws Exception {
+        Job job = newJob();
+        String id = "EVT-" + job.getJobId() + "-STARTED";
+        var first = new java.util.LinkedHashMap<>(event(job, id, 1, "JOB_STARTED", Map.of("startedAt", "2026-10-23T00:00:00Z")));
+        first.put("metrics", Map.of("modelCalls", 1));
+        send(job, first).andExpect(jsonPath("$.data.applied").value(true));
+        var repeated = new java.util.LinkedHashMap<>(event(job, id, 1, "JOB_STARTED", Map.of("startedAt", "2026-10-23T01:00:00Z")));
+        repeated.put("sequence", 99); repeated.put("traceId", "another-trace"); repeated.put("metrics", Map.of("modelCalls", 99));
+        send(job, repeated).andExpect(status().isOk()).andExpect(jsonPath("$.data.reason").value("DUPLICATE_EVENT"));
+        assertThat(jobs.findById(job.getJobId()).orElseThrow().getMetrics()).containsEntry("modelCalls", 1);
+        for (int n = 1; n <= 2; n++) send(job, event(job, "progress-" + job.getJobId() + "-" + n, 1,
+                "ANALYSIS_PROGRESS", Map.of("stepCode", "CHECK", "message", "진행 " + n, "progressRatio", n * .2)))
+                .andExpect(jsonPath("$.data.applied").value(true));
+        assertThat(processedEvents.findById(id).orElseThrow().getConflictCount()).isNull();
+    }
+
+    @Test
+    void changedSameIdIsRecordedWithoutOverwritingResultJobIncidentOrNotifications() throws Exception {
+        Job job = newJob(); Session user = cmp(); String id = "ready-" + job.getJobId();
+        send(job, event(job, id, 1, "RESULT_READY", result(job, "처음 보존한 답"))).andExpect(jsonPath("$.data.applied").value(true));
+        long version = incidentVersion(user, job.getIncidentId());
+        int notifications = jdbc.queryForObject("select count(*) from user_notification where incident_id = ?", Integer.class, job.getIncidentId());
+        String resultRef = jobs.findById(job.getJobId()).orElseThrow().getResultRefId();
+        String hash = processedEvents.findById(id).orElseThrow().getContentHash();
+        send(job, event(job, id, 1, "RESULT_READY", result(job, "다른 답으로 덮어쓰기")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(false))
+                .andExpect(jsonPath("$.data.reason").value("EVENT_CONTENT_CONFLICT"));
+        var receipt = processedEvents.findById(id).orElseThrow();
+        assertThat(receipt.getContentHash()).isEqualTo(hash);
+        assertThat(receipt.getConflictCount()).isEqualTo(1);
+        assertThat(receipt.getLastConflictHash()).isNotEqualTo(hash);
+        assertThat(receipt.getLastConflictEventId()).isEqualTo(id);
+        assertThat(receipt.getLastConflictAt()).isNotNull();
+        assertThat(jobs.findById(job.getJobId()).orElseThrow().getResultRefId()).isEqualTo(resultRef);
+        assertThat(incidentVersion(user, job.getIncidentId())).isEqualTo(version);
+        assertThat(jdbc.queryForObject("select count(*) from user_notification where incident_id = ?", Integer.class, job.getIncidentId())).isEqualTo(notifications);
+        getAs(user, "/api/incidents/{id}/analysis-results", job.getIncidentId()).andExpect(jsonPath("$.data.answer").value("처음 보존한 답"));
+    }
+
+    @Test
+    void changedEventIdCannotBypassLogicalFinalResultComparison() throws Exception {
+        Job job = newJob(); String first = "first-" + job.getJobId();
+        var payload = result(job, "보존한 답");
+        send(job, event(job, first, 1, "RESULT_READY", payload)).andExpect(jsonPath("$.data.applied").value(true));
+        send(job, event(job, "same-" + job.getJobId(), 1, "RESULT_READY", payload))
+                .andExpect(jsonPath("$.data.reason").value("DUPLICATE_RESULT"));
+        send(job, event(job, "different-" + job.getJobId(), 1, "RESULT_READY", result(job, "변경된 답")))
+                .andExpect(jsonPath("$.data.reason").value("EVENT_CONTENT_CONFLICT"));
+        send(job, event(job, "failed-" + job.getJobId(), 1, "JOB_FAILED", Map.of("errorCode", "LATE", "message", "늦은 실패")))
+                .andExpect(jsonPath("$.data.reason").value("EVENT_CONTENT_CONFLICT"));
+        assertThat(jobs.findById(job.getJobId()).orElseThrow().getStatus()).isEqualTo(JobStatus.SUCCEEDED);
+        assertThat(processedEvents.findById(first).orElseThrow().getConflictCount()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from analysis_result where job_id = ?", Integer.class, job.getJobId())).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentDifferentAnswersWithDifferentIdsKeepExactlyOneCommittedWinner() throws Exception {
+        Job job = newJob(); CountDownLatch gate = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            List<Future<String>> responses = new ArrayList<>();
+            for (int n = 0; n < 2; n++) {
+                int index = n;
+                responses.add(pool.submit(() -> {
+                    gate.await();
+                    return send(job, event(job, "race-" + job.getJobId() + "-" + index, 1, "RESULT_READY", result(job, "답 " + index)))
+                            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+                }));
+            }
+            gate.countDown();
+            List<String> texts = new ArrayList<>();
+            for (var response : responses) texts.add(response.get(20, TimeUnit.SECONDS));
+            assertThat(texts.stream().filter(t -> JsonPath.<Boolean>read(t, "$.data.applied")).count()).isEqualTo(1);
+            assertThat(texts.stream().filter(t -> t.contains("EVENT_CONTENT_CONFLICT")).count()).isEqualTo(1);
+        }
+        var receipts = processedEvents.findByJobIdAndAttemptAndEventTypeIn(job.getJobId(), 1, List.of("RESULT_READY"));
+        assertThat(receipts).hasSize(1);
+        assertThat(receipts.getFirst().getConflictCount()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from analysis_result where job_id = ?", Integer.class, job.getJobId())).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentGlobalEventIdReuseAcrossJobsIsAConflictNotADatabaseError() throws Exception {
+        Job left = newJob(), right = newJob(); String id = "global-" + UUID.randomUUID();
+        CountDownLatch gate = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            List<Future<String>> responses = new ArrayList<>();
+            for (Job job : List.of(left, right)) responses.add(pool.submit(() -> {
+                gate.await();
+                return send(job, event(job, id, 1, "JOB_STARTED", Map.of()))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            }));
+            gate.countDown(); List<String> texts = new ArrayList<>();
+            for (var response : responses) texts.add(response.get(20, TimeUnit.SECONDS));
+            assertThat(texts.stream().filter(t -> JsonPath.<Boolean>read(t, "$.data.applied")).count()).isEqualTo(1);
+            assertThat(texts.stream().filter(t -> t.contains("EVENT_CONTENT_CONFLICT")).count()).isEqualTo(1);
+        }
+        assertThat(processedEvents.findById(id).orElseThrow().getConflictCount()).isEqualTo(1);
+    }
+
+    @Test
+    void legacyReceiptIsNotBackfilledWithAnUnverifiedIncomingBody() throws Exception {
+        Job job = newJob(); String id = "legacy-" + job.getJobId();
+        processedEvents.save(new com.fabcontext.api.domain.job.ProcessedAgentEvent(id, job.getJobId(), 1, "JOB_STARTED", Instant.now()));
+        send(job, event(job, id, 1, "JOB_STARTED", Map.of()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.reason").value("DUPLICATE_EVENT"));
+        assertThat(processedEvents.findById(id).orElseThrow().getContentHash()).isNull();
+        assertThat(jobs.findById(job.getJobId()).orElseThrow().getStatus()).isEqualTo(JobStatus.QUEUED);
+    }
+
+    @Test
+    void summaryConflictDoesNotChangeTheConfirmedReportOrNotifyAgain() throws Exception {
+        Session user = cmp(); Job job = newSummaryJob(user);
+        var ref = (Map<?, ?>) job.getInput().get("summaryRef");
+        String reportId = (String) ref.get("reportId"), id = "summary-" + job.getJobId();
+        var payload = Map.<String, Object>of("reportId", reportId, "snapshotRef", ref.get("snapshotRef"),
+                "summary", Map.of("lines", List.of("최초 확정 요약"), "evidenceIds", List.of(), "generatedBy", "rule"));
+        send(job, event(job, id, 1, "SUMMARY_READY", payload)).andExpect(jsonPath("$.data.applied").value(true));
+        var changed = new java.util.LinkedHashMap<>(payload);
+        changed.put("summary", Map.of("lines", List.of("달라진 요약"), "evidenceIds", List.of(), "generatedBy", "rule"));
+        send(job, event(job, "other-" + id, 1, "SUMMARY_READY", changed)).andExpect(jsonPath("$.data.reason").value("EVENT_CONTENT_CONFLICT"));
+        getAs(user, "/api/reports/{id}", reportId).andExpect(jsonPath("$.data.summary.lines[0]").value("최초 확정 요약"))
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"));
+        assertThat(jdbc.queryForObject("select count(*) from user_notification where type = 'REPORT_SUMMARY_READY' and incident_id = ?",
+                Integer.class, job.getIncidentId())).isEqualTo(1);
+    }
+
 }
