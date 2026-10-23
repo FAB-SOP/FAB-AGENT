@@ -176,6 +176,10 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 
 **외부 Agent 모드**(`AGENT_MODE=external`) — 시뮬레이터가 작업을 잡지 않는다. Worker가 QUEUED 작업을 가져가 `claims`로 확보하고(같은 attempt면 409), 이벤트(`contracts/schemas/agent-event.schema.json`)를 `POST /internal/jobs/{jobId}/events`로 돌려준다 — `APPROVAL_REQUIRED` · `WAITING_REPLY` · `RESULT_READY` · `REPORT_DRAFT_READY` · `RETRY_SCHEDULED`(attempt+1로 다시 QUEUED) · `JOB_FAILED`. Kafka를 붙이면 같은 이벤트를 소비자가 `AgentEventService.handle()`로 넘기면 된다.
 
+- 이벤트의 `eventId` · `attempt`는 필수다. 현재 작업의 시도 번호와 다른 이벤트, 처리한 ID의 재전송, 끝난 작업의 이벤트는 HTTP 200 + `applied: false`로 무시한다(`reason`: `ATTEMPT_MISMATCH` · `DUPLICATE_EVENT` · `JOB_FINISHED`). 무시한 이벤트의 metrics · 알림도 반영하지 않는다.
+- 사건 → 작업 순서의 DB 행 잠금으로 이벤트 수신과 작업 확보를 직렬화한다. `processed_agent_event`에 처리한 ID를 업무 변경과 같은 트랜잭션으로 저장하므로, 재시작 뒤에도 중복을 막고 처리 실패 시에는 같은 ID로 다시 보낼 수 있다. `RETRY_SCHEDULED.nextAttempt`는 현재 시도보다 정확히 1 커야 한다. 다른 시도 번호의 작업 확보는 409다.
+- 외부 Agent의 `attempt`는 같은 작업의 재시도 번호다. 기본 분석을 사람이 다시 요청해 새 `jobId`를 만들면 1부터 시작한다(같은 사건의 누적 실행 횟수가 아니다).
+
 ## 계약과의 차이 · 결정 사항
 
 - page-map에 컴포넌트 스키마 본문이 없어 응답 DTO는 화면 행의 `fieldPaths`를 기준으로 설계했다. 화면용 보조 필드(`displayId`, `qualitySummary`, `history` 등)를 일부 더했다
