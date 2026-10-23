@@ -2,6 +2,8 @@ import {LoaderCircle} from 'lucide-react';
 import {type Obj,when} from '../api/types';
 import {type QuestionThread} from '../domain/questionThreads';
 import {Badge,Empty} from './ui';
+import {ConclusionNotice,StanceBadge} from './AnalysisMarks';
+import {answerText,counterIds,nextCheck} from '../domain/analysisMarks';
 import {EvidenceList} from './InvestigationContext';
 import {AnalysisRequestStatus,QuestionHistory} from './AnalysisRequestStatus';
 
@@ -55,10 +57,11 @@ function BasicAnalysisEntry({entry,thread,job,results,proposal}:{
   {answers.length>0&&<Badge value="SUCCEEDED">분석 완료</Badge>}
  </article>;
 }
-function AnalysisResultBody({result}:{result:Obj}){
+export function AnalysisResultBody({result}:{result:Obj}){
  const evidenceRefs=result.evidenceRefs||[];
  return <div className="conversation-result">
-  <p className="analysis-summary">{result.summary}</p>
+  <ConclusionNotice result={result}/>
+  <p className="analysis-summary">{answerText(result)}</p>
   {result.observedFacts?.length>0&&<details className="conversation-evidence">
    <summary>관측 사실 {result.observedFacts.length}건</summary>
    {result.observedFacts.map((fact:Obj,index:number)=><p key={index}>{fact.statement||fact.text||fact.description||fact.label}</p>)}
@@ -66,11 +69,11 @@ function AnalysisResultBody({result}:{result:Obj}){
   {(result.candidateCauses||[]).map((cause:Obj,index:number)=><div className="hypothesis" key={cause.causeId||index}>
    <span className="rank">{cause.rank||index+1}</span>
    <div>
-    <h3>{cause.cause||cause.hypothesis||'원인 후보'}</h3>
+    <h3>{cause.cause||cause.hypothesis||'원인 후보'} <StanceBadge stance={cause.stance}/></h3>
     <EvidenceList ids={cause.supportingEvidence||cause.supportingEvidenceIds||[]} refs={evidenceRefs} label="지지 근거"/>
-    <EvidenceList ids={cause.counterEvidence||cause.counterEvidenceIds||[]} refs={evidenceRefs} label="반대·추가 확인 근거"/>
+    <EvidenceList ids={counterIds(cause)} refs={evidenceRefs} label="반대·추가 확인 근거"/>
     {cause.missingData?.length>0&&<p className="small muted">부족한 자료 · {cause.missingData.join(' / ')}</p>}
-    {cause.check&&<p>확인 항목 · {cause.check}</p>}
+    {nextCheck(cause)&&<p>확인 항목 · {nextCheck(cause)}</p>}
     {cause.action&&<p>조치 제안 · {cause.action}</p>}
     {cause.verify&&<p>결과 확인 · {cause.verify}</p>}
    </div>

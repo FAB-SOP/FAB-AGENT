@@ -1,3 +1,5 @@
+import {ConclusionNotice,ResultKindTag,StanceBadge} from './AnalysisMarks';
+import {answerText,nextCheck} from '../domain/analysisMarks';
 import {LoaderCircle} from 'lucide-react';
 import {Link} from 'react-router-dom';
 import {type QuestionThread} from '../domain/questionThreads';
@@ -63,10 +65,12 @@ function threadStatusMessage(job:Obj|undefined){
 }
 function ThreadAnswer({answer}:{answer:Obj}){
  return <div className="qa-result">
-  <p>{answer.summary}</p>
-  {answer.candidateCauses?.map((cause:Obj)=><div key={cause.causeId}>
-   <h3>{cause.rank||cause.priority}. {cause.hypothesis||cause.cause}</h3>
-   {cause.check&&<p>{cause.check}</p>}
+  <ResultKindTag result={answer}/>
+  <ConclusionNotice result={answer}/>
+  <p>{answerText(answer)}</p>
+  {answer.candidateCauses?.map((cause:Obj,index:number)=><div key={cause.candidateId||cause.causeId||index}>
+   <h3>{cause.rank||cause.priority}. {cause.hypothesis||cause.cause} <StanceBadge stance={cause.stance}/></h3>
+   {nextCheck(cause)&&<p>{nextCheck(cause)}</p>}
    {cause.action&&<p>조치 제안 · {cause.action}</p>}
   </div>)}
  </div>;

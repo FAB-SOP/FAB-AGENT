@@ -7,6 +7,7 @@ import {labels,when,type Incident,type Obj,type Page} from '../api/types';
 import {useAuth} from '../auth';
 import {Badge,Empty,ErrorMessage,Field,Modal,Notice,PageHeading,Panel} from '../components/ui';
 import {PayloadDetails} from '../components/InvestigationContext';
+import {AnalysisResultBody} from '../components/InvestigationConversation';
 import {WorkManagerApprovals} from '../components/WorkItems';
 import {CauseClassificationSelect} from '../components/CauseClassificationSelect';
 import {
@@ -37,6 +38,19 @@ function ApprovalRow({approval,onOpen}:{approval:Obj;onOpen:()=>void}){
   <ArrowUpRight/>
  </button>;
 }
+/** 이 제안의 근거가 된 분석 답 — 승인 상세의 sourceResultId가 있을 때만 */
+function SourceAnalysis({approval}:{approval:Obj}){
+ const result=useQuery({
+  queryKey:['analysis-source',approval.incidentId,approval.sourceResultId],
+  queryFn:()=>api<Obj>(`/api/incidents/${encodeURIComponent(approval.incidentId)}/analysis-results?resultId=${encodeURIComponent(approval.sourceResultId)}`),
+  enabled:!!approval.sourceResultId,
+ });
+ if(!approval.sourceResultId)return null;
+ return <details className="source-analysis" open>
+  <summary>이 제안의 근거 분석 {result.data?.createdAt&&<span className="small muted">· {when(result.data.createdAt)} KST</span>}</summary>
+  {result.error?<ErrorMessage error={result.error}/>:result.data?<AnalysisResultBody result={result.data}/>:<p className="small muted">불러오는 중…</p>}
+ </details>;
+}
 function ApprovalReviewModal({approval,canDecide,comment,onCommentChange,classification,onClassificationChange,command,onDecide,onClose}:{
  approval:Obj;
  canDecide:boolean;
@@ -58,6 +72,7 @@ function ApprovalReviewModal({approval,canDecide,comment,onCommentChange,classif
   <Badge value={approval.status}/>
   <p>{approval.rationale}</p>
   <PayloadDetails value={approval.payload}/>
+  <SourceAnalysis approval={approval}/>
   {approval.status==='APPROVED'&&<Notice>{executionNotice(approval)}</Notice>}
   {isReportConfirmation(approval)&&approval.decisionInput&&<p>원인 분류: {describeClassification({
    category:approval.decisionInput.category,
