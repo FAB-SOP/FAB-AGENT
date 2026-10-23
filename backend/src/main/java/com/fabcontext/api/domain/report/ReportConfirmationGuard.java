@@ -36,6 +36,7 @@ class ReportConfirmationGuard {
 
 	private static final Set<JobStatus> ANALYSIS_ACTIVE = EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING,
 		JobStatus.WAITING_APPROVAL);
+	private static final Set<JobStatus> REPORT_ACTIVE = EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING);
 	private static final Set<CheckRequestStatus> REQUEST_UNANSWERED = EnumSet.of(CheckRequestStatus.OPEN,
 		CheckRequestStatus.ACCEPTED);
 	private static final Set<WorkItem.Status> WORK_ADOPTED_NOT_DONE = EnumSet.of(WorkItem.Status.READY,
@@ -62,6 +63,7 @@ class ReportConfirmationGuard {
 			.collect(Collectors.toSet());
 		List<ConfirmationBlocker> blockers = new ArrayList<>();
 		blockers.addAll(analysisInProgress(incidentId, context, unansweredRequestIds));
+		blockers.addAll(reportDraftsInProgress(incidentId));
 		blockers.addAll(pendingApprovals(incidentId, context));
 		blockers.addAll(workBlockers(incidentId));
 		blockers.addAll(unansweredRequests(incidentId, unansweredRequestIds));
@@ -83,6 +85,13 @@ class ReportConfirmationGuard {
 					|| (job.getStatus() == JobStatus.WAITING_REPLY && unansweredRequestIds.contains(job.getWaitingRefId())))
 			.map(job -> new ConfirmationBlocker(Kind.ANALYSIS_IN_PROGRESS, job.getJobId(),
 				"조사 분석 " + job.getKind() + " · " + job.getStatus()))
+			.toList();
+	}
+
+	private List<ConfirmationBlocker> reportDraftsInProgress(String incidentId) {
+		return jobRepository.findByIncidentIdOrderByCreatedAtDesc(incidentId).stream()
+			.filter(job -> job.getKind() == JobKind.REPORT && REPORT_ACTIVE.contains(job.getStatus()))
+			.map(job -> new ConfirmationBlocker(Kind.REPORT_IN_PROGRESS, job.getJobId(), "보고서 초안 작업 · " + job.getStatus()))
 			.toList();
 	}
 

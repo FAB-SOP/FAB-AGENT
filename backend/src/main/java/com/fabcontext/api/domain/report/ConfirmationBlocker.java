@@ -6,6 +6,8 @@ public record ConfirmationBlocker(Kind kind, String id, String label) {
 	public enum Kind {
 		/** 진행 · 대기 중인 조사 분석(Agent 승인 대기 · 회신 대기 포함) */
 		ANALYSIS_IN_PROGRESS,
+		/** 진행 중인 보고서 초안 생성 작업 — 끝나면 새 최신 판본을 검토해 확정한다 */
+		REPORT_IN_PROGRESS,
 		/** 사람의 승인 · 거절을 기다리는 Agent 제안 */
 		APPROVAL_PENDING,
 		/** 관리자 승인을 기다리는 업무 */

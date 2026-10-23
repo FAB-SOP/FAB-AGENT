@@ -726,6 +726,19 @@ contracts/public-api · contracts/internal-snapshot · quickstart(`.claude/skill
 
 ---
 
+## Phase 9: 개정 반영 (2026-10-23 팀 통합 정리 문서 — B 보류 해제 삭제 · C 늦은 초안 차단, plan P5 · P15 개정 · P23 · P24)
+
+- [X] T052 [US4] **P5 개정** `IncidentService.transition` — 모든 대상 409 `TRANSITION_REMOVED`(보류 해제 포함, MANAGER 검사 · 버전 검사 순서는 그대로) in `B/domain/incident/IncidentService.java`; 전이 API 문서 문구 in `B/domain/incident/IncidentController.java`
+- [X] T053 [US4] **P15 개정** 보류 해제 기대값을 409 `TRANSITION_REMOVED`로, 기존 보류 사건(EV-1022처럼 ON_HOLD로 둔 사건)이 보고서 확정으로 CLOSED가 되는 시험 추가 in `BT/api/IncidentApiTest.java`
+- [X] T054 [US2] **P23** `ReportConfirmationGuard`에 `REPORT_IN_PROGRESS`(REPORT 작업 QUEUED · RUNNING) 차단 추가 in `B/domain/report/ConfirmationBlocker.java` · `B/domain/report/ReportConfirmationGuard.java`, 단위 테스트 갱신 in `BT/domain/report/ReportConfirmationGuardTest.java`
+- [X] T055 [US1] **P23** 종료된 사건에는 초안을 저장하지 않음 — `ReportService.createDraft` · `createAgentDraft`에서 `incident.requireNotClosed()`(409 `INCIDENT_CLOSED` → 시뮬레이터는 작업 실패, 외부 Agent는 409 응답) in `B/domain/report/ReportService.java`
+- [X] T056 [P] [US1] 늦은 초안 · 진행 중 초안 시험 in `BT/api/ReportConfirmCloseApiTest.java` — 초안 작업 QUEUED 중 확정 → 409 `REPORT_IN_PROGRESS`(지연 컨텍스트 없이 결정적으로: 작업을 직접 QUEUED로 저장), 종료 사건에 `createDraft` 호출 → 거부 · 새 판본 없음
+- [X] T057 [P] **P24** 화면 — 사건 화면 「조사 재개」 제거(보류 사건은 「보고서를 확정하면 종료됩니다」 안내) in `F/pages/IncidentDetail.tsx`, 차단 종류 `REPORT_IN_PROGRESS` 안내 in `F/domain/reportConfirmation.ts` + `frontend/tests/report-confirmation.test.ts`
+- [X] T058 스모크 · 계약 · 문서 — 관리자 전이 구간에 보류 해제 409 없음 확인(현재 스모크는 해제를 시험하지 않음 → 변경 없음 확인), 공개 계약 transitionIncident 설명 갱신 in `data/backend-handoff-v2/combined.openapi.json`, README 「조사 재개」 설명 삭제 in `README.md` · `backend/README.md`, 헌법 3.0.0 Sync Impact ⚠ 해소
+- [X] T059 검증 — backend 전체 · frontend 테스트 · 빌드, 임시 DB 서버 스모크(기존 실패 5건 외 0), 시나리오 스크립트 재실행, implementation-notes 기록
+
+---
+
 ## Dependencies & Execution Order
 
 - **Setup(T001)** → **Foundational(T002–T011)** → **US1(T012–T017)** → **US2(T018–T026)** → **US3(T027–T035)** · **US4(T036–T038)** → **Polish(T039–T045)**

@@ -196,6 +196,16 @@ Check if `.specify/extensions.yml` exists in the project root.
 <!-- CONSTITUTION:BEGIN -->
 <!--
 Sync Impact Report
+- Version change: 2.0.0 → 3.0.0 (MAJOR — 원칙 VI에서 MANAGER의 「기존 보류 해제(조사 재개)」 권한 삭제. 팀 통합 정리 문서
+  「관리자 수동 보류 · 보류해제 · 종료 제거」 반영, 2026-10-23. 남아 있던 관리자 권한을 없애는 비호환 변경)
+- Modified principles (3.0.0):
+  - VI. 공정 범위 권한 — 수동 보류 · 보류 해제 · 종료 모두 없음, 기존 보류 사건도 보고서 확정으로만 종료
+- Templates requiring updates (3.0.0):
+  - ✅ .specify/templates/*.md · .claude/skills/speckit-*/SKILL.md — 원칙 VI 문구를 직접 인용하지 않음
+  - ✅ README.md 101행 · backend/README.md(관리자 「조사 재개」 설명 삭제) — 003 개정 구현과 함께 갱신(2026-10-23)
+  - ✅ 003 spec(US4 · FR-010) · plan(P5 · P15) · tasks(Phase 9) · 코드 반영 완료(2026-10-23)
+
+--- 이전 개정(2.0.0) ---
 - Version change: 1.2.1 → 2.0.0 (MAJOR — 원칙 VI의 상태 전이 규칙 재정의: 「보류 · 종료는 MANAGER만」 →
   「종료는 보고서 확정으로만, MANAGER는 기존 보류 해제만」. 기존 관리자 수동 보류 · 종료 권한을 없애는 비호환 변경)
 - Modified principles:
@@ -211,6 +221,7 @@ Sync Impact Report
 - Follow-up TODOs:
   - ✅ 001 스펙의 「보류로 확정 후 새 판본으로 재분류」 예외 삭제(2026-10-23, 003 구현)
 - History: 1.0.0 → 1.1.0(원칙 VIII) → 1.2.0(원칙 IX · X) → 1.2.1(경로) → 2.0.0(원칙 VI 종료 규칙, 2026-10-23)
+  → 3.0.0(원칙 VI 보류 해제 삭제, 2026-10-23)
 -->
 
 # FAB CONTEXT Constitution
@@ -289,8 +300,8 @@ Sync Impact Report
 - 조회는 `processScopes`, 사건 운영(질문 · 제안 · 승인 · 조치 · 보고서)은 `investigationProcessScopes`로
   서버가 검사한다.
 - **사건 종료는 보고서 확정으로만 일어난다.** 확정은 사건당 한 번이며, 확정과 종료는 같은 처리 단위로 함께
-  저장되거나 함께 취소된다. 관리자를 포함해 누구도 보고서 없이 사건을 보류 · 종료하지 않는다. MANAGER에게는
-  기존에 보류된 사건의 해제(조사 재개)만 남는다.
+  저장되거나 함께 취소된다. 관리자를 포함해 누구도 사건을 수동으로 보류 · 보류 해제 · 종료하지 않는다.
+  기존에 보류된 사건도 남은 일을 정리하고 보고서를 확정해야 종료된다.
 - 종료된 사건에는 조회 · 내려받기 · 확정본 요약 재요청 외의 변경을 허용하지 않는다(서버가 거부한다).
 - 기존 보류 사건과 보고서 없이 종료된 옛 사건의 이력은 소급해 바꾸지 않는다.
 - 다른 공정 담당자 · 설비정비팀은 사건 전체가 아니라 **자신에게 배정된 요청과 그 브리프**로만 협업한다.
@@ -412,5 +423,5 @@ Sync Impact Report
   게이트로 사용하고, 위반은 Complexity Tracking에 정당화를 남겨야 한다.
 - 실행 지침은 `README.md`(전체) · `ai/README.md` · `backend/README.md`를 따른다.
 
-**Version**: 2.0.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-23
+**Version**: 3.0.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-23
 <!-- CONSTITUTION:END -->

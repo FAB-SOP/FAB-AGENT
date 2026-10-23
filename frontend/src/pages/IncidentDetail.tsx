@@ -148,12 +148,6 @@ function submitQuestion(context:DetailContext,question:string,clearQuestion:()=>
   '질문을 접수했습니다.',
  );
 }
-function transitionIncident({id,incident,command}:DetailContext,targetStatus:string){
- if(!confirm(`${labels[targetStatus]} 상태로 전환하시겠습니까?`))return;
- command.exec(()=>write(`/api/incidents/${id}/transitions`,{
-  targetStatus,reason:'관리자가 화면에서 상태 전환 확인',expectedVersion:incident.version,evidenceIds:[],
- }));
-}
 function requestReportDraft({id,incident,command}:DetailContext){
  command.exec(()=>write(`/api/incidents/${id}/report-jobs`,{expectedIncidentVersion:incident.version,baseReportVersion:null}));
 }
@@ -199,7 +193,7 @@ export function IncidentDetail(){
    actions={data.actions.data?.items||[]} actionsError={data.actions.error} onVerify={setVerification}/>}
   {tab==='reports'&&<ReportsTab reports={data.reports.data?.items} disabled={blocked||command.isPending} onRequest={()=>requestReportDraft(context)}/>}
   {tab==='timeline'&&<TimelineTab timeline={incident.timeline||[]}/>}
-  {session?.role==='MANAGER'&&<ManagerBar incident={incident} pending={command.isPending} onTransition={target=>transitionIncident(context,target)}/>}
+  {session?.role==='MANAGER'&&<ManagerBar incident={incident}/>}
   {modal&&<RecordModal type={modal} incident={incident} onClose={()=>setModal('')}/>}
   {verification&&<VerificationModal verification={verification} command={command} onClose={()=>setVerification(null)}/>}
  </>;
@@ -336,14 +330,14 @@ function TimelineTab({timeline}:{timeline:Obj[]}){
   </ol>
  </Panel>;
 }
-/** 사건 종료는 보고서 확정으로만 일어난다 — 관리자에게는 기존에 보류된 사건의 조사 재개만 남는다 */
-function ManagerBar({incident,pending,onTransition}:{incident:Incident;pending:boolean;onTransition:(targetStatus:string)=>void}){
- if(incident.status==='CLOSED')return <div className="manager-bar"><span className="small muted">이 사건은 종료되었습니다. 사건은 보고서 확정으로만 종료됩니다.</span></div>;
- if(incident.status!=='ON_HOLD')return <div className="manager-bar"><span className="small muted">사건은 보고서를 확정하면 종료됩니다.</span></div>;
- return <div className="manager-bar">
-  <span className="small muted">보류된 사건</span>
-  <button className="button secondary" disabled={pending} onClick={()=>onTransition('INVESTIGATING')}>조사 재개</button>
- </div>;
+/** 사건 종료는 보고서 확정으로만 일어난다 — 관리자의 수동 보류 · 보류 해제 · 종료는 없다(헌법 원칙 VI) */
+function ManagerBar({incident}:{incident:Incident}){
+ const message=incident.status==='CLOSED'
+  ?'이 사건은 종료되었습니다. 사건은 보고서 확정으로만 종료됩니다.'
+  :incident.status==='ON_HOLD'
+   ?'이전에 보류된 사건입니다. 남은 일을 정리하고 보고서를 확정하면 종료됩니다.'
+   :'사건은 보고서를 확정하면 종료됩니다.';
+ return <div className="manager-bar"><span className="small muted">{message}</span></div>;
 }
 /** 조치 효과 기록 — 열 때마다 빈 입력으로 시작한다 */
 function VerificationModal({verification,command,onClose}:{verification:Obj;command:Command;onClose:()=>void}){
