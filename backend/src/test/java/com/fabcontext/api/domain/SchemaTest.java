@@ -29,7 +29,7 @@ class SchemaTest extends ApiTestSupport {
 		assertThat(fks).contains("fk_job_incident", "fk_analysis_result_incident", "fk_analysis_result_job",
 			"fk_approval_incident", "fk_approval_job", "fk_check_request_incident", "fk_check_request_approval",
 			"fk_check_reply_incident", "fk_check_reply_request", "fk_incident_action_incident", "fk_report_incident",
-			"fk_metrology_run", "fk_run_feature_run", "fk_route_run_upstream");
+			"fk_metrology_run", "fk_run_feature_run", "fk_route_run_upstream", "fk_processed_agent_event_job");
 	}
 
 	@Test
