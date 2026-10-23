@@ -16,10 +16,6 @@ export function conversationEntries(timeline:Obj[]=[],history:Obj[]=[],activeJob
   if(result.kind==='BASIC'&&!entries.has(result.jobId)){
    entries.set(result.jobId,{jobId:result.jobId,kind:'BASIC',createdAt:result.createdAt});
   }
-  // 결과 검토에서 요청한 추가 분석은 질문 기록이 없으므로 결과로 대화에 넣는다
-  if(result.kind==='DEEP'&&result.jobId&&!entries.has(result.jobId)){
-   entries.set(result.jobId,{jobId:result.jobId,kind:'DEEP',followup:true,question:'선택한 결과를 반영한 추가 분석',createdAt:result.createdAt});
-  }
  }
  if(activeJob?.kind==='BASIC'&&!entries.has(activeJob.jobId)){
   entries.set(activeJob.jobId,{
@@ -30,4 +26,22 @@ export function conversationEntries(timeline:Obj[]=[],history:Obj[]=[],activeJob
   });
  }
  return [...entries.values()].sort((first,second)=>Date.parse(first.createdAt)-Date.parse(second.createdAt));
+}
+/**
+ * 결과 검토에서 요청한 추가 분석은 질문 기록이 없어 결과로 대화 항목을 만든다.
+ * 승인 대기 후 재개(RESUME)로 끝난 결과도 같은 스레드(threadId)끼리 한 항목으로 묶고,
+ * 이미 질문·기본 분석 스레드에 들어 있는 작업·스레드는 건너뛴다.
+ */
+export function followupEntries(results:Obj[],coveredJobIds:Set<string>,coveredThreadIds:Set<string>):Obj[]{
+ const byThread=new Map<string,Obj[]>();
+ for(const result of results){
+  if(!['DEEP','RESUME'].includes(result.kind)||!result.jobId||coveredJobIds.has(result.jobId))continue;
+  const key=result.threadId||result.jobId;
+  if(coveredThreadIds.has(key))continue;
+  byThread.set(key,[...(byThread.get(key)||[]),result]);
+ }
+ return [...byThread.values()].map(group=>{
+  const first=[...group].sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt))[0];
+  return {jobId:first.jobId,kind:'DEEP',followup:true,question:'선택한 결과를 반영한 추가 분석',createdAt:first.createdAt};
+ });
 }

@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {useQuery} from '@tanstack/react-query';
+import {useInfiniteQuery} from '@tanstack/react-query';
 import {api,write} from '../api/client';
 import {type Incident,type Obj,type Page,when} from '../api/types';
 import {Badge,ErrorMessage,Field,Notice} from './ui';
@@ -13,16 +13,25 @@ export function resultUse(result:Obj):{code:string;label:string}{
  return {code:'pending',label:'미반영'};
 }
 const refKey=(ref:Obj)=>ref.type+':'+ref.id;
+/** 진행 중인 분석이 있으면 서버가 409로 막으므로 미리 막고 이유를 보여준다 */
+export function followupBlockReason(activeJob?:Obj|null):string{
+ if(!activeJob)return '';
+ if(['QUEUED','RUNNING'].includes(activeJob.status))return '분석이 진행 중입니다. 끝난 뒤 추가 분석을 요청할 수 있습니다.';
+ if(activeJob.status==='WAITING_APPROVAL')return '승인 대기 중인 제안이 있습니다. 먼저 승인·거절한 뒤 요청할 수 있습니다.';
+ return '';
+}
 /** 내 작업 결과·다른 팀 회신을 모아 보고, 고른 결과로만 추가 분석을 요청한다(자동 재분석 없음) */
-export function ResultReview({incident,canManage}:{incident:Incident;canManage:boolean}){
- const results=useQuery({
+export function ResultReview({incident,canManage,activeJob}:{incident:Incident;canManage:boolean;activeJob?:Obj|null}){
+ const results=useInfiniteQuery({
   queryKey:['investigation-results',incident.incidentId],
-  queryFn:()=>api<Page<Obj>>(`/api/incidents/${incident.incidentId}/investigation-results?size=50`),
+  queryFn:({pageParam})=>api<Page<Obj>>(`/api/incidents/${incident.incidentId}/investigation-results?size=20${pageParam?'&cursor='+encodeURIComponent(pageParam):''}`),
+  initialPageParam:'',
+  getNextPageParam:(last:Page<Obj>)=>last.nextCursor||undefined,
  });
  const [selected,setSelected]=useState<string[]>([]);
  const [question,setQuestion]=useState('');
  const [state,setState]=useState<{busy:boolean;message:string;error:unknown}>({busy:false,message:'',error:null});
- const items=results.data?.items||[];
+ const items=results.data?.pages.flatMap(page=>page.items)||[];
  if(!items.length)return results.error?<ErrorMessage error={results.error}/>:null;
  const unused=items.filter(item=>resultUse(item).code==='pending').length;
  const toggle=(key:string)=>setSelected(keys=>keys.includes(key)?keys.filter(other=>other!==key):[...keys,key]);
@@ -41,13 +50,15 @@ export function ResultReview({incident,canManage}:{incident:Incident;canManage:b
    setState({busy:false,message:'',error});
   }
  };
- const disabled=!canManage||incident.status==='CLOSED'||state.busy;
+ const blockReason=followupBlockReason(activeJob);
+ const selectDisabled=!canManage||incident.status==='CLOSED'||state.busy;
+ const disabled=selectDisabled||!!blockReason;
  return <section className="result-review">
   <h3>결과 검토 <span className="small muted">미반영 {unused}건 · 추가 분석에 반영할 결과를 고르세요</span></h3>
   {items.map(item=>{
    const key=refKey(item.sourceRef);const use=resultUse(item);
    return <label key={key} className={'result-item'+(selected.includes(key)?' selected':'')}>
-    <input type="checkbox" checked={selected.includes(key)} disabled={disabled} onChange={()=>toggle(key)}/>
+    <input type="checkbox" checked={selected.includes(key)} disabled={selectDisabled} onChange={()=>toggle(key)}/>
     <div>
      <div className="result-head">
       <span className="work-route">{sourceLabels[item.sourceRef.type]||item.sourceRef.type}</span>
@@ -58,10 +69,14 @@ export function ResultReview({incident,canManage}:{incident:Incident;canManage:b
     </div>
    </label>;
   })}
+  {results.hasNextPage&&<button type="button" className="text-button" disabled={results.isFetchingNextPage} onClick={()=>results.fetchNextPage()}>
+   {results.isFetchingNextPage?'불러오는 중…':'이전 결과 더 보기'}
+  </button>}
   <Field label="추가로 물어볼 내용 (선택)">
-   <textarea value={question} maxLength={2000} disabled={disabled} placeholder="이 결과를 바탕으로 원인 후보와 다음 확인 사항을 갱신해 주세요."
+   <textarea value={question} maxLength={2000} disabled={selectDisabled} placeholder="이 결과를 바탕으로 원인 후보와 다음 확인 사항을 갱신해 주세요."
     onChange={event=>setQuestion(event.target.value)}/>
   </Field>
+  {blockReason&&<p className="warning-text">{blockReason}</p>}
   {state.message&&<Notice>{state.message}</Notice>}
   {!!state.error&&<ErrorMessage error={state.error}/>}
   <button className="button" disabled={disabled||!selected.length} onClick={submit}>
