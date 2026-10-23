@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 
-from fab.agent.summary.guard import MAX_CHARS, validate_summary
+from fab.agent.summary.guard import MAX_CHARS, section_texts, validate_summary
 
 LABELS = {"MATERIAL": "Material(자재)", "MAN": "Man(사람)", "METHOD": "Method(방법)", "MACHINE": "Machine(설비)",
           "HOLD": "보류(원인 미확정)"}
@@ -66,7 +66,7 @@ def _minimal(snapshot: dict) -> list[str]:
 
 
 def rule_summary(snapshot: dict) -> dict:
-    sections = snapshot.get("sections") or {}
+    sections = section_texts(snapshot)
     head, overview, unresolved = _category(snapshot), _first_sentence(sections.get("overview")), \
         _first_sentence(sections.get("unresolved"))
     lines = [_clip_after(head + " —", overview) if overview else _clip(head)] + \

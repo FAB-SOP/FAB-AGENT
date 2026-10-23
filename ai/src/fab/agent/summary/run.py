@@ -9,7 +9,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 from fab.agent.harness.retry import call_with_recovery
-from fab.agent.summary.guard import validate_summary
+from fab.agent.summary.guard import display_id, section_texts, validate_summary
 from fab.agent.summary.rule import rule_summary
 
 PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "summary.md"
@@ -45,7 +45,8 @@ async def make_summary(snapshot: dict, primary, fallback, tracer) -> dict:
     """{lines, evidenceIds, generatedBy: model | rule}"""
     if _is_rule(primary):
         return rule_summary(snapshot)
-    facts = {key: snapshot.get(key) for key in ("displayId", "reportVersion", "sections", "classification", "evidenceIds")}
+    facts = {"displayId": display_id(snapshot), "reportVersion": snapshot.get("reportVersion"), "sections": section_texts(snapshot),
+             "classification": snapshot.get("classification"), "evidenceIds": snapshot.get("evidenceIds")}
     messages = [SystemMessage(content=PROMPT.read_text(encoding="utf-8")),
                 HumanMessage(content="[확정 보고서]\n" + json.dumps(facts, ensure_ascii=False, indent=1))]
     for _ in range(MODEL_TRIES):

@@ -195,7 +195,7 @@ async def _incident_block(turn: _Turn, args: dict, action_type: str) -> str | No
     # 원인 분석이 언제 바뀌었는지는 사건 기록 조회(backend 내부 API)가 붙어야 안다 — 그 전에는 「바뀌지 않음」으로 본다
     return incident_rules.proposal_block(action_type, target, requests, approvals, lambda _at: False,
                                          limits.LIMITS.max_proposals,
-                                         human_requested=state.get("purpose") == purpose.REQUEST)
+                                         human_requested=state.get("purpose") in purpose.HUMAN_REQUESTED)
 
 
 async def _create_proposal(turn: _Turn, args: dict, cid: str, action_type: str, brief: dict) -> dict:
