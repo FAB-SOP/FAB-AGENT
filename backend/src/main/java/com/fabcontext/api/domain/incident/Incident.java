@@ -179,4 +179,13 @@ public class Incident {
 	public boolean isActive() {
 		return status != IncidentStatus.CLOSED;
 	}
+
+	/** 사건 종료의 유일한 경로 — 보고서 확정과 같은 처리 단위에서 부른다 */
+	public void closeByConfirmedReport(Instant at, String actorId, String reportId, int reportVersion) {
+		requireNotClosed();
+		IncidentStatus from = status;
+		status = IncidentStatus.CLOSED;
+		record(at, "STATUS_CHANGED", actorId, from + " → " + IncidentStatus.CLOSED + ": 보고서 v" + reportVersion + " 확정으로 사건 종료",
+			"REPORT", reportId);
+	}
 }

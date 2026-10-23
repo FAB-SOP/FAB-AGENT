@@ -3,6 +3,7 @@ package com.fabcontext.api.domain.work;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import com.fabcontext.api.common.ApiException;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -15,7 +16,7 @@ import org.hibernate.type.SqlTypes;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class WorkItem {
-	public enum Status { PROPOSED, DECLINED, READY, WAITING_MANAGER, APPROVED, REJECTED, REQUESTED, COMPLETED }
+	public enum Status { PROPOSED, DECLINED, READY, WAITING_MANAGER, APPROVED, REJECTED, REQUESTED, COMPLETED, CLOSED_UNPERFORMED }
 	@Id private String taskId;
 	private String incidentId;
 	private String processCode;
@@ -42,6 +43,10 @@ public class WorkItem {
 	@Enumerated(EnumType.STRING) private Status status;
 	private Instant createdAt;
 	private Instant updatedAt;
+	/** 미수행 종결 — 채택했지만 수행하지 않은 업무를 사유와 함께 닫는다 */
+	private String closedBy;
+	private Instant closedAt;
+	@Column(length=500) private String closeReason;
 	@Version private long version;
 
 	public WorkItem(String id, String incidentId, String processCode, String equipmentId, WorkOperation op,
@@ -62,6 +67,11 @@ public class WorkItem {
 	}
 	void decide(boolean approved, String comment, Instant now) { status=approved?Status.APPROVED:Status.REJECTED; decisionComment=comment; updatedAt=now; }
 	void complete(String action, Instant now) { actionId=action; status=Status.COMPLETED; updatedAt=now; }
+	void closeUnperformed(String user, String reason, Instant now) {
+		if(status!=Status.READY&&status!=Status.APPROVED&&status!=Status.REQUESTED)
+			throw ApiException.conflict("WORK_NOT_CLOSABLE","채택했지만 수행하지 않은 업무(READY · APPROVED · REQUESTED)만 미수행으로 닫을 수 있습니다.",Map.of("status",status.name()));
+		closedBy=user; closedAt=now; closeReason=reason.strip(); status=Status.CLOSED_UNPERFORMED; updatedAt=now;
+	}
 	public void rejectFromRequest(String reason, Instant now) { status=Status.REJECTED; decisionComment=reason; updatedAt=now; }
 	public void completeFromReply(String reply, Instant now) { replyId=reply; status=Status.COMPLETED; updatedAt=now; }
 }

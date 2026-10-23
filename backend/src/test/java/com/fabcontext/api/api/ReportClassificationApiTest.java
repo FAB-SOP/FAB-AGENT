@@ -70,17 +70,17 @@ class ReportClassificationApiTest extends ApiTestSupport {
 	}
 
 	@Test
-	void holdIsConfirmedWithoutParametersAndLeavesIncidentStatus() throws Exception {
+	void holdIsConfirmedWithoutParametersAndClosesIncident() throws Exception {
 		Session engineer = cmp();
 		String incidentId = newIncident(engineer, false).incidentId();
-		String status = json(getAs(engineer, "/api/incidents/{id}", incidentId), "$.data.status");
 		String reportId = draft(engineer, incidentId);
 
 		postAs(engineer, "/api/reports/{id}/confirmations", confirmBody(1, "{\"category\":\"HOLD\"}"), reportId)
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.classification.category").value("HOLD"))
 			.andExpect(jsonPath("$.data.classification.equipmentParameters").isEmpty());
-		getAs(engineer, "/api/incidents/{id}", incidentId).andExpect(jsonPath("$.data.status").value(status));
+		// 보류(원인 미확정)로 확정해도 확정 = 종료(003)
+		getAs(engineer, "/api/incidents/{id}", incidentId).andExpect(jsonPath("$.data.status").value("CLOSED"));
 		String markdown = getAs(engineer, "/api/reports/{id}/export", reportId).andReturn().getResponse()
 			.getContentAsString(StandardCharsets.UTF_8);
 		assertThat(markdown).contains("> 원인 분류: 보류 (원인 미확정)");

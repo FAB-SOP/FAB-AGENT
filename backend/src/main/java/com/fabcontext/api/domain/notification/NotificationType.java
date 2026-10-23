@@ -24,7 +24,11 @@ public enum NotificationType {
 	/** 분석 완료 → 작업 요청자 */
 	ANALYSIS_SUCCEEDED("JOB", "요청한 분석이 완료되었습니다"),
 	/** 분석 실패 → 작업 요청자 */
-	ANALYSIS_FAILED("JOB", "요청한 분석이 실패했습니다");
+	ANALYSIS_FAILED("JOB", "요청한 분석이 실패했습니다"),
+	/** 확정본 요약 완료 → 보고서 확정자 */
+	REPORT_SUMMARY_READY("REPORT", "확정한 보고서의 요약이 완료되었습니다"),
+	/** 확정본 요약 실패 → 보고서 확정자 */
+	REPORT_SUMMARY_FAILED("REPORT", "확정한 보고서의 요약이 실패했습니다");
 
 	/** 이동 대상 리소스 타입 */
 	public final String targetType;

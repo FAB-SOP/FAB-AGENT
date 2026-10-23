@@ -163,6 +163,18 @@ public class WorkService {
 		var recorded=actions.record(w.getIncidentId(),user,new ActionDtos.ActionInput(w.getRoute()==WorkOperation.Route.SELF_CHECK?"INSPECTION":"MANUAL_MAINTENANCE",body.description(),body.performedAt(),w.getEvidenceIds(),body.confirmedByUser(),body.expectedIncidentVersion(),new ActionDtos.SourceRef("WORK_ITEM",id,null)));
 		w.complete(recorded.actionId(),Instant.now(clock));return changed(w);
 	}
+	/** 채택했지만 수행하지 않은 업무를 사유와 함께 닫는다 — 담당자 또는 사건 운영 권한자. 연결된 확인 요청은 바꾸지 않는다 */
+	@Transactional
+	public WorkDtos.View closeUnperformed(String id,AuthUser user,WorkDtos.UnperformedClosure body) {
+		WorkItem w=repository.lockById(id).orElseThrow(()->ApiException.notFound("workItem",id));
+		Incident i=user.userId().equals(w.getAssigneeUserId())
+			?entityManager.find(Incident.class,w.getIncidentId())
+			:incidents.loadForWrite(w.getIncidentId(),user);
+		i.requireNotClosed();ApiException.checkVersion("workItem",body.expectedVersion(),w.getVersion());
+		w.closeUnperformed(user.userId(),body.reason(),Instant.now(clock));
+		i.record(Instant.now(clock),"WORK_CLOSED_UNPERFORMED",user.userId(),"업무 미수행 종결: "+w.getTitle()+" — "+body.reason().strip(),"WORK_ITEM",id);
+		return changed(w);
+	}
 	private WorkItem loadWrite(String id,AuthUser user,long version) {
 		WorkItem w=repository.lockById(id).orElseThrow(()->ApiException.notFound("workItem",id));incidents.loadForWrite(w.getIncidentId(),user);
 		ApiException.checkVersion("workItem",version,w.getVersion());return w;

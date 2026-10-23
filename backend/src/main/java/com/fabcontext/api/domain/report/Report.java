@@ -98,6 +98,14 @@ public class Report {
 	@Embedded
 	private ReportCauseClassification classification;
 
+	/** 확정본 — 확정할 때 한 번 저장하고 바꾸지 않는다. Agent 요약이 읽는 칸 이름별 글(내부 확정본 조회) */
+	@JdbcTypeCode(SqlTypes.JSON)
+	private Map<String, Object> confirmedSnapshot;
+
+	/** 확정본의 AI 요약 — 확정 전 · 기능 도입 전 확정본은 null */
+	@Embedded
+	private ReportAiSummary aiSummary;
+
 	@jakarta.persistence.Version
 	private long rowVersion;
 
@@ -150,6 +158,22 @@ public class Report {
 
 	void attachSnapshot(String markdown) {
 		snapshotMarkdown = markdown;
+	}
+
+	void attachConfirmedSnapshot(Map<String, Object> snapshot) {
+		if (confirmedSnapshot != null) {
+			throw new IllegalStateException("확정본은 한 번만 저장한다: " + reportId);
+		}
+		confirmedSnapshot = new LinkedHashMap<>(snapshot);
+	}
+
+	/** 요약을 「대기」로 접수한다 — 확정과 같은 처리 단위에서 한 번 */
+	void startAiSummary(String summaryJobId, Instant at) {
+		aiSummary = ReportAiSummary.pending(summaryJobId, at);
+	}
+
+	public boolean isConfirmed() {
+		return status == ReportStatus.CONFIRMED;
 	}
 
 	void checkRevision(Long expected) {

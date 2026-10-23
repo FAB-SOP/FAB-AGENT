@@ -9,6 +9,7 @@ import java.util.Map;
 import com.fabcontext.api.auth.AuthUser;
 import com.fabcontext.api.common.ApiException;
 import com.fabcontext.api.common.Ids;
+import com.fabcontext.api.common.Ref;
 import com.fabcontext.api.domain.incident.Incident;
 import com.fabcontext.api.domain.incident.IncidentRepository;
 import com.fabcontext.api.domain.incident.IncidentService;
@@ -23,6 +24,8 @@ import com.fabcontext.api.domain.report.ReportDtos.ReportGeneration;
 import com.fabcontext.api.domain.report.ReportDtos.ReportPage;
 import com.fabcontext.api.domain.report.ReportDtos.ReportSummary;
 import com.fabcontext.api.domain.report.ReportDtos.ReportView;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +42,10 @@ public class ReportService {
 	private final ReportComposer composer;
 	private final CauseClassificationPolicy classificationPolicy;
 	private final IncidentStreamHub streamHub;
+	private final ReportSnapshotFactory snapshotFactory;
+	private final ReportConfirmationGuard confirmationGuard;
+	private final ReportAiSummaryService aiSummaryService;
+	private final EntityManager entityManager;
 	private final Clock clock;
 
 	public record Export(String filename, String markdown) {
@@ -60,6 +67,7 @@ public class ReportService {
 	@Transactional
 	public Accepted generate(String incidentId, AuthUser user, ReportGeneration body) {
 		Incident incident = incidentService.loadForWrite(incidentId, user);
+		incident.requireNotClosed();
 		incident.checkVersion(body.expectedIncidentVersion());
 		if (body.baseReportVersion() != null
 				&& repository.findByIncidentIdAndVersion(incidentId, body.baseReportVersion()).isEmpty()) {
@@ -142,8 +150,9 @@ public class ReportService {
 	@Transactional
 	public ReportView edit(String reportId, AuthUser user, ReportEdit body) {
 		Report report = loadForUser(reportId, user);
-		incidentService.loadForWrite(report.getIncidentId(), user);
+		Incident incident = incidentService.loadForWrite(report.getIncidentId(), user);
 		report.requireDraft();
+		incident.requireNotClosed();
 		report.checkRevision(body.expectedContentRevision());
 		report.edit(body.title(), body.sections(), user.userId(), Instant.now(clock));
 		return ReportView.from(report);
@@ -152,21 +161,21 @@ public class ReportService {
 	@Transactional
 	public ReportView confirm(String reportId, AuthUser user, ReportConfirm body) {
 		Report report = loadForUser(reportId, user);
-		incidentService.loadForWrite(report.getIncidentId(), user);
+		Incident incident = incidentService.loadForWrite(report.getIncidentId(), user);
 		if (!Boolean.TRUE.equals(body.reviewConfirmed())) {
 			throw ApiException.unprocessable("REVIEW_CONFIRMATION_REQUIRED", "검토를 마쳤음을 reviewConfirmed=true로 확인해야 합니다.");
 		}
-		Incident incident = incidentRepository.findById(report.getIncidentId()).orElseThrow();
-		doConfirm(report, incident, body.expectedContentRevision(), user.userId(), body.classification());
+		doConfirm(report, incident, body.expectedContentRevision(), ConfirmationContext.direct(user.userId()),
+			body.classification());
 		return ReportView.from(report);
 	}
 
 	/** 승인된 CONFIRM_REPORT 제안 실행 — 분류는 승인자가 승인할 때 고른 값(승인 기록에 저장된 값)이다 */
-	public Report confirmFromApproval(Incident incident, Map<String, Object> payload, String approverId,
+	public Report confirmFromApproval(Incident incident, Map<String, Object> payload, ConfirmationContext context,
 			CauseClassificationInput classification) {
 		String reportId = String.valueOf(payload.get("reportId"));
 		Report report = repository.findById(reportId).orElseThrow(() -> ApiException.notFound("report", reportId));
-		doConfirm(report, incident, ((Number) payload.get("expectedContentRevision")).longValue(), approverId,
+		doConfirm(report, incident, ((Number) payload.get("expectedContentRevision")).longValue(), context,
 			classification);
 		return report;
 	}
@@ -193,22 +202,67 @@ public class ReportService {
 		return new Export(incident.getDisplayId() + "-report-v" + report.getVersion() + ".md", markdown);
 	}
 
-	/** 검사 순서: 초안 여부 → 판본 → 원인 분류(기존 실패 응답을 그대로 두려고 분류를 맨 뒤에 검사한다) */
-	private void doConfirm(Report report, Incident incident, Long expectedRevision, String userId,
+	/**
+	 * 확정 · 확정본 · 사건 종료 · 요약 접수를 한 처리 단위로 한다. 사건 행을 잠근 뒤 최신 상태로 다시 읽어, 동시에 온 확정 요청은
+	 * 하나만 통과한다. 검사 순서: 초안 여부 → 판본 → 사건당 확정 1회 · 최신 판본 → 사건 종료 여부 → 남은 일 → 원인 분류
+	 * (기존 실패 응답을 그대로 두려고 새 검사는 판본 다음, 분류는 맨 뒤).
+	 */
+	private void doConfirm(Report report, Incident incident, Long expectedRevision, ConfirmationContext context,
 			CauseClassificationInput classificationInput) {
+		lockForConfirmation(report, incident);
 		report.requireDraft();
 		report.checkRevision(expectedRevision);
+		requireFirstConfirmationOfLatest(report);
+		incident.requireNotClosed();
+		confirmationGuard.requireNone(incident, context);
 		Instant now = Instant.now(clock);
 		ReportCauseClassification classification = classificationPolicy.validate(classificationInput,
-			incident.getProcessCode(), userId, now);
-		report.confirm(userId, now, classification);
-		// 확정 시점 내용을 스냅샷으로 보존한다. 이후 export는 이 스냅샷을 내려준다.
-		report.attachSnapshot(ReportComposer.markdown(report, incident));
-		incident.record(now, "REPORT_CONFIRMED", userId,
-			"보고서 v" + report.getVersion() + " 확정 · 원인 분류: " + ReportComposer.describe(classification), "REPORT",
-			report.getReportId());
+			incident.getProcessCode(), context.actorId(), now);
+		confirmAndFreeze(report, incident, context.actorId(), classification, now);
+		closeIncident(report, incident, context.actorId(), now);
+		aiSummaryService.requestFor(report, incident, context.actorId());
 		streamHub.publish(incident.getIncidentId(), "report.confirmed",
 			Map.of("reportId", report.getReportId(), "version", report.getVersion()));
+		streamHub.publish(incident.getIncidentId(), "incident.updated",
+			Map.of("status", incident.getStatus().name(), "version", incident.getVersion()));
+	}
+
+	/** 같은 사건의 확정 · 작업 등록을 직렬화한다 — 잠근 뒤 보고서 · 사건을 최신 상태로 다시 읽는다 */
+	private void lockForConfirmation(Report report, Incident incident) {
+		entityManager.flush();
+		entityManager.refresh(incident, LockModeType.PESSIMISTIC_WRITE);
+		entityManager.refresh(report);
+	}
+
+	private void requireFirstConfirmationOfLatest(Report report) {
+		repository.findFirstByIncidentIdAndStatus(report.getIncidentId(), ReportStatus.CONFIRMED).ifPresent(confirmed -> {
+			throw ApiException.conflict("REPORT_ALREADY_CONFIRMED", "이 사건은 이미 보고서 v" + confirmed.getVersion()
+					+ "로 확정되었습니다. 확정은 사건당 한 번입니다.",
+				Map.of("reportId", confirmed.getReportId(), "version", confirmed.getVersion()));
+		});
+		Report latest = repository.findFirstByIncidentIdOrderByVersionDesc(report.getIncidentId()).orElseThrow();
+		if (!latest.getReportId().equals(report.getReportId())) {
+			throw ApiException.conflict("NOT_LATEST_DRAFT", "가장 최신 판본(v" + latest.getVersion() + ")만 확정할 수 있습니다.",
+				Map.of("latestReportId", latest.getReportId(), "latestVersion", latest.getVersion()));
+		}
+	}
+
+	private void closeIncident(Report report, Incident incident, String actorId, Instant now) {
+		Ref reportRef = new Ref("REPORT", report.getReportId());
+		confirmationGuard.waitingJobsToFinish(incident)
+			.forEach(job -> jobService.finishWaitingOnIncidentClosed(job, incident, reportRef));
+		incident.closeByConfirmedReport(now, actorId, report.getReportId(), report.getVersion());
+	}
+
+	private void confirmAndFreeze(Report report, Incident incident, String actorId,
+			ReportCauseClassification classification, Instant now) {
+		report.confirm(actorId, now, classification);
+		// 확정 시점 내용을 보존한다 — 내려받기는 Markdown 스냅샷, Agent 요약은 칸 이름별 확정본을 읽는다
+		report.attachSnapshot(ReportComposer.markdown(report, incident));
+		report.attachConfirmedSnapshot(snapshotFactory.create(report, incident));
+		incident.record(now, "REPORT_CONFIRMED", actorId,
+			"보고서 v" + report.getVersion() + " 확정 · 원인 분류: " + ReportComposer.describe(classification), "REPORT",
+			report.getReportId());
 	}
 
 	private Report loadForUser(String reportId, AuthUser user) {

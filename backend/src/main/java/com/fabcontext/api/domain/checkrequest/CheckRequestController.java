@@ -69,6 +69,21 @@ public class CheckRequestController {
 			()->ResponseEntity.ok(ApiResponse.of(service.decide(requestId,user,body))));
 	}
 
+	@Operation(operationId = "withdrawCheckRequest", summary = "회신이 오지 않은 요청 철회",
+		description = "OPEN · ACCEPTED에서만. 사건 운영 권한자(요청을 보낸 공정)가 사유와 함께 철회하면 CANCELLED가 된다. 연결된 업무는 바꾸지 않는다.")
+	@ApiResponses({
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="200", content=@Content(mediaType="application/json", schema=@Schema(implementation=CheckRequestDtos.DecisionEnvelope.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="403", description="PROCESS_FORBIDDEN", content=@Content(mediaType="application/json", schema=@Schema(implementation=ErrorEnvelope.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="409", description="VERSION_CONFLICT / CHECK_REQUEST_NOT_WITHDRAWABLE / INCIDENT_CLOSED", content=@Content(mediaType="application/json", schema=@Schema(implementation=ErrorEnvelope.class)))
+	})
+	@PostMapping("/{requestId}/withdrawals")
+	public ResponseEntity<?> withdraw(@AuthenticationPrincipal AuthUser user, @PathVariable String requestId,
+			@RequestHeader(SecurityConfig.CSRF_HEADER) String csrf, @RequestHeader(IdempotencyService.HEADER) String key,
+			@Valid @RequestBody CheckRequestDtos.WithdrawalInput body) {
+		return idempotency.execute(user.userId(), "withdrawCheckRequest:" + requestId, key, body,
+			() -> ResponseEntity.ok(ApiResponse.of(service.withdraw(requestId, user, body))));
+	}
+
 	@Operation(operationId = "submitReply", summary = "담당자가 확인한 회신 등록", description="ACCEPTED의 지정 수신자만 회신. confirmedByUser=true, 실제 결과 필수. 회신 저장만 하며 자동 재분석하지 않습니다. resumeJobId는 null입니다.")
 	@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="201", content=@Content(mediaType="application/json", schema=@Schema(implementation=CheckRequestDtos.ReplyEnvelope.class)))
 	@PostMapping("/{requestId}/replies")

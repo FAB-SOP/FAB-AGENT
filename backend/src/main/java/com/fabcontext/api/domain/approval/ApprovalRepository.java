@@ -13,4 +13,6 @@ public interface ApprovalRepository extends JpaRepository<Approval, String> {
 	List<Approval> findByProcessCodeInOrderByCreatedAtDesc(Collection<String> processCodes);
 
 	long countByProcessCodeInAndStatus(Collection<String> processCodes, ApprovalStatus status);
+
+	List<Approval> findByIncidentIdAndStatus(String incidentId, ApprovalStatus status);
 }

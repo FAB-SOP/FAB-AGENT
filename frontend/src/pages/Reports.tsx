@@ -16,6 +16,10 @@ import {emptyReportFilter,isValidDetectedRange,type ReportFilter} from '../domai
 import {toSearchParams} from '../domain/reportSearch';
 import {useDebouncedValue} from '../hooks/useDebouncedValue';
 import {canManageInvestigation} from '../domain/permissions';
+import {
+ blockersFrom,canRetrySummary,describeBlocker,isSummaryInProgress,summaryGeneratorLabels,summaryStatusLabels,
+ type ConfirmationBlocker,type ReportAiSummary,
+} from '../domain/reportConfirmation';
 import {useCommand} from './workflowShared';
 /** 제목 검색 · 분류 · 장비 파라미터 · 이상 발생 기간 필터 — 설비 엔지니어와 공정 관리자가 각자 볼 보고서를 고른다 */
 function ReportFilters({process,keyword,filter,onKeywordChange,onKeywordSubmit,onChange}:{
@@ -202,10 +206,51 @@ function ConfirmPanel({review,classification,processCode,incidentSensorIds,dirty
   <button className="button" disabled={!review||!classified||dirty||pending} onClick={onConfirm}>검토한 버전 확정</button>
  </Panel>;
 }
+/** 확정 전 정리 목록 — 서버가 확정을 막은 남은 일과 정리 방법 */
+function ConfirmationBlockers({blockers,incidentId}:{blockers:ConfirmationBlocker[];incidentId:string}){
+ return <Panel title="확정 전 정리 목록">
+  <p className="warning-text">아래 일이 남아 있어 확정할 수 없습니다. 정리한 뒤 다시 확정해 주세요. 시스템이 자동으로 취소 · 완료하지 않습니다.</p>
+  <ul className="blocker-list">
+   {blockers.map(blocker=>{
+    const view=describeBlocker(blocker,incidentId);
+    return <li key={blocker.kind+blocker.id}>
+     <strong>{view.title}</strong> — {view.label}
+     <p>{view.howTo} <Link to={view.path}>바로 가기<ArrowUpRight size={14}/></Link></p>
+    </li>;
+   })}
+  </ul>
+ </Panel>;
+}
+/** 확정본의 AI 요약 — 대기 · 진행 · 완료(1~2줄 · 근거 · 생성 방식) · 실패(다시 요청) */
+function SummaryPanel({summary,canRetry,pending,onRetry}:{
+ summary:ReportAiSummary|null|undefined;
+ canRetry:boolean;
+ pending:boolean;
+ onRetry:()=>void;
+}){
+ if(!summary)return <Panel title="AI 요약"><p>이 확정본에는 요약이 없습니다.</p></Panel>;
+ return <Panel title="AI 요약" extra={<span className="summary-status">{summaryStatusLabels[summary.status]}</span>}>
+  {summary.status==='READY'&&<>
+   {summary.lines.map(line=><p key={line} className="summary-line">{line}</p>)}
+   <p className="muted">생성 방식: {summaryGeneratorLabels[summary.generatedBy||'']||summary.generatedBy}
+    {summary.evidenceIds.length>0&&<> · 근거 {summary.evidenceIds.join(', ')}</>}</p>
+  </>}
+  {isSummaryInProgress(summary)&&<p className="muted">확정본을 요약하고 있습니다. 잠시 후 자동으로 갱신됩니다.</p>}
+  {summary.status==='FAILED'&&<>
+   <p className="warning-text">{summary.error||'요약을 만들지 못했습니다.'}</p>
+   {canRetry&&<button className="button secondary" disabled={pending} onClick={onRetry}>요약 다시 요청</button>}
+  </>}
+ </Panel>;
+}
 export function ReportEditor(){
  const {session}=useAuth();
  const {id=''}=useParams();
- const reportQuery=useQuery({queryKey:['report',id],queryFn:()=>api<Obj>('/api/reports/'+id)});
+ const reportQuery=useQuery({
+  queryKey:['report',id],
+  queryFn:()=>api<Obj>('/api/reports/'+id),
+  // 요약이 대기 · 진행 중이면 짧은 주기로 다시 읽는다
+  refetchInterval:query=>isSummaryInProgress(query.state.data?.summary)?2000:false,
+ });
  const reportIncident=useQuery({
   queryKey:['incident',reportQuery.data?.incidentId],
   queryFn:()=>api<Incident>('/api/incidents/'+reportQuery.data!.incidentId),
@@ -216,8 +261,11 @@ export function ReportEditor(){
  if(reportQuery.isError)return <ErrorMessage error={reportQuery.error}/>;
  if(!reportQuery.data)return <Empty>보고서를 불러오는 중…</Empty>;
  const report=reportQuery.data;
- const editable=canManageInvestigation(session,reportIncident.data?.processCode||'');
+ const canManage=canManageInvestigation(session,reportIncident.data?.processCode||'');
+ const incidentClosed=reportIncident.data?.status==='CLOSED';
+ const editable=canManage&&!incidentClosed;
  const locked=!editable||report.status==='CONFIRMED';
+ const blockers=blockersFrom(command.error);
  const saveDraft=()=>command.exec(()=>saveReportDraft(id,draft.title,draft.sections,report.contentRevision));
  const confirmReport=()=>{
   if(!confirm('이 버전의 보고서를 확정하시겠습니까?'))return;
@@ -225,8 +273,9 @@ export function ReportEditor(){
    expectedContentRevision:report.contentRevision,
    reviewConfirmed:true,
    classification:toClassificationRequest(draft.classification),
-  }));
+  }),undefined,'보고서를 확정하고 사건을 종료했습니다. 확정본 요약을 시작합니다.');
  };
+ const retrySummary=()=>command.exec(()=>write(`/api/reports/${id}/summary-jobs`,{}),undefined,'요약을 다시 요청했습니다.');
  return <>
   <Link className="back-link" to={'/incidents/'+report.incidentId}><ChevronLeft size={17}/>사건으로 돌아가기</Link>
   <PageHeading
@@ -236,6 +285,8 @@ export function ReportEditor(){
    extra={<Badge value={report.status}/>}
   />
   {command.message&&<Notice tone={command.isError?'error':'info'}>{command.message}</Notice>}
+  {blockers.length>0&&<ConfirmationBlockers blockers={blockers} incidentId={report.incidentId}/>}
+  {incidentClosed&&report.status==='DRAFT'&&<Notice tone="info">종료된 사건의 초안은 수정 · 확정할 수 없습니다. 사건은 보고서 확정으로 종료되었습니다.</Notice>}
   <ReportForm title={draft.title} sections={draft.sections} locked={locked} onTitleChange={draft.editTitle} onSectionChange={draft.editSection} actions={<>
    <button className="button secondary" onClick={()=>downloadReport(id).catch(error=>alert(error.message))}><Download size={18}/>Markdown 다운로드</button>
    {report.status==='DRAFT'&&editable&&<button className="button" disabled={command.isPending||!draft.dirty} onClick={saveDraft}>수정 내용 저장</button>}
@@ -243,6 +294,12 @@ export function ReportEditor(){
   {report.status==='CONFIRMED'&&<Panel title="원인 분류">
    <p>{describeClassification(report.classification)}</p>
   </Panel>}
+  {report.status==='CONFIRMED'&&<SummaryPanel
+   summary={report.summary}
+   canRetry={canRetrySummary(report.summary,canManage)}
+   pending={command.isPending}
+   onRetry={retrySummary}
+  />}
   {report.status==='DRAFT'&&editable&&<ConfirmPanel
    review={draft.review}
    classification={draft.classification}
