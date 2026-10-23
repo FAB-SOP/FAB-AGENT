@@ -314,16 +314,13 @@ function TimelineTab({timeline}:{timeline:Obj[]}){
   </ol>
  </Panel>;
 }
+/** 사건 종료는 보고서 확정으로만 일어난다 — 관리자에게는 기존에 보류된 사건의 조사 재개만 남는다 */
 function ManagerBar({incident,pending,onTransition}:{incident:Incident;pending:boolean;onTransition:(targetStatus:string)=>void}){
- const targets=incident.status==='ON_HOLD'?['INVESTIGATING','CLOSED']:['ON_HOLD','CLOSED'];
+ if(incident.status==='CLOSED')return <div className="manager-bar"><span className="small muted">이 사건은 종료되었습니다. 사건은 보고서 확정으로만 종료됩니다.</span></div>;
+ if(incident.status!=='ON_HOLD')return <div className="manager-bar"><span className="small muted">사건은 보고서를 확정하면 종료됩니다.</span></div>;
  return <div className="manager-bar">
-  <span className="small muted">관리자 상태 전환</span>
-  {targets.map(targetStatus=><button
-   key={targetStatus}
-   className="button secondary"
-   disabled={pending||incident.status==='CLOSED'}
-   onClick={()=>onTransition(targetStatus)}
-  >{labels[targetStatus]}</button>)}
+  <span className="small muted">보류된 사건</span>
+  <button className="button secondary" disabled={pending} onClick={()=>onTransition('INVESTIGATING')}>조사 재개</button>
  </div>;
 }
 /** 조치 효과 기록 — 열 때마다 빈 입력으로 시작한다 */
