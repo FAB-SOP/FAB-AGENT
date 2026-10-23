@@ -552,3 +552,284 @@ python3 ops/tools/java_pkgdeps.py                         # 「순환: 없음」
 
 - 새 확정 보고서 100%가 분류를 가진다(SC-001), 파라미터 선택지가 센서 시계열 목록과 일치(SC-003), 기존 검증 전부 통과(SC-005).
 <!-- ARTIFACT:001-report-4m-classification:quickstart.md END -->
+
+<!-- ARTIFACT:002-report-title-search:plan.md BEGIN -->
+# Implementation Plan: 조사 보고서 제목 검색 · 서버 목록 조회
+
+**Branch**: `002-report-title-search` | **Date**: 2026-10-22 | **Spec**: `.claude/skills/speckit-specify/SKILL.md#002-report-title-search:spec.md`
+
+**Input**: Feature specification block `002-report-title-search:spec.md` in `.claude/skills/speckit-specify/SKILL.md`
+
+## Summary
+
+조사 보고서 목록을 **서버 조회 한 번**으로 바꾼다. 새 `GET /api/reports`가 공정 · 제목 검색어 · 원인 분류 · 장비
+파라미터 · 이상 발생 기간을 받아 **보고서와 사건을 조인한 SQL 한 번**으로 조회하고, `Pageable`(page · size)로
+20건씩 나눠 `Slice`(다음 페이지 여부만) 모양으로 돌려준다. 화면은 사건마다 보고서를 부르던 N+1 호출(사건 수 + 1번,
+사건 100건 한계)을 없애고 검색칸 + 「더 보기」로 바뀐다.
+
+제목 부분 일치(`ILIKE '%검색어%'`)는 앞에 `%`가 붙어 B-tree 인덱스를 못 쓰므로 **`pg_trgm` GIN 인덱스**를,
+목록 정렬(이상 감지일 최신순)에는 **정렬용 인덱스**를 둔다. 인덱스는 임시 DB에 보고서 10만 건을 넣고
+`EXPLAIN (ANALYZE, BUFFERS)`로 전후를 측정해 효과가 확인된 것만 `schema.sql`에 넣는다.
+
+## Technical Context
+
+**Language/Version**: Java 21 · Spring Boot 4.1 (`backend`), TypeScript · React 18 (`frontend`)
+**Primary Dependencies**: Spring Web · Data JPA(Hibernate) — `Pageable` · `Slice`, TanStack Query v5(`useInfiniteQuery`) — 새 의존성 없음
+**Storage**: PostgreSQL 16(pgvector 이미지, `pg_trgm` 포함) `backend` 스키마 — 새 열 없음. 확장 1개 · 인덱스 추가(`schema.sql`)
+**Testing**: `./gradlew test`(Testcontainers MockMvc), `npm test`(vitest), 스모크, `ops/tools/openapi_diff.py`, 측정 스크립트(임시 DB)
+**Target Platform**: 로컬 compose · 최신 브라우저
+**Project Type**: web-service + web-app. **`ai/` 변경 없음**
+**Performance Goals**: 보고서 10만 건에서 세 글자 이상 검색 · 첫 페이지 조회가 DB 기준 100ms 이내, 개선 전 대비 10배 이상(spec SC-002 · SC-006). 목록 진입 시 서버 요청 1번
+**Constraints**: 헌법 IV(공개 계약 추가 기록) · VI(공정 범위) · VII(결정적 검증) · X(기존 동작 보존 · 수정 전 동의). 기존 `/api/incidents/{id}/reports`(사건 화면이 씀)는 그대로 둔다
+**Scale/Scope**: 측정 기준 보고서 10만 · 사건 2만. 실제 시드는 수십 건
+
+## Constitution Check
+
+*GATE: Phase 0 전 통과 · Phase 1 설계 뒤 재확인*
+
+| 원칙 | 판정 | 근거 |
+|------|------|------|
+| I · II · III · V | ✅ | 승인 · Agent 판단 · 수치 계산 · 정답과 무관한 조회 기능 |
+| IV. 계약 우선 | ✅ | 공개 조회 `GET /api/reports`(`searchReports`) 추가 → `data/backend-handoff-v2/combined.openapi.json` 반영, `openapi_diff` 차이 0건. **공개 계약 변경 확인됨(2026-10-22, 사용자)**. `ai/` 미수정 결정에 따라 변경 기록은 `contracts/public-api.md` 초안으로 넘긴다(001과 같음) |
+| VI. 공정 범위 권한 | ✅ | `processCode` 필수 + `AccessPolicy.requireScope`. 권한 밖 공정 403. 결과는 그 공정 보고서만 |
+| VII. 결정적 검증 | ✅ | API 키 없이 API 테스트 · vitest. 측정은 임시 컨테이너 + 고정 시드(`setseed`)로 재현 가능 |
+| VIII · IX. 읽기 쉬운 코드 · 객체지향 | ✅ | 조회 조건 값 객체(`ReportSearchCondition`), SQL 조립(`ReportSearchQuery`), 서비스, 컨트롤러를 **새 클래스로 분리**(단일 책임). 기존 `ReportController` · `ReportService`는 고치지 않고 확장 |
+| X. 기존 동작 보존 · 수정 전 확인 | ✅ | 아래 「기존 코드 수정 목록」 S1–S3에 **사용자 동의(2026-10-22)**. 목록 밖 기존 코드를 고쳐야 하면 다시 확인받는다 |
+
+### 기존 코드 수정 목록 (원칙 X — 2026-10-22 사용자 동의)
+
+| # | 파일 | 바꾸는 것 | 왜 추가만으로 안 되는가 | 기존 동작 영향 · 확인 |
+|---|------|-----------|------------------------|----------------------|
+| S1 | `backend/src/main/resources/schema.sql` | 끝에 `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public`과 인덱스 `CREATE INDEX IF NOT EXISTS …` 추가(측정으로 확정한 것만) | 표를 만든 뒤 매번 도는 스키마 보조 스크립트가 이것뿐이다(헌법 관례: 여러 번 돌려도 같은 결과). JPA `@Index`로는 GIN · 연산자 클래스를 표현할 수 없다 | 기존 외래 키 블록은 그대로. 재시작 시 `IF NOT EXISTS`로 중복 없음. 전체 테스트 · 스모크 |
+| S2 | `frontend/src/pages/Reports.tsx` | `ReportList`의 데이터 출처를 사건별 호출 → `GET /api/reports` 무한 조회로, 필터 영역에 검색칸 추가, 「더 보기」 | 목록 화면이 여기뿐 | 보고서 상세 · 확정 화면(같은 파일의 `ReportEditor`)은 그대로. vitest · 수동 확인 |
+| S3 | `data/backend-handoff-v2/combined.openapi.json` | `GET /api/reports` 경로 · 응답 스키마 추가 | 원칙 IV | `openapi_diff` |
+
+- 기존 목록 필터 함수(`frontend/src/domain/reportFilters.ts`)는 **지우지 않는다** — 테스트와 함께 남아 서버 조건의
+  의미(분류 없음 · 한국 시간 · 종료일 포함)를 대조하는 기준이 된다. 목록은 더 이상 이 함수로 거르지 않는다.
+- 기존 API `GET /api/incidents/{id}/reports` · `ReportController` · `ReportService` · `ReportRepository`는 고치지 않는다.
+
+**게이트 결과**: 위반 없음. X 동의 · IV 계약 확인 완료(2026-10-22).
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+.claude/skills/
+├── speckit-specify/SKILL.md   # 002 spec.md · checklists/requirements.md
+├── speckit-plan/SKILL.md      # 002 plan.md(이 문서) · research.md · data-model.md · quickstart.md · contracts/public-api.md
+└── speckit-tasks/SKILL.md     # 002 tasks.md
+```
+
+### Source Code (repository root)
+
+```text
+backend/src/main/java/com/fabcontext/api/domain/report/
+├── ReportSearchCondition.java    # 새: 조회 조건 값 객체(검색어 정규화 · 기간 → 한국 시간 경계 · 검증)
+├── ReportSearchQuery.java        # 새: 조건에 있는 것만 WHERE에 넣는 네이티브 SQL 조립 · 실행(보고서 JOIN 사건 1번)
+├── ReportSearchService.java      # 새: 권한 검사 → 조회 → Slice 응답
+├── ReportSearchController.java   # 새: GET /api/reports (Pageable)
+└── ReportSearchDtos.java         # 새: ReportListItem · ReportSlice
+backend/src/main/resources/schema.sql   # 수정 S1
+
+backend/src/test/java/com/fabcontext/api/
+├── api/ReportSearchApiTest.java              # 새: 검색 · 필터 · 페이지 · 권한 · 기호 · 인덱스 존재
+└── domain/report/ReportSearchConditionTest.java  # 새: 정규화 · 기간 경계 · 검증
+
+frontend/src/
+├── api/reports.ts                # 새: searchReports(params, page)
+├── domain/reportSearch.ts        # 새: 필터 상태 → 요청 파라미터 변환(빈 값 제외)
+├── hooks/useDebouncedValue.ts    # 새: 입력 0.3초 멈춤
+└── pages/Reports.tsx             # 수정 S2
+frontend/tests/report-search.test.ts   # 새
+
+ops/tools/report_search_explain.sh   # 새: 임시 DB에 10만 건 생성 → 인덱스 전후 EXPLAIN ANALYZE 표 출력
+```
+
+**새 측정 도구**: `ops/tools/report_search_explain.sh` 위치 사용자 확인(2026-10-22).
+
+**Structure Decision**: 보고서 목록 조회는 보고서 기능의 일부라 `domain/report`에 두되, 기존 클래스를 고치지 않도록
+검색 전용 클래스(컨트롤러 · 서비스 · 쿼리 · 조건 · DTO)를 나눠 새로 만든다. 측정 스크립트는 기존 점검 도구 위치
+`ops/tools/`에 둔다. 측정 데이터는 임시 컨테이너에만 생기고 저장소에 남지 않는다(spec FR-012).
+
+## Complexity Tracking
+
+| 추가 개념 | 필요한 이유 | 더 단순한 대안을 버린 이유 |
+|-----------|-------------|--------------------------|
+| 조건별로 WHERE를 조립하는 네이티브 SQL(`ReportSearchQuery`) | 제목 `ILIKE … ESCAPE` · jsonb 포함(`@>`)은 JPQL로 표현하기 어렵고, 빈 조건을 `(:q IS NULL OR …)`로 한 문장에 넣으면 PostgreSQL 일반 계획(prepared statement)에서 인덱스를 못 쓸 수 있다 | Spring Data 메서드 이름 쿼리 · 단일 `@Query` — 위 이유로 인덱스 효과를 보장할 수 없다. Criteria API — jsonb · ESCAPE를 함수 호출로 우회해야 해 읽기 어렵다 |
+| 변경 기록을 `ai/docs/contract-changes.md`에 쓰지 않음 | `ai/` 미수정(사용자 결정, 001과 같음) | 초안으로 남겨 계약 주인이 반영 |
+<!-- ARTIFACT:002-report-title-search:plan.md END -->
+
+<!-- ARTIFACT:002-report-title-search:research.md BEGIN -->
+# Research: 조사 보고서 제목 검색 · 서버 목록 조회
+
+## R1. 조회 방식 — 한 번의 조인 쿼리 (N+1 제거)
+
+- **Decision**: `report r JOIN incident i ON i.incident_id = r.incident_id`를 한 문장으로 조회하고, 필요한 칸만 뽑아
+  DTO로 만든다(fetch join과 같은 효과 — 보고서마다 사건을 따로 읽지 않음).
+- **Rationale**: 기간 필터 · 정렬 · 목록 표시에 사건의 `detected_at`이 필요하다. 지금 화면은 사건 수 + 1번 HTTP를
+  보내고, 서버에서 엔티티 연관(`Report.incidentRef`, LAZY)을 반복문에서 꺼내면 DB N+1이 생긴다. 조인 한 번이면 둘 다 없다.
+  보고서 → 사건은 다대일이라 페이징과 조인이 충돌하지 않는다.
+- **Alternatives**: `default_batch_fetch_size` — 쿼리 2번으로 줄지만 기간 조건이 사건 테이블에 있어 어차피 조인이 필요하고,
+  전역 설정이라 다른 기능 쿼리에도 영향. JPQL `join fetch` — 아래 R3의 ILIKE ESCAPE · jsonb 조건을 표현하기 어렵다.
+
+## R2. 페이지 — `Pageable` + `Slice` (전체 건수 없음)
+
+- **Decision**: 컨트롤러가 `Pageable`(page 0부터 · size 기본 20 · 최대 100)을 받고, SQL은 `LIMIT size+1 OFFSET page*size`로
+  한 건을 더 읽어 다음 페이지 여부를 판단한다. 응답 `ReportSlice{items, page, size, hasNext}`.
+  정렬은 클라이언트가 바꾸지 못하고 `i.detected_at DESC, r.report_id ASC`로 고정(spec FR-007a).
+- **Rationale**: 사용자 결정(A). COUNT 쿼리가 없어 대량에서 빠르다. Spring Data의 `PageImpl`/`SliceImpl`을 그대로
+  JSON으로 내보내면 모양이 불안정하다는 경고가 있어 응답은 전용 record로 만든다.
+- **Alternatives**: 기존 커서 형식(`{items, nextCursor}`) — 사용자 결정으로 미채택. 키셋 커서 — 깊은 페이지가 빠르지만
+  「더 보기」 용도에는 과하고 구현이 복잡. 깊은 offset(수천 페이지)은 느려질 수 있음을 측정 기록에 남긴다.
+
+## R3. 조건 조립 — 있는 조건만 WHERE에 넣는 네이티브 SQL
+
+- **Decision**: `ReportSearchQuery`가 조건 객체를 보고 해당 절만 붙인다(값은 모두 바인딩 파라미터 — SQL 주입 없음).
+  - 공정: `r.process_code = :processCode` (필수)
+  - 검색어: `r.title ILIKE :titlePattern ESCAPE '\'` — 패턴은 `%` + (`\` · `%` · `_` 이스케이프한 검색어) + `%`
+  - 분류: `r.cause_category = :category`, 분류 없음은 `r.cause_category IS NULL`
+  - 장비 파라미터: `r.cause_equipment_parameters @> jsonb_build_array(cast(:parameter as text))`(기존 저장소 관례와 같은 식)
+  - 기간: `i.detected_at >= :fromInstant`, `i.detected_at < :toExclusive`(종료일 다음 날 00:00 KST)
+  - 테이블 이름은 기존 네이티브 쿼리 관례대로 `{h-schema}report` · `{h-schema}incident`
+- **Rationale**: 빈 조건을 `(:q IS NULL OR …)`로 섞으면 PostgreSQL이 일반 계획을 쓸 때 인덱스를 못 탈 수 있다. 실제로
+  붙는 조건만 넣어야 EXPLAIN으로 측정한 계획이 운영에서도 같다.
+
+## R4. 제목 부분 일치 인덱스 — `pg_trgm` GIN
+
+- **Decision**: `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;`
+  `CREATE INDEX IF NOT EXISTS idx_report_title_trgm ON report USING gin (title public.gin_trgm_ops);`
+- **Rationale**: `LIKE '%…%'`은 B-tree를 못 쓴다. trigram GIN은 `LIKE` · `ILIKE`의 중간 일치를 지원한다. 연결 기본 스키마가
+  `backend`(테스트는 `backend_slow`도)라 확장을 `public`에 두고 연산자 클래스를 `public.gin_trgm_ops`로 지정해 어느 스키마의
+  표에서도 같은 문장이 통한다. 이미지(pgvector/pg16)에 contrib가 포함되어 있다.
+- **한계**: 세 글자 미만 검색어는 trigram을 만들 수 없어 인덱스 효과가 거의 없다(결과는 정확) — spec이 속도 목표를 세 글자 이상에만 둔 이유.
+- **Alternatives**: `lower(title)` 식 인덱스 + `lower(...) LIKE` — ILIKE와 효과가 같고 식을 맞춰야 해 실수 여지가 크다.
+  전문 검색(tsvector) — 부분 일치(「PM3」 같은 조각)에 맞지 않는다.
+
+## R5. 정렬 · 공정 필터 인덱스 — 측정으로 확정
+
+- **후보**: (a) `incident (process_code, detected_at DESC, incident_id)` — 검색어 없는 첫 페이지(최신순 20건)에서 정렬 없이
+  앞에서부터 읽기, (b) 기존 `report(incident_id)` 인덱스(엔티티 `@Index`)로 조인.
+- **Decision**: (a)를 1순위 후보로 측정한다. 측정 결과 개선이 없으면 넣지 않는다 — **효과가 확인된 인덱스만** `schema.sql`에 둔다.
+- **Rationale**: 인덱스는 쓰기 비용 · 공간이 든다. spec FR-010은 측정 근거로 개선 조치를 고르라고 한다.
+
+## R6. 측정 방법 — 임시 DB · 10만 건 · 전후 비교
+
+- **Decision**: `ops/tools/report_search_explain.sh <DB_URL>` — 임시 컨테이너(빈 DB)에 백엔드가 만든 스키마를 띄운 뒤
+  `generate_series` + `setseed(0.42)`로 사건 2만 · 보고서 10만(공정 3 · 분류 · 파라미터 · 날짜 분포)을 넣고,
+  대표 쿼리 4개(① 검색어 없는 첫 페이지 ② 「PM3」 검색 ③ 검색 + Machine + 기간 ④ 결과 0건 검색)를
+  `EXPLAIN (ANALYZE, BUFFERS)`로 **인덱스 없음 → 인덱스 생성 → `ANALYZE` → 다시 측정**. 실행 계획 노드 · 실행 시간을
+  표로 출력하고 구현 메모에 기록.
+- **Rationale**: 시드 데이터(수십 건)로는 플래너가 전체 탐색을 고른다. 고정 시드로 누구나 같은 결과를 재현한다(원칙 VII).
+  데이터는 컨테이너와 함께 사라져 시드 · 운영 데이터와 저장소에 남지 않는다(spec FR-012).
+
+## R7. 화면 — 무한 조회 · 디바운스
+
+- **Decision**: `useInfiniteQuery(['reports', 조건])`, `getNextPageParam = hasNext ? page+1 : undefined`, 「더 보기」로
+  `fetchNextPage`. 검색칸은 0.3초 디바운스 + Enter 즉시. 조건이 바뀌면 쿼리 키가 바뀌어 첫 페이지부터 다시 받는다.
+  검색 실패 시 이전 데이터 유지(`placeholderData: keepPreviousData`) + 안내.
+- **Rationale**: spec FR-006 · 엣지 케이스. TanStack Query v5에 이미 있는 기능이라 새 의존성이 없다.
+<!-- ARTIFACT:002-report-title-search:research.md END -->
+
+<!-- ARTIFACT:002-report-title-search:data-model.md BEGIN -->
+# Data Model: 조사 보고서 제목 검색 · 서버 목록 조회
+
+새 테이블 · 열은 없다. 조회용 값 객체 · 응답 DTO와 인덱스만 추가한다.
+
+## ReportSearchCondition (값 객체, 새)
+
+| 필드 | 타입 | 규칙 |
+|------|------|------|
+| `processCode` | String | 필수, `CVD` · `ETCH` · `CMP`, 사용자 `processScopes` 안 |
+| `titleKeyword` | String? | 앞뒤 공백 제거, 비면 null, 최대 100자(초과 422 `INVALID_KEYWORD`). SQL 패턴 만들 때 `\` · `%` · `_` 이스케이프 |
+| `category` | `ReportCauseCategory`? 또는 `UNCLASSIFIED` | 알 수 없는 값 422 `INVALID_CAUSE_CATEGORY` |
+| `equipmentParameter` | String? | `category = MACHINE`일 때만 의미, 그 외엔 무시 |
+| `detectedFrom` · `detectedTo` | LocalDate? | 한국 시간 날짜. 시작 > 종료면 422 `INVALID_DETECTED_RANGE`. SQL에는 `[from 00:00 KST, to+1 00:00 KST)` Instant 경계로 |
+| `page` · `size` | int | page ≥ 0, size 1–100(기본 20). 범위 밖 400 `INVALID_PAGE_SIZE`(기존 코드와 같은 이름) |
+
+## ReportListItem (응답 행, 새)
+
+`reportId` · `incidentId` · `incidentDisplayId` · `processCode` · `version` · `status` · `title` · `contentRevision` ·
+`createdAt` · `confirmedAt` · `detectedAt` · `classification`(001의 `ClassificationView`, 없으면 null)
+
+## ReportSlice (응답, 새)
+
+`items: ReportListItem[]` · `page` · `size` · `hasNext`
+
+## 인덱스 (schema.sql, 측정으로 확정)
+
+| 이름 | 대상 | 목적 |
+|------|------|------|
+| `idx_report_title_trgm` | `report USING gin (title public.gin_trgm_ops)` | 제목 중간 일치(ILIKE) |
+| `idx_incident_process_detected` (후보) | `incident (process_code, detected_at DESC, incident_id)` | 검색어 없는 목록의 최신순 첫 페이지 — 측정에서 효과가 있을 때만 |
+<!-- ARTIFACT:002-report-title-search:data-model.md END -->
+
+<!-- ARTIFACT:002-report-title-search:contracts/public-api.md BEGIN -->
+# Contract: 공개 API 추가 (프론트 계약 `data/backend-handoff-v2/combined.openapi.json`)
+
+추가만 한다. 기존 경로 · 스키마는 바꾸지 않는다. 팀 계약 · Agent 변경 없음.
+
+## `GET /api/reports` (operationId `searchReports`)
+
+| 파라미터 | 필수 | 설명 |
+|----------|------|------|
+| `processCode` | ✅ | `CVD` · `ETCH` · `CMP` |
+| `q` | | 제목 부분 일치(대소문자 무시, 최대 100자, `%` `_` 글자 그대로) |
+| `category` | | `MATERIAL` · `MAN` · `METHOD` · `MACHINE` · `HOLD` · `UNCLASSIFIED` |
+| `equipmentParameter` | | 센서 ID — `category=MACHINE`일 때만 적용 |
+| `detectedFrom` · `detectedTo` | | `YYYY-MM-DD`(한국 시간, 종료일 포함, 한쪽만 가능) |
+| `page` · `size` | | page 0부터, size 기본 20 · 최대 100 |
+
+```json
+{ "data": {
+    "items": [ { "reportId": "rpt_…", "incidentId": "inc_…", "incidentDisplayId": "EV-1009", "processCode": "CMP",
+                 "version": 1, "status": "CONFIRMED", "title": "EV-1009 CMP-PM3 … 조사 보고서", "contentRevision": 2,
+                 "createdAt": "…", "confirmedAt": "…", "detectedAt": "…",
+                 "classification": { "category": "MACHINE", "equipmentParameters": ["slurry_flow"], "classifiedBy": "…", "classifiedAt": "…" } } ],
+    "page": 0, "size": 20, "hasNext": true },
+  "meta": { "…": "…" } }
+```
+
+- 정렬 고정: 이상 감지일 최신순 → 보고서 ID. 전체 건수 없음.
+- 오류: 401 · 403(권한 밖 공정) · 422(`INVALID_PROCESS_CODE` · `INVALID_KEYWORD` · `INVALID_CAUSE_CATEGORY` · `INVALID_DETECTED_RANGE`) · 400(`INVALID_PAGE_SIZE`)
+
+## 변경 기록 초안 (계약 주인 전달용)
+
+| # | 위치 | 전 | 제안 | 이유 |
+|---|---|---|---|---|
+| 28 | 공개 API `GET /api/reports` | 없음(화면이 사건마다 `listReports` 호출) | 공정 · 제목 검색 · 분류 · 파라미터 · 기간 조건 + page/size, 응답 `{items, page, size, hasNext}` | 보고서 목록 N+1 · 사건 100건 한계 해소, 제목 검색(`002-report-title-search`) |
+<!-- ARTIFACT:002-report-title-search:contracts/public-api.md END -->
+
+<!-- ARTIFACT:002-report-title-search:quickstart.md BEGIN -->
+# Quickstart: 조사 보고서 제목 검색 · 서버 목록 조회 검증
+
+## 자동 검증
+
+```bash
+cd backend && ./gradlew test        # ReportSearchApiTest · ReportSearchConditionTest + 기존 전부
+cd frontend && npm test && npm run build
+cd ai && uv run pytest -q             # 회귀만
+python3 ops/tools/openapi_diff.py http://localhost:8096   # searchReports 외 새 차이 0건
+```
+
+## 성능 측정 (임시 DB, research R6)
+
+```bash
+docker run -d --rm --name fab-explain-pg -e POSTGRES_DB=fab -e POSTGRES_USER=fab -e POSTGRES_PASSWORD=fab \
+  -p 127.0.0.1:55434:5432 pgvector/pgvector:pg16
+# 백엔드를 이 DB로 한 번 띄워 스키마 생성(DDL_AUTO=create) 후 종료
+ops/tools/report_search_explain.sh 'postgresql://fab:fab@127.0.0.1:55434/fab'
+docker stop fab-explain-pg
+```
+
+기대: 쿼리 ①–④의 인덱스 전 · 후 계획 노드(Seq Scan → Bitmap Index Scan / Index Scan)와 실행 시간 표.
+②③은 10배 이상 · 100ms 이내(SC-002), ①은 100ms 이내(SC-006).
+
+## 수동 시나리오
+
+1. `cmp.park` → 조사 보고서: 네트워크 탭에서 목록 진입 시 `/api/reports` 1번(사건별 호출 없음).
+2. 검색칸에 `PM3` → 0.3초 뒤 제목에 PM3가 든 보고서만. 비우면 전체. `cmp-pm3`(소문자)도 찾음. `%` 입력 시 글자 그대로.
+3. 검색 + 분류 Machine + 기간 → 세 조건 모두 만족. 조건 바꾸면 첫 페이지부터.
+4. 결과가 20건 넘을 때 「더 보기」로 이어 붙음, 끝에서 버튼 사라짐.
+5. 회귀: 보고서 상세 · 확정 · 사건 화면의 보고서 탭 그대로.
+<!-- ARTIFACT:002-report-title-search:quickstart.md END -->

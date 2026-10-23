@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CheckRequestService {
 
+	private final com.fabcontext.api.domain.notification.NotificationEvents notificationEvents;
 	private final CheckRequestRepository requestRepository;
 	private final ReplyRepository replyRepository;
 	private final IncidentRepository incidentRepository;
@@ -82,6 +83,7 @@ public class CheckRequestService {
 			request.getRequestId());
 		streamHub.publish(incident.getIncidentId(), "check-request.created",
 			Map.of("requestId", request.getRequestId(), "ownerUserId", request.getOwnerUserId()));
+		notificationEvents.checkRequestCreated(request);
 		return request;
 	}
 
@@ -136,6 +138,7 @@ public class CheckRequestService {
 		reply = replyRepository.save(reply);
 		String savedReplyId = reply.getReplyId();
 		workItems.findByRequestId(requestId).ifPresent(workItem -> workItem.completeFromReply(savedReplyId, now));
+		notificationEvents.checkRequestReplied(request, reply);
 
 		if (incident.getStatus() == IncidentStatus.WAITING_REPLY
 				&& !hasPending(incident.getIncidentId())) {
@@ -160,6 +163,7 @@ public class CheckRequestService {
 		Instant now=Instant.now(clock);
 		boolean accepted="ACCEPT".equals(input.decision());
 		request.decide(accepted,input.comment(),now);
+		notificationEvents.checkRequestDecided(request,user.userId(),accepted);
 		if (!accepted) workItems.findByRequestId(requestId).ifPresent(w->w.rejectFromRequest(input.comment(),now));
 		if (!accepted && incident.getStatus()==IncidentStatus.WAITING_REPLY && !hasPending(incident.getIncidentId())) incident.setStatus(IncidentStatus.INVESTIGATING);
 		incident.record(now,accepted?"REQUEST_ACCEPTED":"REQUEST_REJECTED",user.userId(),accepted?"확인 요청 수락":"확인 요청 거절: "+input.comment(),"CHECK_REQUEST",requestId);

@@ -54,6 +54,10 @@ class HttpBackend:
     async def get_request(self, request_id):
         return await self._req("GET", f"/internal/check-requests/{request_id}")
 
+    async def get_report_snapshot(self, report_id: str) -> dict:
+        """확정 보고서의 스냅샷(섹션 · 원인 분류 · 근거 · snapshotRef) — SUMMARY 작업이 읽는다. CONFIRMED가 아니면 409"""
+        return await self._req("GET", f"/internal/reports/{report_id}/snapshot")
+
     async def save_report_draft(self, incident_id, sections, evidence_ids):
         return await self._req("POST", f"/internal/incidents/{incident_id}/report-drafts",
                                json={"sections": sections, "evidenceIds": evidence_ids})

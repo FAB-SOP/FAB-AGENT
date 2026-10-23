@@ -1,6 +1,6 @@
 # 프론트 안내: 업무 요청·결과·수동 추가 분석
 
-기준 main: `945d761`, 구현 브랜치: `feat/manual-followup-analysis`.
+업무 API 원작업 기준: main `945d761`, `feat/manual-followup-analysis`(PR #6 병합 완료). 현재 알림 통합: main `3ae5e24` + `feat/user-notifications`.
 프론트는 아래 계약으로 개발하고, Backend 구현은 이 브랜치에서 검증한다. AI/MCP·보고서·프론트 코드는 수정하지 않는다.
 
 ## 공통 약속
@@ -11,7 +11,7 @@
 - 결과 검토 완료 API/상태는 없다. 조회·알림 읽음은 업무 처리·분석 반영과 별개다.
 - 기존 세션 인증을 사용한다. 변경 POST에는 `X-CSRF-TOKEN`, `Idempotency-Key` 필수.
 - 응답은 기존 `{data, meta}` 형식. 409는 최신 상태·버전을 조회해 다시 판단한다.
-- 이번 범위에 개인 알림 기능은 포함하지 않는다. 사건 SSE를 제공하고 개인 알림 연결은 후속 PR이다.
+- 업무 계약은 PR #6으로 병합되었고, 이 알림 브랜치에서 사용자 알림을 연결했다. 세부 계약은 user-notifications-api.md 참고.
 
 ## 1. 기존 업무 API 유지·검증 보완
 
@@ -128,7 +128,7 @@ citedInResult는 실제 결과 전에는 null. 입력에 전달했다는 이유�
 - 기존 사건 SSE: check-request.created / check-request.decided / check-request.replied,
   work-item.updated, action.recorded, job.status, analysis.result.
 - 관련 이벤트 후 필요한 GET을 재조회한다. 주기적 폴링을 새로 추가하지 않는다.
-- 받은 요청함의 사건 SSE 접근 권한은 확대하지 않는다. 개인 알림 SSE 연결은 후속 기능이다.
+- 받은 요청함의 사건 SSE 접근 권한은 확대하지 않는다. 개인 알림 SSE는 user-notifications-api.md의 별도 권한/연결 계약을 사용한다.
 - 403 NOT_REQUEST_OWNER: 지정 수신자 아님. 기존 공정·조사 운영 권한 검증도 유지.
 - 409 VERSION_CONFLICT / REQUEST_STATE_CONFLICT / REQUEST_NOT_ACCEPTED / INCIDENT_CLOSED.
 - 422 REJECT_REASON_REQUIRED / USER_CONFIRMATION_REQUIRED / INVALID_EVIDENCE / INVALID_SOURCE_REF / DUPLICATE_SOURCE_REF / FOLLOWUP_INPUT_TOO_LARGE.
@@ -139,7 +139,7 @@ citedInResult는 실제 결과 전에는 null. 입력에 전달했다는 이유�
 1. 기존 제안 카드 위치·승인됨/미수행 표시. 제안 미채택은 사유 선택, 받은 요청 거절·상급자 반려는 사유 필수.
 2. 받은 요청 수락·거절 및 ACCEPTED 이후 회신 입력.
 3. 사건 결과 목록·복수 선택·추가 분석 요청·반영 이력 표시.
-4. 이후 개인 알림·C Graph 확장과 연결. 통계·보고서·SUMMARY는 이번 범위 밖.
+4. 개인 알림 연결은 user-notifications-api.md 참고. C Graph 확장은 별도 담당 작업. 통계·보고서·SUMMARY는 이번 범위 밖.
 
 
 ## 7. Swagger와 병렬 연결

@@ -24,6 +24,7 @@ class AgentState(TypedDict, total=False):
     baseline: dict | None  # 사건의 가장 최근 원인 분석 — 결론 변경 검사의 기준(사건 기록 조회가 채운다)
     conclusion: dict | None  # 결론 변경 검사 결과 — changed · fields · reason · newEvidenceIds · adjusted
     question: str
+    selectedInputs: list | None  # 추가 분석에 작업자가 고른 조사 결과(fab.agent.followup) — 진술 근거로 등록한다
     messages: Annotated[list[AnyMessage], add_messages]
     evidence: Annotated[dict, _merge]  # evidenceId -> ref
     dataVersion: str
@@ -34,6 +35,7 @@ class AgentState(TypedDict, total=False):
     previousResult: dict | None  # 승인 · 회신으로 재개하기 전에 접수된 답 — 다시 정리하기 전에 멈추면 이것을 쓴다
     retryProposal: bool  # 요청서가 고칠 수 있는 이유로 반려돼 모델에게 한 번 돌려보낼지
     analysis: dict | None  # 계약 밖 정보(nextStep 등) — 계약 개정 전까지 따로 둔다
+    workSuggestions: list | None  # 답과 함께 내는 업무 후보(fab.agent.work) — RESULT_READY.payload.workSuggestions
     report: dict | None
     stopReason: str | None
     promptVersion: str

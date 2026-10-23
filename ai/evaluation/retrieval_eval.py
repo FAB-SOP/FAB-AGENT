@@ -62,21 +62,31 @@ def run(embedder: str, queries: list[dict]) -> list[dict]:
     return rows
 
 
+def _scores(rows: list[dict]) -> tuple[float, float]:
+    hit_at_3 = sum(1 for row in rows if row["rank"] and row["rank"] <= 3) / len(rows)
+    mrr = sum(1 / row["rank"] for row in rows if row["rank"]) / len(rows)
+    return hit_at_3, mrr
+
+
 def table(results: dict[str, list[dict]]) -> str:
+    """도구별 요약. held-out 질의(heldout=true)는 기본 행에 섞지 않고 따로 센다."""
     out = ["| 도구 | 임베더 | 질의 | Hit@3 | MRR | 바꿔 쓴 질의 Hit@3 |", "|---|---|---|---|---|---|"]
     for tool in CORPUS:
         for emb, rows in results.items():
-            base_rows = [row for row in rows if row["tool"] == tool and not row.get("variant")]
+            tool_rows = [row for row in rows if row["tool"] == tool]
+            base_rows = [row for row in tool_rows if not row.get("variant") and not row.get("heldout")]
             para = [row for row in base_rows if row.get("paraphrase")]
-            hit_at_3 = sum(1 for row in base_rows if row["rank"] and row["rank"] <= 3) / len(base_rows)
-            mrr = sum(1 / row["rank"] for row in base_rows if row["rank"]) / len(base_rows)
+            hit_at_3, mrr = _scores(base_rows)
             paraphrase_hits = f"{sum(1 for row in para if row['rank'] and row['rank'] <= 3)}/{len(para)}" if para else "—"
             out.append(f"| {tool} | {base_rows[0]['model']} | {len(base_rows)} | {hit_at_3:.2f} | {mrr:.3f} | {paraphrase_hits} |")
-            agent_rows = [row for row in rows if row["tool"] == tool and row.get("variant") == "agent"]
+            agent_rows = [row for row in tool_rows if row.get("variant") == "agent"]
             if agent_rows:
-                hit_at_3 = sum(1 for row in agent_rows if row["rank"] and row["rank"] <= 3) / len(agent_rows)
-                mrr = sum(1 / row["rank"] for row in agent_rows if row["rank"]) / len(agent_rows)
+                hit_at_3, mrr = _scores(agent_rows)
                 out.append(f"| └ 영어 병기(agentQuery) | {base_rows[0]['model']} | {len(agent_rows)} | {hit_at_3:.2f} | {mrr:.3f} | — |")
+            heldout_rows = [row for row in tool_rows if row.get("heldout") and not row.get("variant")]
+            if heldout_rows:
+                hit_at_3, mrr = _scores(heldout_rows)
+                out.append(f"| └ held-out | {base_rows[0]['model']} | {len(heldout_rows)} | {hit_at_3:.2f} | {mrr:.3f} | — |")
     return "\n".join(out)
 
 

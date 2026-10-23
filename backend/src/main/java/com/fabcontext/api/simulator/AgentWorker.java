@@ -176,7 +176,6 @@ public class AgentWorker {
 		jobService.fail(job, incident, code, message);
 		incident.record(Instant.now(clock), "ANALYSIS_FAILED", "agent", job.getKind() + " 작업 실패: " + message, "JOB",
 			job.getJobId());
-		log.info("job {} failed: {}", job.getJobId(), message);
 	}
 
 	private boolean shouldFail(Job job, Incident incident) {

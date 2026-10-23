@@ -117,3 +117,20 @@ def test_human_requested_skips_replied_and_rejected_rules():
     rejected = [{"actionType": CHECK, "targetProcessCode": "ETCH", "status": "REJECTED", "decidedAt": None}]
     assert proposal_block(CHECK, "ETCH", [], rejected, _never, 3, human_requested=True) is None
     assert "진행 중" in proposal_block(CHECK, "ETCH", [_req("CROSS_PROCESS", "ETCH", "OPEN")], [], _never, 3, human_requested=True)
+
+
+# ---- 받는 사람의 수락 · 거절(backend 업무 요청 수락 단계) — OPEN → ACCEPTED → REPLIED, 또는 OPEN → REJECTED
+
+def test_accepted_request_is_still_in_progress():
+    """수락은 회신이 아니다 — ACCEPTED도 OPEN처럼 진행 중이라 같은 팀 · 종류 요청을 또 내지 않는다"""
+    reason = proposal_block(CHECK, "ETCH", [_req("CROSS_PROCESS", "ETCH", "ACCEPTED")], [], _never, 3)
+    assert reason and "진행 중" in reason
+
+
+def test_request_rejected_by_owner_blocked_until_cause_changes():
+    """받는 사람이 거절한 요청은 회신이 아니다 — 거절된 승인처럼, 원인 분석이 바뀐 뒤에만 다시 낸다"""
+    requests = [_req("CROSS_PROCESS", "ETCH", "REJECTED") | {"decisionAt": "2026-10-22T11:00:00+09:00"}]
+    reason = proposal_block(CHECK, "ETCH", requests, [], _never, 3)
+    assert reason and "거절" in reason
+    assert proposal_block(CHECK, "ETCH", requests, [], lambda _at: True, 3) is None
+    assert proposal_block(CHECK, "ETCH", requests, [], _never, 3, human_requested=True) is None

@@ -30,7 +30,7 @@ class _EvidenceFetcher:
             evidence, data_version = record_evidence(result)
             self.evidence.update(evidence)
             self.data_version = data_version or self.data_version
-            self.messages.append(ToolMessage(content=context.to_tool_text(result), tool_call_id=call_id, name=name))
+            self.messages.append(ToolMessage(content=context.to_tool_text(result, name), tool_call_id=call_id, name=name))
             return result
         except ToolCallError as e:
             if e.retryable:  # 필수 근거가 일시 장애면 작업 단위 재시도(RETRY_SCHEDULED)로 넘긴다

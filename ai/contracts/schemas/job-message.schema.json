@@ -27,7 +27,8 @@
         "BASIC",
         "DEEP",
         "RESUME",
-        "REPORT"
+        "REPORT",
+        "SUMMARY"
       ]
     },
     "attempt": {
@@ -75,6 +76,42 @@
           "additionalProperties": false
         }
       ]
+    },
+    "input": {
+      "type": "object",
+      "description": "선택. 작업 종류별 입력 — 이 계약에 정의한 필드만 싣는다(DB의 job.input을 통째로 내보내지 않는다, 내부 제어값 · 비밀값 없음). SUMMARY는 summaryRef 필수",
+      "properties": {
+        "summaryRef": {
+          "type": "object",
+          "description": "요약할 확정 보고서 — 서버가 확정 스냅샷에서 만든다(현재 조사 데이터로 대체하지 않는다)",
+          "properties": {
+            "reportId": {
+              "type": "string",
+              "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+            },
+            "reportVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "contentRevision": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "snapshotRef": {
+              "type": "string",
+              "description": "확정 스냅샷 — snapshot://reports/{reportId}/v{version}/r{contentRevision}"
+            }
+          },
+          "required": [
+            "reportId",
+            "reportVersion",
+            "contentRevision",
+            "snapshotRef"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "createdAt": {
       "type": "string",
@@ -147,6 +184,27 @@
         "properties": {
           "resume": {
             "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "SUMMARY"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "input"
+        ],
+        "properties": {
+          "input": {
+            "required": [
+              "summaryRef"
+            ]
           }
         }
       }

@@ -25,6 +25,12 @@
       "type": "integer",
       "minimum": 1
     },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "description": "이 이벤트를 낸 작업 시도 — job-message의 attempt와 같다. backend는 이것으로 이전 시도의 늦은 이벤트(성공 · 실패 모두)를 막는다(metrics.attempt는 선택 칸이라 쓰지 않는다)"
+    },
     "type": {
       "type": "string",
       "enum": [
@@ -35,7 +41,8 @@
         "WAITING_REPLY",
         "RETRY_SCHEDULED",
         "JOB_FAILED",
-        "REPORT_DRAFT_READY"
+        "REPORT_DRAFT_READY",
+        "SUMMARY_READY"
       ]
     },
     "at": {
@@ -53,7 +60,7 @@
     },
     "metrics": {
       "type": "object",
-      "description": "선택. 작업을 끝내거나 멈추는 이벤트(RESULT_READY · REPORT_DRAFT_READY · APPROVAL_REQUIRED · WAITING_REPLY · RETRY_SCHEDULED · JOB_FAILED)에만 싣는 이번 시도의 trace 요약. backend는 job.metrics에 저장한다. 프롬프트 · 응답 원문 · 키는 넣지 않는다.",
+      "description": "선택. 작업을 끝내거나 멈추는 이벤트(RESULT_READY · REPORT_DRAFT_READY · SUMMARY_READY · APPROVAL_REQUIRED · WAITING_REPLY · RETRY_SCHEDULED · JOB_FAILED)에만 싣는 이번 시도의 trace 요약. backend는 job.metrics에 저장한다. 프롬프트 · 응답 원문 · 키는 넣지 않는다.",
       "properties": {
         "traceId": {"type": "string"},
         "attempt": {"type": "integer", "minimum": 1},
@@ -79,6 +86,7 @@
     "jobId",
     "threadId",
     "sequence",
+    "attempt",
     "type",
     "at",
     "traceId",
@@ -371,6 +379,73 @@
             },
             "required": [
               "report"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SUMMARY_READY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "description": "확정 보고서 요약(SUMMARY 작업) — backend가 Job의 input.summaryRef · 지금 확정 스냅샷 · 현재 요약 작업과 대조한 뒤 반영한다",
+            "properties": {
+              "reportId": {
+                "type": "string",
+                "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+              },
+              "snapshotRef": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "minItems": 1,
+                    "maxItems": 2
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "description": "불투명 식별자. 화면에는 EV-1024 같은 표시 ID 사용"
+                    }
+                  },
+                  "generatedBy": {
+                    "type": "string",
+                    "enum": [
+                      "model",
+                      "rule"
+                    ]
+                  }
+                },
+                "required": [
+                  "lines",
+                  "evidenceIds",
+                  "generatedBy"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "reportId",
+              "snapshotRef",
+              "summary"
             ],
             "additionalProperties": false
           }

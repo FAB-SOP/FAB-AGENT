@@ -415,3 +415,153 @@ T033 report-filters.test.ts · T034 reportFilters.ts
 3. **Polish**: 계약 · 전체 검증 · 수동 시나리오 · README(확인 후)
 4. 각 체크포인트마다 `./gradlew test` · `npm test` 통과 상태 유지(원칙 X), 리팩터링 섞지 않기(원칙 VIII)
 <!-- ARTIFACT:001-report-4m-classification:tasks.md END -->
+
+<!-- ARTIFACT:002-report-title-search:tasks.md BEGIN -->
+# Tasks: 조사 보고서 제목 검색 · 서버 목록 조회
+
+**Input**: `002-report-title-search` 블록들 — spec(`.claude/skills/speckit-specify/SKILL.md`), plan · research · data-model ·
+contracts/public-api · quickstart(`.claude/skills/speckit-plan/SKILL.md`)
+
+**Prerequisites**: plan 「기존 코드 수정 목록」 S1(`schema.sql`) · S2(`Reports.tsx`) · S3(`combined.openapi.json`) 사용자 동의 완료(2026-10-22).
+목록 밖 기존 코드는 고치기 전에 다시 확인받는다(원칙 X). 기존 `ReportController` · `ReportService` · `ReportRepository` ·
+`GET /api/incidents/{id}/reports`는 고치지 않는다. `ai/` 폴더는 수정하지 않는다.
+
+**Tests**: 헌법 품질 게이트(권한 · 계약에 닿는 변경은 테스트로 보인다)에 따라 테스트 작업을 포함한다.
+
+**Paths**: `B` = `backend/src/main/java/com/fabcontext/api`, `BT` = `backend/src/test/java/com/fabcontext/api`, `F` = `frontend/src`
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: 다른 파일 · 앞 작업 의존 없음 → 병렬 가능
+- **[Story]**: US1(제목 검색) · US2(검색 + 필터) · US3(대량 데이터 성능)
+
+---
+
+## Phase 1: Setup (기준선)
+
+- [X] T001 기준선 확인 — 변경 전 `cd backend && ./gradlew test`, `cd frontend && npm test && npm run build`를 돌려 결과를 `.claude/skills/speckit-implement/SKILL.md`의 `002-report-title-search:implementation-notes.md` 블록에 기록(001 반영 후 기준: backend 134 · frontend 43)
+
+---
+
+## Phase 2: Foundational (서버 목록 조회 뼈대 — 공정 · 정렬 · 페이지)
+
+**목표**: `GET /api/reports?processCode=&page=&size=`가 보고서 + 사건 조인 SQL 한 번으로 최신순 Slice를 돌려주고, 화면 목록이
+사건별 호출 대신 이 API + 「더 보기」를 쓴다. 검색어 · 필터는 다음 단계에서 붙인다.
+
+**⚠️ 이 단계가 끝나야 US1 · US2 · US3를 시작한다**
+
+- [X] T002 [P] `ReportSearchDtos` 작성 in `B/domain/report/ReportSearchDtos.java` — `ReportListItem`(reportId · incidentId · incidentDisplayId · processCode · version · status · title · contentRevision · createdAt · confirmedAt · detectedAt · classification: 기존 `ReportDtos.ClassificationView`) · `ReportSlice`(items · page · size · hasNext)
+- [X] T003 [P] `ReportSearchCondition` 값 객체 작성 in `B/domain/report/ReportSearchCondition.java` — 이 단계는 `processCode` 검증(CVD · ETCH · CMP 외 422 `INVALID_PROCESS_CODE`) · `page`(≥0) · `size`(1–100, 기본 20, 범위 밖 400 `INVALID_PAGE_SIZE`)만. 정적 팩토리 + 불변 필드(다음 단계 필드는 null 허용으로 자리만 둠)
+- [X] T004 `ReportSearchQuery` @Repository 작성 in `B/domain/report/ReportSearchQuery.java` — `EntityManager` 네이티브 쿼리로 `{h-schema}report r join {h-schema}incident i on i.incident_id = r.incident_id where r.process_code = :processCode order by i.detected_at desc, r.report_id limit :limit offset :offset`(limit = size+1), 행 → `ReportListItem` 매핑(분류 열 `cause_category` · `cause_equipment_parameters` · `classified_by` · `classified_at` 포함), WHERE 절은 조건 목록으로 조립하는 구조로 만들어 다음 단계에서 절만 추가 (T002 · T003 의존)
+- [X] T005 `ReportSearchService` 작성 in `B/domain/report/ReportSearchService.java` — `AccessPolicy.requireScope(user, processCode)` → `ReportSearchQuery` 조회 → size+1번째 행으로 `hasNext` 판단 → `ReportSlice` (`@Transactional(readOnly = true)`) (T004 의존)
+- [X] T006 `ReportSearchController` 작성 in `B/domain/report/ReportSearchController.java` — `GET /api/reports`, `@Operation(operationId = "searchReports")`, `@Tag(name = "reports")`, `@PageableDefault(size = 20) Pageable`(정렬 파라미터는 무시 · 고정 정렬), `ApiResponse.of(slice)` (T005 의존)
+- [X] T007 [P] 조건 단위 테스트 in `BT/domain/report/ReportSearchConditionTest.java` — 공정 검증 · page/size 경계 (T003 의존)
+- [X] T008 목록 API 테스트 작성 in `BT/api/ReportSearchApiTest.java` — 비로그인 401, 권한 밖 공정 403, 잘못된 공정 422, size 101 → 400, 응답 모양(items · page · size · hasNext), 최신순 정렬, size=1로 `hasNext`/다음 페이지가 이어지고 중복 없음, 행의 `detectedAt` · `classification`(시드 MACHINE · slurry_flow 보고서) (T006 의존)
+- [X] T009 [P] 화면 API 클라이언트 작성 in `F/api/reports.ts` — `searchReports(params, page)` → `GET /api/reports`(빈 값 파라미터 제외), 응답 타입 `ReportSlice` · `ReportListItem`
+- [X] T010 **S2** `ReportList`의 데이터 출처를 사건별 `useQueries` → `useInfiniteQuery(['reports', process, …])` + 「더 보기」(`hasNextPage`일 때만, `isFetchingNextPage` 표시)로 교체, 행의 이상 발생일은 `item.detectedAt` 사용, 기존 화면 필터 적용(`filterReports`)은 이 단계에서는 유지해 동작을 지금과 같게 둠 in `F/pages/Reports.tsx` (T009 의존)
+
+**Checkpoint**: 목록 진입 시 `/api/reports` 1번, 「더 보기」로 끝까지 조회(100건 한계 해소). 기존 필터는 그대로 동작
+
+---
+
+## Phase 3: User Story 1 — 제목 일부로 보고서를 찾는다 (P1) 🎯 MVP
+
+**Goal**: 검색칸에 제목 일부를 입력하면 서버가 제목 부분 일치(대소문자 무시, 기호 글자 그대로)로 찾아 준다
+
+**Independent Test**: 「PM3」 입력 → 제목에 PM3가 든 보고서만, 비우면 전체, `cmp-pm3`도 찾고 `%`는 글자 그대로
+
+### Tests for User Story 1
+
+- [X] T011 [P] [US1] 검색어 정규화 테스트 추가 in `BT/domain/report/ReportSearchConditionTest.java` — 앞뒤 공백 제거 · 빈 값 null · 100자 초과 422 `INVALID_KEYWORD` · 패턴 이스케이프(`50%_off\` → `%50\%\_off\\%`)
+- [X] T012 [P] [US1] 검색 API 테스트 추가 in `BT/api/ReportSearchApiTest.java` — 사건 표시번호로 검색 시 그 보고서만, 대소문자 무시, 일치 없음 → 빈 items · `hasNext=false`, `%` · `_` 검색이 와일드카드로 동작하지 않음, 권한 밖 공정 보고서는 검색어가 맞아도 안 나옴
+
+### Implementation for User Story 1
+
+- [X] T013 [US1] `ReportSearchCondition`에 `titleKeyword`(정규화 · 길이 검증)와 `titleLikePattern()`(`\` · `%` · `_` 이스케이프 + 양쪽 `%`) 추가 in `B/domain/report/ReportSearchCondition.java`
+- [X] T014 [US1] 검색어가 있을 때만 `r.title ILIKE :titlePattern ESCAPE '\'` 절 추가 in `B/domain/report/ReportSearchQuery.java`, 컨트롤러에 `q` 파라미터 연결 in `B/domain/report/ReportSearchController.java` (T013 의존)
+- [X] T015 [P] [US1] 디바운스 훅 작성 in `F/hooks/useDebouncedValue.ts` — 값 · 지연(기본 300ms), 즉시 반영 함수(Enter용) 함께 반환
+- [X] T016 [US1] **S2** 필터 줄 맨 앞에 「제목 검색」 입력칸(최대 100자, Enter 즉시 검색) 추가, 디바운스한 검색어를 쿼리 키 · 요청에 반영, 검색어가 있고 결과가 없으면 「검색 결과가 없습니다」, 오류 시 안내 + 이전 결과 유지(`placeholderData: keepPreviousData`) in `F/pages/Reports.tsx` (T010 · T015 의존)
+
+**Checkpoint**: 제목 검색이 서버 조회로 동작
+
+---
+
+## Phase 4: User Story 2 — 검색과 분류 · 기간 필터를 함께 쓴다 (P1)
+
+**Goal**: 원인 분류 · 장비 파라미터 · 이상 발생 기간을 서버 조건으로 옮겨, 검색 결과에 대해서만 필터가 적용되게 한다
+
+**Independent Test**: 「CMP」 + Machine + 10월 기간 → 세 조건 모두 만족하는 보고서만, 조건 바꾸면 첫 페이지부터
+
+### Tests for User Story 2
+
+- [X] T017 [P] [US2] 필터 조건 테스트 추가 in `BT/domain/report/ReportSearchConditionTest.java` — 분류(5종 · `UNCLASSIFIED` · 알 수 없는 값 422), 파라미터는 MACHINE일 때만 유지, 기간 → `[from 00:00 KST, to+1 00:00 KST)` Instant 경계 · 한쪽만 · 시작 > 종료 422 `INVALID_DETECTED_RANGE`
+- [X] T018 [P] [US2] 검색 + 필터 API 테스트 추가 in `BT/api/ReportSearchApiTest.java` — 직접 만든 보고서들을 METHOD · HOLD · MACHINE(파라미터)로 확정한 뒤: 분류만, 분류 + 파라미터, `UNCLASSIFIED`(초안), 검색어 + 분류 교집합, 기간 경계(종료일 포함 · 한국 시간)
+- [X] T019 [P] [US2] 요청 파라미터 변환 테스트 in `frontend/tests/report-search.test.ts` — `ALL` · 빈 값 제외, MACHINE이 아니면 파라미터 제외, 기간이 거꾸로면 기간 제외(화면 안내와 같은 규칙)
+
+### Implementation for User Story 2
+
+- [X] T020 [US2] `ReportSearchCondition`에 `category`(enum 또는 `UNCLASSIFIED`) · `equipmentParameter` · `detectedFrom/To`(LocalDate → Instant 경계) 추가 in `B/domain/report/ReportSearchCondition.java`
+- [X] T021 [US2] 조건이 있을 때만 절 추가 in `B/domain/report/ReportSearchQuery.java` — `r.cause_category = :category` / `r.cause_category is null`, `r.cause_equipment_parameters @> jsonb_build_array(cast(:parameter as text))`, `i.detected_at >= :from`, `i.detected_at < :toExclusive`; 컨트롤러에 `category` · `equipmentParameter` · `detectedFrom` · `detectedTo`(`@DateTimeFormat(iso = DATE)`) 연결 in `B/domain/report/ReportSearchController.java` (T020 의존)
+- [X] T022 [P] [US2] 필터 상태 → 요청 파라미터 변환 함수 작성 in `F/domain/reportSearch.ts` — `toSearchParams(process, keyword, filter)` (기존 `ReportFilter` 타입 재사용)
+- [X] T023 [US2] **S2** 필터 값을 화면 거르기(`filterReports`) 대신 `toSearchParams`로 요청에 넣도록 변경 — 필터 변경 시 쿼리 키가 바뀌어 첫 페이지부터, 기간 역전 안내는 유지, `reportFilters.ts`는 지우지 않음(목록에서 import만 제거) in `F/pages/Reports.tsx` (T016 · T022 의존)
+
+**Checkpoint**: 검색 · 분류 · 파라미터 · 기간이 모두 서버에서 한 번에 적용
+
+---
+
+## Phase 5: User Story 3 — 대량 데이터에서도 검색 · 목록이 빠르다 (P2)
+
+**Goal**: 임시 DB 10만 건으로 인덱스 전후 `EXPLAIN (ANALYZE, BUFFERS)`를 측정하고, 효과가 확인된 인덱스만 `schema.sql`에 넣는다
+
+**Independent Test**: 측정 표에서 ②③ 검색이 Seq Scan → Bitmap Index Scan으로 바뀌고 10배 이상 · 100ms 이내, ① 첫 페이지 100ms 이내
+
+- [X] T024 [P] [US3] 측정 스크립트 작성 in `ops/tools/report_search_explain.sh` — 인자 DB URL, `psql`(없으면 `docker exec`)로: `setseed(0.42)` + `generate_series`로 사건 2만(공정 3 · 감지일 2년 분포) · 보고서 10만(제목에 표시번호 · 설비 · 현상 단어, 분류 · 파라미터 · NULL 섞음) 삽입 → 대표 쿼리 ①–④(research R6)를 인덱스 없이 측정 → 후보 인덱스 생성 · `ANALYZE` → 다시 측정 → 쿼리별 계획 노드 · Execution Time 표 출력. 쿼리 문장은 `ReportSearchQuery`가 만드는 SQL과 같게
+- [X] T025 [US3] 측정 실행 — 임시 컨테이너(`pgvector/pgvector:pg16`, 포트 55434)에 백엔드를 `DDL_AUTO=create`로 한 번 띄워 스키마 생성 후 스크립트 실행, 결과 표 · 판단(채택/미채택 인덱스와 이유, 깊은 offset 관찰)을 implementation-notes 블록에 기록, 컨테이너 정리 (T021 · T024 의존)
+- [X] T026 [US3] **S1** 측정으로 확정한 것만 `DO $$ … END $$` 블록 안(기존 외래 키 뒤)에 추가 in `backend/src/main/resources/schema.sql` — `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;` · `CREATE INDEX IF NOT EXISTS idx_report_title_trgm ON report USING gin (title public.gin_trgm_ops);` · (채택 시) `idx_incident_process_detected` (T025 의존)
+- [X] T027 [US3] 인덱스 존재 테스트 추가 in `BT/api/ReportSearchApiTest.java` — `pg_indexes`에 채택 인덱스가 현재 스키마에 있음, 서버 재시작(스크립트 재실행) 상황을 `schema.sql` 재실행으로 흉내 내도 오류 없음 (T026 의존)
+
+**Checkpoint**: 측정 기록과 인덱스가 반영되고 전체 테스트 통과
+
+---
+
+## Phase 6: Polish & Cross-Cutting
+
+- [X] T028 **S3** 공개 계약에 `GET /api/reports`(파라미터 · `ReportSlice` · `ReportListItem` 스키마) 추가 — 서버 `/v3/api-docs`에서 실제 스키마를 옮겨 일치시킴 in `data/backend-handoff-v2/combined.openapi.json`
+- [X] T029 계약 대조 — 검증 서버(임시 DB · 포트 8096)로 `python3 ops/tools/openapi_diff.py http://localhost:8096` 실행, `searchReports` 관련 새 차이 0건 · 기존 차이 목록 불변 확인, `java_pkgdeps.py`에 새 순환 없음 확인, implementation-notes 기록
+- [X] T030 전체 검증 — `backend ./gradlew test`, `frontend npm test && npm run build`, `ai uv run pytest -q`(회귀), 새로 시드한 서버에 스모크 `backend/scripts/smoke-test.sh` 실패 0건, T001 기준선과 비교 기록
+- [ ] T031 quickstart 수동 시나리오 1–5 확인(네트워크 탭에서 목록 진입 요청 1번 포함) · 결과 기록 — 사용자 화면 확인 필요
+- [ ] T032 [P] 검증 현황 · 운영 메모 갱신 in `backend/README.md` 「## 검증」(테스트 수 · 날짜) + 기존 대량 DB에 처음 적용할 때 `CREATE INDEX CONCURRENTLY` 권장 한 줄 — **기존 문서 수정이라 반영 전 사용자 확인**
+
+---
+
+## Dependencies & Execution Order
+
+- **Setup(T001)** → **Foundational(T002–T010)** → US1(T011–T016) → US2(T017–T023) → US3(T024–T027) → Polish(T028–T032)
+- US1과 US2는 백엔드 조건 · 쿼리 파일을 함께 고치므로 순서대로(US1 → US2). US3 측정(T025)은 최종 쿼리 모양이 정해진 US2 뒤
+- 측정 스크립트 작성(T024)은 Foundational 뒤 언제든 병행 가능
+
+### 같은 파일 순서 (병렬 금지)
+
+- `ReportSearchCondition.java`: T003 → T013 → T020 · `ReportSearchQuery.java`: T004 → T014 → T021 · `ReportSearchController.java`: T006 → T014 → T021
+- `ReportSearchApiTest.java`: T008 → T012 → T018 → T027 · `ReportSearchConditionTest.java`: T007 → T011 → T017 · `Reports.tsx`: T010 → T016 → T023
+
+## Parallel Examples
+
+```text
+# Foundational
+T002 ReportSearchDtos · T003 ReportSearchCondition · T009 api/reports.ts
+
+# US1
+T011 조건 테스트 · T012 API 테스트 · T015 useDebouncedValue
+
+# US2 / US3
+T017 · T018 · T019 · T022  ||  T024 측정 스크립트
+```
+
+## Implementation Strategy
+
+1. **Foundational**만으로도 가치가 있다 — N+1 호출 제거 · 100건 한계 해소(기존 필터 동작 그대로)
+2. **MVP = US1 + US2** (둘 다 P1): 서버 제목 검색 + 서버 필터
+3. **US3**: 측정 → 근거 있는 인덱스만 반영
+4. 각 체크포인트마다 `./gradlew test` · `npm test` 통과 유지(원칙 X), 리팩터링 섞지 않기(원칙 VIII)
+<!-- ARTIFACT:002-report-title-search:tasks.md END -->
