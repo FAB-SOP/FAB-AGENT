@@ -42,6 +42,17 @@ def test_playbook_view_keeps_fields_the_rule_model_and_brief_read(kb):
         assert key in item, key
 
 
+def test_augmented_query_reaches_the_model():
+    """지식 MCP가 한·영 용어를 병기해 검색했으면(data.augmentedQuery) 모델도 어떤 질의로 찾았는지 본다 — 없으면 칸도 없다"""
+    item = {"evidenceId": "E-DOC-D1-P1-C1", "chunkId": "D1-P1-C1", "docId": "D1", "title": "문서", "excerpt": "control limit"}
+    result = {"data": {"query": "관리한계 이탈", "augmentedQuery": "관리한계(control limit) 이탈", "items": [item]},
+              "evidenceRefs": [], "warnings": [], "dataVersion": "KNOWLEDGE-v2"}
+    view = json.loads(to_tool_text(result, "search_technical_documents"))["data"]
+    assert view["query"] == "관리한계 이탈" and view["augmentedQuery"] == "관리한계(control limit) 이탈"
+    del result["data"]["augmentedQuery"]
+    assert "augmentedQuery" not in json.loads(to_tool_text(result, "search_technical_documents"))["data"]
+
+
 def test_other_tools_are_serialized_as_before():
     result = {"data": {"runId": "R-1"}, "evidenceRefs": [{"evidenceId": "E-1"}], "warnings": []}
     assert to_tool_text(result, "get_run_features") == json.dumps(result, ensure_ascii=False, separators=(",", ":"))

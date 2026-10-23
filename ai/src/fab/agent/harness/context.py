@@ -23,15 +23,17 @@ _EVIDENCE_ID = re.compile(r'"evidenceId":"([^"]+)"')
 
 
 def _search_view(result: dict) -> dict:
-    """검색 결과의 모델용 모양 — 경고를 앞에, 문서 정보는 문서마다 한 번, 끝의 evidenceRefs(조각의 evidenceId와 같다)는 뺀다"""
+    """검색 결과의 모델용 모양 — 경고를 앞에, 문서 정보는 문서마다 한 번, 끝의 evidenceRefs(조각의 evidenceId와 같다)는 뺀다.
+    서버가 한·영 용어를 병기해 검색했으면(augmentedQuery) 그 질의도 남긴다"""
     data = result.get("data") or {}
     documents: dict[str, dict] = {}
     items = []
     for item in data.get("items") or []:
         documents.setdefault(item.get("docId"), {k: item[k] for k in _DOC_KEYS if k in item})
         items.append({k: item[k] for k in _ITEM_KEYS if k in item})
+    query = {"query": data.get("query"), **({"augmentedQuery": data["augmentedQuery"]} if data.get("augmentedQuery") else {})}
     return {"warnings": result.get("warnings") or [], "dataVersion": result.get("dataVersion"),
-            "data": {"query": data.get("query"), "documents": documents, "items": items}}
+            "data": {**query, "documents": documents, "items": items}}
 
 
 def to_tool_text(result: dict, tool: str | None = None) -> str:
