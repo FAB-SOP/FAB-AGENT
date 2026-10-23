@@ -21,6 +21,7 @@ import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -29,6 +30,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
+@DynamicUpdate
 @Table(name = "incident")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -147,7 +149,7 @@ public class Incident {
 		return investigationPriority == null ? InvestigationPriority.notEvaluated() : investigationPriority;
 	}
 
-	/** 검증된 저장값 반영. Agent 이벤트 수신·권한·중복 검사는 연결할 서비스의 책임이다. */
+	/** 동기 저장용. 독립 비동기 완료는 PriorityEvaluationService가 메타데이터 컬럼만 갱신한다. */
 	public void updateInvestigationPriority(InvestigationPriority priority, Instant at) {
 		java.util.Objects.requireNonNull(priority, "조사 우선순위가 필요합니다.");
 		java.util.Objects.requireNonNull(at, "변경 시각이 필요합니다.");

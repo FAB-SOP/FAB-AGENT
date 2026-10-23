@@ -9,7 +9,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.type.TypeReference;
 
-/** PM 제공 DEMO-1.2-DRAFT 계산 설정. 등급 정책의 활성화 여부는 변경하지 않는다. */
+/** PM 제공 기준의 계산 설정. DRAFT 문서 버전과 시연용 실행 활성화는 구분한다. */
 @Component
 public class PriorityEvidencePolicy {
 	private final Map<String,Object> config;
@@ -20,6 +20,7 @@ public class PriorityEvidencePolicy {
 	}
 	public String version() { return String.valueOf(config.get("version")); }
 	public String detectorVersion() { return String.valueOf(config.get("detectorVersion")); }
+	public boolean enabled() { return Boolean.TRUE.equals(config.get("enabled")); }
 	public double number(String name) { return ((Number)config.get(name)).doubleValue(); }
 	public int repeatCount() { return ((Number)config.get("repeatWindowRunCount")).intValue(); }
 	@SuppressWarnings("unchecked")

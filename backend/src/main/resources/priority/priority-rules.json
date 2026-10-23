@@ -2,7 +2,7 @@
   "documentId": "FAB-INVESTIGATION-PRIORITY",
   "version": "DEMO-1.2-DRAFT",
   "status": "DRAFT",
-  "enabled": false,
+  "enabled": true,
   "displayValues": [
     "상",
     "중",
