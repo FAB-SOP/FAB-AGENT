@@ -411,4 +411,32 @@ class AgentEventDeliveryApiTest extends ApiTestSupport {
                 Integer.class, job.getIncidentId())).isEqualTo(1);
     }
 
+    @Test
+    void retryTimeChangeIsDuplicateButRetryDecisionChangesConflictEvenAfterAttemptAdvance() throws Exception {
+        Job job = newJob(); String id = "retry-time-" + job.getJobId();
+        send(job, event(job, id, 1, "RETRY_SCHEDULED", Map.of("nextAttempt", 2, "errorCode", "TRANSIENT", "nextRetryAt", "old")))
+                .andExpect(jsonPath("$.data.applied").value(true));
+        send(job, event(job, id, 1, "RETRY_SCHEDULED", Map.of("nextAttempt", 2, "errorCode", "TRANSIENT", "nextRetryAt", "new")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.reason").value("DUPLICATE_EVENT"));
+        send(job, event(job, id, 1, "RETRY_SCHEDULED", Map.of("nextAttempt", 3, "errorCode", "TRANSIENT", "nextRetryAt", "new")))
+                .andExpect(jsonPath("$.data.reason").value("EVENT_CONTENT_CONFLICT"));
+        send(job, event(job, id, 1, "RETRY_SCHEDULED", Map.of("nextAttempt", 2, "errorCode", "OTHER", "nextRetryAt", "new")))
+                .andExpect(jsonPath("$.data.reason").value("EVENT_CONTENT_CONFLICT"));
+        assertThat(jobs.findById(job.getJobId()).orElseThrow().getAttempt()).isEqualTo(2);
+        assertThat(processedEvents.findById(id).orElseThrow().getConflictCount()).isEqualTo(2);
+    }
+
+    @Test
+    void oldRetryFingerprintIsNotComparedAsIfItUsedTheNewAlgorithmOrOverwritten() throws Exception {
+        Job job = newJob(); String id = "old-retry-" + job.getJobId();
+        var receipt = new com.fabcontext.api.domain.job.ProcessedAgentEvent(id, job.getJobId(), 1, "RETRY_SCHEDULED", Instant.now());
+        String oldHash = com.fabcontext.api.common.Hashing.canonicalSha256(Map.of("nextRetryAt", "original"));
+        receipt.fingerprint(oldHash); processedEvents.save(receipt);
+        send(job, event(job, id, 1, "RETRY_SCHEDULED", Map.of("nextAttempt", 2, "errorCode", "TRANSIENT", "nextRetryAt", "new")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.reason").value("DUPLICATE_EVENT"));
+        assertThat(processedEvents.findById(id).orElseThrow().getContentHash()).isEqualTo(oldHash);
+        assertThat(processedEvents.findById(id).orElseThrow().getConflictCount()).isNull();
+        assertThat(jobs.findById(job.getJobId()).orElseThrow().getAttempt()).isEqualTo(1);
+    }
+
 }

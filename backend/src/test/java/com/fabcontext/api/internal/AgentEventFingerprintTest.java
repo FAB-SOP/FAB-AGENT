@@ -28,4 +28,19 @@ class AgentEventFingerprintTest {
         copy = event("SUMMARY_READY", Map.of("snapshotRef", "s2", "summary", Map.of("createdAt", "old")));
         assertThat(AgentEventFingerprint.of(job, first)).isNotEqualTo(AgentEventFingerprint.of(job, copy));
     }
+    @Test void retryTimestampIsIgnoredButAttemptErrorAndOtherEventPayloadsRemainContent() {
+        var first = event("RETRY_SCHEDULED", Map.of("nextAttempt", 2, "errorCode", "TRANSIENT", "nextRetryAt", "old"));
+        var repeated = event("RETRY_SCHEDULED", Map.of("nextAttempt", 2, "errorCode", "TRANSIENT", "nextRetryAt", "new"));
+        assertThat(AgentEventFingerprint.of(job, first)).startsWith("v2:sha256:")
+                .isEqualTo(AgentEventFingerprint.of(job, repeated));
+        repeated.put("payload", Map.of("nextAttempt", 3, "errorCode", "TRANSIENT", "nextRetryAt", "new"));
+        assertThat(AgentEventFingerprint.of(job, first)).isNotEqualTo(AgentEventFingerprint.of(job, repeated));
+        repeated.put("payload", Map.of("nextAttempt", 2, "errorCode", "OTHER", "nextRetryAt", "new"));
+        assertThat(AgentEventFingerprint.of(job, first)).isNotEqualTo(AgentEventFingerprint.of(job, repeated));
+        assertThat(AgentEventFingerprint.of(job, event("JOB_FAILED", Map.of("message", "first"))))
+                .isNotEqualTo(AgentEventFingerprint.of(job, event("JOB_FAILED", Map.of("message", "changed"))));
+        assertThat(AgentEventFingerprint.of(job, event("ANALYSIS_PROGRESS", Map.of("stepCode", "START"))))
+                .isNotEqualTo(AgentEventFingerprint.of(job, event("ANALYSIS_PROGRESS", Map.of("stepCode", "CHECK"))));
+    }
+
 }
