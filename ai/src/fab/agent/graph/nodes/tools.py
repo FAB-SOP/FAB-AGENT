@@ -119,6 +119,14 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
         turn.say("[ACCEPTED] 보고서 초안을 접수했습니다.", cid, name)
         turn.update["report"] = args
         return
+    if state.get("answerOnly"):  # 수치 · 사실 질문 — 양식에 없는 원인 후보 · 할 일 후보를 보내도 답에 싣지 않는다
+        extra = [key for key in ("candidateCauses", "workSuggestions", "changeReason", "changeEvidenceIds") if args.get(key)]
+        if extra:
+            turn.rt.tracer.event("answer_only_dropped", fields=extra)
+        args = {key: value for key, value in args.items() if key not in extra}
+    if not args.get("candidateCauses") and args.get("workSuggestions"):  # 원인 후보 없는 사실 답 — 할 일 후보도 붙이지 않는다
+        turn.rt.tracer.event("work_suggestions_dropped", reason="no_causes", count=len(args["workSuggestions"]))
+        args = {**args, "workSuggestions": []}
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
     errs += validate_work_suggestions(args.get("workSuggestions"), turn.known_ids())
     errs += _once(turn, "claimRejects", CLAIM_ERROR, validate_answer(args, state.get("purpose"), turn.known_ids()))
@@ -128,7 +136,7 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
         args, doc_error = _check_documents(turn, args)
         args, id_error = _check_question_ids(turn, args)
         args, statement_error = _check_statements(turn, args)
-        args, step_error = _check_next_step(turn, args)
+        args, step_error = (args, None) if state.get("answerOnly") else _check_next_step(turn, args)  # 답만 하는 질문은 판단을 내지 않는다
         errs = [e for e in (doc_error, id_error, statement_error, step_error) if e]
     if not errs:
         args, note, change_error = _check_conclusion(turn, args)
@@ -155,6 +163,7 @@ def _missing_proposal_note(turn: _Turn, args: dict) -> str:
     낼지 한 번 알린다. 강제하지 않는다(필요 없다고 보면 그대로 끝난다). 실제 모델은 같은 질문에 요청서를 냈다 안 냈다 했다(평가셋 AE01)"""
     state = turn.state
     if (state.get("purpose") != purpose.QUESTION or args.get("nextStep") not in ("CURRENT_CHECK", "UPSTREAM_CHECK")
+            or not args.get("candidateCauses")  # 원인을 묻지 않은 사실 답에는 요청서를 권하지 않는다
             or not may_propose(state) or state.get("proposals") or turn.update.get("pending")
             or turn.counters.get("heldProposal") or turn.counters.get("proposalNudges", 0) >= 1):
         return ""

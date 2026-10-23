@@ -434,7 +434,7 @@ async def test_trace_records_api_snapshot_model_name():
                              response_metadata={"model_name": "gpt-4.1-mini-2025-04-14"})
 
     class Tools:
-        def model_tools(self, mode, *, allow_proposals):
+        def model_tools(self, mode, *, allow_proposals, answer_only=False):
             return []
 
     for model, want in ((Snapshot(), ("gpt-4.1-mini", "gpt-4.1-mini-2025-04-14")), (RuleModel(), ("rule-policy-v2",) * 2)):

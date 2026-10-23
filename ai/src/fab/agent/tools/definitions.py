@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from fab.agent.causes import CAUSE_IDS
 from fab.agent.work import AGENT_OPERATIONS, MAX_SUGGESTIONS
 
@@ -136,3 +138,18 @@ HARNESS_TOOLS = [
 ]
 REPORT_SECTIONS = ("overview", "investigation", "requestsAndReplies", "actionsAndVerification", "unresolved")
 HARNESS_NAMES = {tool["function"]["name"] for tool in HARNESS_TOOLS}
+
+
+def _answer_submit() -> dict:
+    """수치 · 사실 질문의 submit_result — 원인 후보 · 할 일 후보 칸이 없다. 지시만으로는 모델이 「CMP 제거량 알려줘」에도 원인
+    후보 · 요청서를 붙였다(10-23 화면 · 재현). 원인 · 고장 · 다음 확인을 묻는 질문과 다른 작업은 지금 양식 그대로다"""
+    tool = copy.deepcopy(next(t for t in HARNESS_TOOLS if t["function"]["name"] == "submit_result"))
+    params = tool["function"]["parameters"]
+    for key in ("candidateCauses", "workSuggestions", "changeReason", "changeEvidenceIds"):
+        params["properties"].pop(key)
+    params["required"] = [key for key in params["required"] if key in params["properties"]]
+    params["properties"]["observedFacts"]["description"] = "답의 근거가 된 사실만 — 묻지 않은 공정 · 센서는 넣지 않는다"
+    return tool
+
+
+ANSWER_SUBMIT = _answer_submit()
