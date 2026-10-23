@@ -79,26 +79,10 @@ public class IncidentService {
 		Incident incident = loadForUser(incidentId, user);
 		accessPolicy.requireManager(user);
 		incident.checkVersion(body.expectedVersion());
-		IncidentStatus from = incident.getStatus();
-		IncidentStatus to = body.targetStatus();
-		// 사건 종료는 보고서 확정으로만 일어난다(헌법 원칙 VI) — 관리자에게는 기존 보류의 해제(조사 재개)만 남는다
-		if (to == IncidentStatus.ON_HOLD || to == IncidentStatus.CLOSED) {
-			throw ApiException.conflict("TRANSITION_REMOVED", "사건은 보고서 확정으로만 종료할 수 있고, 새로 보류할 수 없습니다.",
-				Map.of("currentStatus", from.name(), "targetStatus", to.name()));
-		}
-		boolean allowed = to == IncidentStatus.INVESTIGATING && from == IncidentStatus.ON_HOLD;
-		if (!allowed) {
-			throw ApiException.conflict("INVALID_TRANSITION", from + " → " + to + " 전이는 허용되지 않습니다.",
-				Map.of("currentStatus", from.name(), "targetStatus", to.name()));
-		}
-		incident.setStatus(to);
-		String evidence = body.evidenceIds() == null || body.evidenceIds().isEmpty() ? ""
-			: " (근거: " + String.join(", ", body.evidenceIds()) + ")";
-		incident.record(Instant.now(clock), "STATUS_CHANGED", user.userId(),
-			from + " → " + to + ": " + body.reason() + evidence, "INCIDENT", incident.getIncidentId());
-		streamHub.publish(incident.getIncidentId(), "incident.updated",
-			Map.of("status", to.name(), "version", incident.getVersion()));
-		return IncidentDetail.from(incident, activeJobs.find(incident.getActiveJobId()));
+		// 사건 종료는 보고서 확정으로만 일어난다(헌법 원칙 VI 3.0.0) — 관리자의 수동 보류 · 보류 해제 · 종료는 없다.
+		// 경로는 호환을 위해 남겨 두고 권한 · 버전 검사 뒤 항상 거부한다
+		throw ApiException.conflict("TRANSITION_REMOVED", "사건 상태는 바꿀 수 없습니다. 사건은 보고서 확정으로만 종료됩니다.",
+			Map.of("currentStatus", incident.getStatus().name(), "targetStatus", body.targetStatus().name()));
 	}
 
 	private static boolean matches(Incident i, String q) {

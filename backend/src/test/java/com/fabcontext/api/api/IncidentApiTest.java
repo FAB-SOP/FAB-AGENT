@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
+
 import com.fabcontext.api.support.ApiTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -98,40 +100,49 @@ class IncidentApiTest extends ApiTestSupport {
 	}
 
 	@Test
-	void managerTransitionsFollowStateRules() throws Exception {
+	void managerTransitionsAreRemoved() throws Exception {
 		Session etch = cmp();
 		Session mgr = manager();
 		String id = newIncident(etch, false).incidentId();
 		long v = incidentVersion(etch, id);
 		String body = "{\"targetStatus\":\"%s\",\"reason\":\"%s\",\"expectedVersion\":%d}";
 
+		// 권한 · 버전 · 입력 검사는 그대로 먼저
 		postAs(etch, "/api/incidents/{id}/transitions", body.formatted("ON_HOLD", "r", v), id)
 			.andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("MANAGER_ROLE_REQUIRED"));
-		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("INVESTIGATING", "r", v), id)
-			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("INVALID_TRANSITION"));
 		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("ON_HOLD", "r", v - 1), id)
 			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.details.currentVersion").value((int) v));
-		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("OPEN", "r", v), id)
-			.andExpect(status().isConflict());
 		postAs(mgr, "/api/incidents/{id}/transitions", "{\"targetStatus\":\"ON_HOLD\",\"expectedVersion\":" + v + "}", id)
 			.andExpect(status().isUnprocessableEntity());
 
-		// 사건 종료는 보고서 확정으로만(003) — 관리자의 새 보류 · 수동 종료는 없다
-		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("ON_HOLD", "데이터 대기", v), id)
-			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("TRANSITION_REMOVED"));
-		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("CLOSED", "종료", v), id)
-			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("TRANSITION_REMOVED"));
+		// 사건 종료는 보고서 확정으로만(003 · 헌법 3.0.0) — 관리자의 보류 · 보류 해제 · 종료는 모두 없다
+		for (String target : List.of("ON_HOLD", "CLOSED", "INVESTIGATING", "OPEN")) {
+			postAs(mgr, "/api/incidents/{id}/transitions", body.formatted(target, "r", v), id)
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("TRANSITION_REMOVED"));
+		}
 		getAs(etch, "/api/incidents/{id}", id).andExpect(jsonPath("$.data.status").value(not(is("CLOSED"))));
+	}
 
-		// 기존에 보류된 사건(도입 전 이력)의 해제만 남는다
+	@Test
+	void legacyOnHoldIncidentClosesOnlyByReportConfirmation() throws Exception {
+		Session etch = cmp();
+		Session mgr = manager();
+		String id = newIncident(etch, false).incidentId();
+		// 도입 전에 보류된 사건(이력 데이터)
 		jdbc.update("update incident set status = 'ON_HOLD' where incident_id = ?", id);
-		v = incidentVersion(etch, id);
-		postAs(etch, "/api/incidents/{id}/transitions", body.formatted("INVESTIGATING", "재개", v), id)
-			.andExpect(status().isForbidden());
-		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("INVESTIGATING", "재개", v), id)
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("INVESTIGATING"))
-			.andExpect(jsonPath("$.data.timeline[-1].message", containsString("ON_HOLD → INVESTIGATING")));
+		long v = incidentVersion(etch, id);
+		postAs(mgr, "/api/incidents/{id}/transitions", "{\"targetStatus\":\"INVESTIGATING\",\"reason\":\"재개\",\"expectedVersion\":" + v + "}", id)
+			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("TRANSITION_REMOVED"));
+
+		String jobId = json(postAs(etch, "/api/incidents/{id}/report-jobs", "{\"expectedIncidentVersion\":" + v + "}", id)
+			.andExpect(status().isAccepted()), "$.data.jobId");
+		awaitJob(etch, jobId, "SUCCEEDED");
+		String reportId = json(getAs(etch, "/api/jobs/{id}", jobId), "$.data.resultRef.id");
+		postAs(etch, "/api/reports/{id}/confirmations",
+				"{\"expectedContentRevision\":1,\"reviewConfirmed\":true,\"classification\":{\"category\":\"HOLD\"}}", reportId)
+			.andExpect(status().isOk());
+		getAs(etch, "/api/incidents/{id}", id).andExpect(jsonPath("$.data.status").value("CLOSED"))
+			.andExpect(jsonPath("$.data.timeline[*].message", hasItem(containsString("ON_HOLD → CLOSED"))));
 	}
 
 	@Test
