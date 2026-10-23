@@ -43,11 +43,20 @@ public final class ConversationDtos {
     @Schema(name = "ConversationData")
     public record Data(AnalysisResultView analysis, ApprovalView approval, CheckRequestView request,
             ReplyView reply, ActionView action, WorkDtos.View work, Followup followup) {}
+    @Schema(name = "ConversationPlacement", description = "화면 묶음. Agent thread나 사건 상태와 별개이며 이전 페이지의 부모를 조회하지 않아도 표시할 수 있습니다.")
+    public record Placement(String blockId,
+            @Schema(allowableValues = {"BASIC", "QUESTION", "FOLLOWUP", "DIRECT"}) String blockType,
+            Instant createdAt, @Schema(description = "묶음 제목 요약, 최대 200자. 원 질문은 해당 항목에 보존") String title,
+            @Schema(description = "같은 업무·승인·요청 흐름의 안정 ID. 없는 경우 null. 문자열을 해석하지 않고 비교에만 사용") String flowId) {}
+    @Schema(name = "ConversationRequestSummary", description = "회신의 원 요청이 이전 페이지에 있어도 제공하는 최소 요약. 전체 brief·근거·회신 원문을 반복하지 않습니다.")
+    public record RequestSummary(@Schema(description = "원 요청 요약, 최대 200자") String question,
+            String targetProcessCode, String equipmentId) {}
     @Builder
     @Schema(name = "ConversationEntry")
     public record Entry(String entryId, Kind type, Instant occurredAt, Actor actor, String text,
             Links links, JobView job, JobView currentJob, Data data, String eventType,
-            FollowupDtos.SourceRef sourceRef, Map<String, Object> analysisUse) {}
+            FollowupDtos.SourceRef sourceRef, Map<String, Object> analysisUse,
+            Placement placement, RequestSummary requestSummary) {}
     @Schema(name = "IncidentConversation")
     public record View(String incidentId, long incidentVersion, Instant generatedAt, List<Entry> items,
             String nextCursor, List<JobView> jobs, List<JobView> runningJobs, List<JobView> waitingJobs,

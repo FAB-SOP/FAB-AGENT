@@ -143,3 +143,7 @@ data.request는 사건 헤더와 회신 본문을 중복하지 않도록 inciden
 MVP 사건 규모에 맞춰 저장소별 일괄 조회 후 메모리에서 연결·페이지를 구성한다. 새 대화 테이블·중복 이력 저장·Kafka·Agent 재개 방식 변경은 없다. 아주 큰 사건의 DB 수준 페이지 최적화는 이번 범위가 아니다. 실제 프론트 연결 화면은 별도 통합 검증이 필요하다.
 
 Swagger: 이 브랜치 실행 후 `/swagger-ui/index.html`의 incident-conversation, 원본 `/v3/api-docs`.
+
+## 조사 블록·회신 맥락 보완
+
+items에 placement(분석/질문 블록·업무 흐름)를, REPLY에 requestSummary(페이지 밖 원 요청 요약)를 추가합니다. 기존 경로·필드·이벤트 단위 커서는 유지합니다. 프론트 묶음/중복 제거·SSE·페이지 밖 카드 처리 기준은 [conversation-context-api.md](conversation-context-api.md)를 따릅니다.

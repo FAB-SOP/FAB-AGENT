@@ -56,8 +56,12 @@ class RuleModel:
         return _upstream_step(seen, mode, notes, incident_id, process, runs, current)
 
 
+_STANCE = {"SUPPORTED": "지지", "REFUTED": "반증", "UNDETERMINED": "보류"}
+NO_ANALYSIS = "원인 분석 기록 없음 · 근거 부족 (원인 확정 아님)"
+
+
 def _report_step(seen: dict, incident_id: str) -> AIMessage:
-    """보고서 초안 — 보고서 맥락을 한 번 읽고 섹션을 채워 낸다"""
+    """보고서 초안 — 보고서 맥락을 한 번 읽고 섹션을 채워 낸다. 최신 원인 분석이 있으면 조사 경과 · 미해결에 옮긴다"""
     if "get_report_context" not in seen:
         return _call("get_report_context", {"incidentId": incident_id})
     report_context = seen["get_report_context"][-1]
@@ -66,13 +70,35 @@ def _report_step(seen: dict, incident_id: str) -> AIMessage:
     requests_text = "; ".join(f"{request['requestId']}({request.get('requestType')}) {request['status']}"
                               for request in check_requests) or "기록 없음"
     incident = report_context["data"]["incident"]
+    investigation, open_items, analysis_ids = _analysis_sections(report_context["data"].get("latestCauseAnalysis"))
     return _call("submit_report", {"sections": {
         "overview": incident["title"] + " — " + str(incident.get("summary")),
-        "investigation": "기본 분석 · 조사 결과는 분석 결과 기록 참조 (원인 확정 아님)",
+        "investigation": investigation,
         "requestsAndReplies": requests_text,
         "actionsAndVerification": "기록 없음" if not report_context["data"]["actions"] else "조치 기록 참조",
-        "unresolved": "후속 확인 run 결과 전이므로 해결 완료로 보지 않음 · 합성 데이터 기반 초안",
-    }, "evidenceIds": evidence_ids})
+        "unresolved": " · ".join([*open_items, "후속 확인 run 결과 전이므로 해결 완료로 보지 않음 · 합성 데이터 기반 초안"]),
+    }, "evidenceIds": list(dict.fromkeys([*evidence_ids, *analysis_ids]))})
+
+
+def _analysis_sections(analysis: dict | None) -> tuple[str, list[str], list[str]]:
+    """최신 원인 분석 → (조사 경과, 미해결 항목, 근거 ID). 없으면(null · 키 없음) 「기록 없음 · 근거 부족」. 예전 결과에 없는 칸
+    (answer · stance · candidateId)은 만들지 않고 있는 값만 쓴다 — 답이 없으면 summary"""
+    if not isinstance(analysis, dict):
+        return NO_ANALYSIS, [], []
+    lines = [str(analysis.get("answer") or analysis.get("summary") or "").strip()]
+    causes = analysis.get("candidateCauses") or []
+    for i, cause in enumerate(causes):
+        stance = _STANCE.get(cause.get("stance"))
+        lines.append(f"후보 {cause.get('rank') or i + 1}: {cause.get('hypothesis') or cause.get('cause')}"
+                     f"{f' [{stance}]' if stance else ''} — 미확정 가설")
+    lines.append(f"(분석 {analysis.get('resultId')}, {analysis.get('createdAt')} 기준 · 원인 확정 아님)")
+    open_items = [*(analysis.get("limitations") or []),
+                  *(check for cause in causes for check in cause.get("nextChecks") or []),
+                  *(f"부족한 자료: {item}" for cause in causes for item in cause.get("missingData") or [])]
+    # 모델이 보는 결과(context.analysis_view)는 근거를 evidenceIds로, Backend 원본은 evidenceRefs로 준다
+    ids = list(analysis.get("evidenceIds") or []) or [ref["evidenceId"] for ref in analysis.get("evidenceRefs") or []
+                                                      if isinstance(ref, dict) and ref.get("evidenceId")]
+    return " ".join(line for line in lines if line), list(dict.fromkeys(open_items)), ids
 
 
 def _current_check_step(seen, mode, notes, process, current, features, outside) -> AIMessage:

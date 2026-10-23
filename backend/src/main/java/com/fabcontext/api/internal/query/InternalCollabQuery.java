@@ -10,6 +10,8 @@ import com.fabcontext.api.auth.UserAccountRepository;
 import com.fabcontext.api.domain.action.IncidentActionRepository;
 import com.fabcontext.api.domain.checkrequest.CheckRequestRepositories.CheckRequestRepository;
 import com.fabcontext.api.domain.incident.Incident;
+import com.fabcontext.api.domain.analysis.AnalysisResultRepository;
+import com.fabcontext.api.domain.analysis.AnalysisDtos.AnalysisResultView;
 import com.fabcontext.api.domain.report.ReportRepository;
 import com.fabcontext.api.internal.DemoFaults;
 import com.fabcontext.api.internal.InternalError;
@@ -28,6 +30,7 @@ public class InternalCollabQuery {
 	private final CheckRequestRepository checkRequestRepository;
 	private final IncidentActionRepository actionRepository;
 	private final ReportRepository reportRepository;
+	private final AnalysisResultRepository analysisResults;
 	private final InternalIncidentQuery incidents;
 	private final DemoFaults faults;
 	private final InternalViews views;
@@ -70,6 +73,9 @@ public class InternalCollabQuery {
 		Incident i = incidents.resolve(id);
 		Map<String, Object> data = new LinkedHashMap<>();
 		data.put("incident", views.incidentView(i));
+		// 일반 질문 답이 최신이어도 보고서의 원인 분석을 덮지 않는다. 없는 결과를 만들어 주지 않는다.
+		data.put("latestCauseAnalysis", analysisResults.latestCauseAnalysis(i.getIncidentId())
+			.map(result -> AnalysisResultView.from(result, null)).orElse(null));
 		data.put("checkRequests", checkRequestRepository.findByIncidentIdOrderByCreatedAtAsc(i.getIncidentId()).stream()
 			.map(views::requestView).toList());
 		data.put("actions", actionRepository.findByIncidentIdOrderByPerformedAtAsc(i.getIncidentId()).stream()
