@@ -117,7 +117,7 @@ public class InternalPriorityEvidenceQuery {
 			}).toList());
 		}
 		return views.env(data,refs,List.of("상중하는 등록 설정으로 계산합니다. Agent는 반환 등급·규칙을 유지하고 원인 후보·다음 확인을 분석합니다.",
-			"DRAFT 시연 정책 계산이며 등급 정책을 자동 활성화하지 않습니다. 센서 방향 LOW는 우선순위 하를 뜻하지 않습니다.",
+			"DRAFT 문서 기반 시연 정책이며 실제 장비 검증 기준이 아닙니다. 실행 활성화는 policy.enabled를 확인하세요. 센서 방향 LOW는 우선순위 하를 뜻하지 않습니다.",
 			"계측 품질 플래그는 현 DB에 없습니다. SYNTHETIC_OPTICAL_FILM_MODEL의 5개 위치·단위·공개 시각을 검증한 합성 계측만 계산합니다."));
 	}
 

@@ -38,6 +38,7 @@ public class EventService {
 	private final JobService jobService;
 	private final IncidentStreamHub streamHub;
 	private final NotificationEvents notificationEvents;
+	private final com.fabcontext.api.domain.priority.PriorityEvaluationService priorityEvaluations;
 	private final DataVersion dataVersion;
 	private final Clock clock;
 
@@ -79,6 +80,7 @@ public class EventService {
 		incident.record(now, "DETECTED", "svc_simulator",
 			"이상 이벤트 접수 (" + event.anomalyType() + ", eventId " + event.eventId() + ")", "EVENT", event.eventId());
 		incident = incidentRepository.save(incident);
+		priorityEvaluations.enqueue(incident);
 		notificationEvents.incidentCreated(incident);
 		dataVersion.bump();
 		// 사건 저장 즉시 화면에 표시하고 기본 분석은 비동기로 병행한다.

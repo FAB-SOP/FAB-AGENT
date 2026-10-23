@@ -43,6 +43,7 @@ public final class InvestigationPriorityRules {
 		return result(policy.missingPriority(),true,List.of("P-MEDIUM-04"),"회복 또는 고립된 단일 편차 조건을 확정할 수 없어 중으로 임시 분류했습니다.",List.of(),List.of("LOW_CONDITIONS_NOT_CONFIRMED"),asOf,policy);
 	}
 	private static Assessment result(String level,boolean provisional,List<String> rules,String reason,List<String> evidence,List<String> missing,String asOf,PriorityEvidencePolicy policy) {
-		return new Assessment("COMPLETED",level,provisional,rules,reason,evidence,List.copyOf(missing),policy.version(),asOf,"DRAFT_PREVIEW");
+		return new Assessment("COMPLETED",level,provisional,rules,reason,evidence,List.copyOf(missing),policy.version(),asOf,
+			policy.enabled()?"DEMO_ACTIVE":"DRAFT_PREVIEW");
 	}
 }
