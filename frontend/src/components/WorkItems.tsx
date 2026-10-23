@@ -67,6 +67,8 @@ function useIncidentWork(incidentId:string){
  });
  return {workItems,requests};
 }
+/** 승인만 된 변경은 수행 전이므로 '실제 수행' 기록임을 분명히 한다 */
+const completeLabel=(item:Obj)=>item.status==='APPROVED'?'실제 수행 결과 기록':'수행·확인 결과 기록';
 const adoptLabel=(item:Obj)=>item.route==='SELF_CHECK'
  ?'내 확인 목록에 추가'
  :item.route==='MANAGER_APPROVAL'?'채택하고 관리자 승인 요청':'요청 내용 검토·발송';
@@ -74,7 +76,7 @@ function ProposedWorkCard({item,disabled,onSelect}:{item:Obj;disabled:boolean;on
  return <WorkCard item={item}>
   <div className="work-buttons">
    <button className="button" disabled={disabled} onClick={()=>onSelect('adopt')}>{adoptLabel(item)}</button>
-   <button className="button secondary" disabled={disabled} onClick={()=>onSelect('decline')}>채택 안 함</button>
+   <button className="button secondary" disabled={disabled} onClick={()=>onSelect('decline')}>미채택</button>
   </div>
  </WorkCard>;
 }
@@ -82,7 +84,7 @@ function AdoptedWorkCard({item,canComplete,closed,onComplete}:{item:Obj;canCompl
  return <WorkCard item={item}>
   {item.approverUserId&&<p className="small muted">승인 담당 · {item.approverUserId}</p>}
   {item.status==='WAITING_MANAGER'&&<p className="work-waiting">관리자가 검토하고 있습니다. 승인 후 수행 결과를 기록할 수 있습니다.</p>}
-  {canComplete&&<button className="button" disabled={closed} onClick={onComplete}><CheckCircle2 size={18}/>수행·확인 결과 기록</button>}
+  {canComplete&&<button className="button" disabled={closed} onClick={onComplete}><CheckCircle2 size={18}/>{completeLabel(item)}</button>}
   {item.requestId&&<Link className="text-button" to={requestLink(item.requestId)}>요청·회신 확인</Link>}
   {item.actionId&&<p className="small muted">수행 기록 · {item.actionId}</p>}
  </WorkCard>;
@@ -120,6 +122,35 @@ export function WorkItemsPanel({incident,sources,results,canManage}:{
  {selected&&<WorkDialog item={selected.item} mode={selected.mode} incident={incident} onClose={()=>setSelected(null)}/>}
  </>;
 }
+/** 분석 결과별로 연결된 제안(sourceResultId)을 상태와 관계없이 모두 보여주고, 상태에 따라 모양만 바꾼다 */
+export function ProposedWorkList({incident,canManage,results}:{incident:Incident;canManage:boolean;results:Obj[]}){
+ const {workItems}=useIncidentWork(incident.incidentId);
+ const [selected,setSelected]=useState<{item:Obj;mode:string}|null>(null);
+ const groups=groupBySourceResult(workItems.data?.items||[],results);
+ if(!groups.length)return null;
+ const disabled=!canManage||incident.status==='CLOSED';
+ const waiting=groups.reduce((count,group)=>count+group.items.filter((item:Obj)=>item.status==='PROPOSED').length,0);
+ return <section className="proposed-work">
+  <h3>추천 조치안 <span className="small muted">채택 대기 {waiting}건 · 진행할 조치를 선택하세요</span></h3>
+  {groups.map(group=><div key={group.resultId} className="proposed-group">
+   <p className="small muted">{group.label}</p>
+   {group.items.map((item:Obj)=>item.status==='PROPOSED'
+    ?<ProposedWorkCard key={item.taskId} item={item} disabled={disabled} onSelect={mode=>setSelected({item,mode})}/>
+    :<WorkCard key={item.taskId} item={item} muted={['DECLINED','REJECTED'].includes(item.status)}/>)}
+  </div>)}
+  {selected&&<WorkDialog item={selected.item} mode={selected.mode} incident={incident} onClose={()=>setSelected(null)}/>}
+ </section>;
+}
+/** 제안을 근거 분석 결과별로 묶는다 — 최신 분석이 위, 화면에 없는 이전 분석은 '이전 분석'으로 */
+export function groupBySourceResult(items:Obj[],results:Obj[]){
+ const byResult=new Map<string,Obj[]>();
+ items.filter(item=>item.sourceResultId).forEach(item=>byResult.set(item.sourceResultId,[...(byResult.get(item.sourceResultId)||[]),item]));
+ return [...byResult.entries()].map(([resultId,grouped])=>{
+  const result=results.find(candidate=>candidate.resultId===resultId);
+  const label=result?(result.kind==='DEEP'?'추가 질문 답변':'기본 분석')+' · '+when(result.createdAt)+' KST':'이전 분석';
+  return {resultId,label,at:result?Date.parse(result.createdAt):0,items:grouped};
+ }).sort((first,second)=>second.at-first.at);
+}
 function TeamRequestResult({request}:{request:Obj}) {
  const replies:Obj[]=request.replies||[];
  const replied=request.status==='REPLIED'&&replies.length>0;
@@ -139,8 +170,8 @@ function TeamRequestResult({request}:{request:Obj}) {
   <Link className="text-button" to={requestLink(request.requestId)}>요청·회신 상세 보기</Link>
  </article>;
 }
-function WorkCard({item,children}:{item:Obj;children?:React.ReactNode}){
- return <article className="work-card">
+function WorkCard({item,children,muted=false}:{item:Obj;children?:React.ReactNode;muted?:boolean}){
+ return <article className={'work-card'+(muted?' muted':'')}>
   <div className="work-card-header">
    <span className={'work-route '+item.route.toLowerCase()}>{workRoutes[item.route]}</span>
    <Badge value={item.status}>{workStates[item.status]}</Badge>
@@ -152,6 +183,7 @@ function WorkCard({item,children}:{item:Obj;children?:React.ReactNode}){
    <span>{when(item.createdAt)} KST</span>
   </div>
   {item.decisionComment&&<p className="small">검토 의견 · {item.decisionComment}</p>}
+  {item.status==='APPROVED'&&<p className="work-not-done">승인됨 · 아직 수행하지 않았습니다. 실제로 수행한 뒤 결과를 기록하세요.</p>}
   {children}
  </article>;
 }
@@ -225,12 +257,14 @@ function WorkDraft({incident,sources,results,onClose}:{
 }
 const dialogTitles=(item:Obj,isTeam:boolean):Obj=>({
  adopt:item.route==='MANAGER_APPROVAL'?' 채택·관리자 승인 요청':isTeam?'다른 팀 요청 발송':'내 확인 목록에 추가',
- decline:'제안 채택 안 함',
+ decline:'제안 미채택',
  approve:'변경 계획 승인',
  reject:'변경 계획 반려',
  complete:'수행·확인 결과 기록',
 });
 const decisionCodes:Obj={decline:'DECLINE',approve:'APPROVE',reject:'REJECT'};
+/** 관리자 반려만 사유 필수. AI 제안 미채택은 담당자 판단이라 사유 선택 */
+export const reasonRequired=(mode:string)=>mode==='reject';
 function useWorkDialogForm(item:Obj){
  const [comment,setComment]=useState('');
  const [description,setDescription]=useState('');
@@ -266,7 +300,7 @@ function isDialogSubmitDisabled(mode:string,isTeam:boolean,busy:boolean,form:Wor
  return busy
   ||isTeam&&!form.owner
   ||mode==='complete'&&(!targetIncident||!form.confirmed||!form.description.trim())
-  ||mode==='reject'&&!form.comment.trim();
+  ||reasonRequired(mode)&&!form.comment.trim();
 }
 function TeamRecipientFields({item,form,directory,busy}:{item:Obj;form:WorkDialogForm;directory:Obj[];busy:boolean}){
  const isUpstreamCheck=item.operationCode==='UPSTREAM_CHECK';
@@ -324,9 +358,10 @@ function WorkDialog({item,mode,incident,onClose}:{item:Obj;mode:string;incident?
     담당자가 채택한 변경 계획을 관리자에게 전달합니다. 현재 단계에서 수행 완료로 기록되지 않습니다.
    </Notice>}
    {isTeam&&<TeamRecipientFields item={item} form={form} directory={policy.data?.directory||[]} busy={busy}/>}
-   {['decline','approve','reject'].includes(mode)&&<Field label={mode==='reject'?'반려 사유':'검토 의견'}>
-    <textarea required={mode==='reject'} value={form.comment} disabled={busy} onChange={event=>form.setComment(event.target.value)} maxLength={2000}/>
+   {['decline','approve','reject'].includes(mode)&&<Field label={mode==='reject'?'반려 사유 (필수)':mode==='decline'?'미채택 사유 (선택)':'검토 의견 (선택)'}>
+    <textarea required={reasonRequired(mode)} value={form.comment} disabled={busy} onChange={event=>form.setComment(event.target.value)} maxLength={2000}/>
    </Field>}
+   {reasonRequired(mode)&&!form.comment.trim()&&<p className="field-error">사유를 입력해야 반려할 수 있습니다.</p>}
    {mode==='complete'&&<CompletionFields form={form} busy={busy}/>}
    {incidentQuery.error&&<ErrorMessage error={incidentQuery.error}/>} {command.error&&<ErrorMessage error={command.error}/>}
    <button className="button full" disabled={isDialogSubmitDisabled(mode,isTeam,busy,form,targetIncident)}>{busy?'처리 중…':title}</button>
@@ -369,7 +404,7 @@ export function WorkInbox(){
    {myWork.error?<ErrorMessage error={myWork.error}/>:myWork.data?.items?.length?myWork.data.items.map((item:Obj)=><WorkCard key={item.taskId} item={item}>
     <Link className="text-button" to={'/incidents/'+item.incidentId+'?tab=actions'}>사건의 확인·조치 보기</Link>
     {item.requestId&&<Link className="text-button" to={requestLink(item.requestId)}>요청·회신 확인</Link>}
-    {canComplete(item)&&<button className="button" onClick={()=>setSelected({item,mode:'complete'})}>수행·확인 결과 기록</button>}
+    {canComplete(item)&&<button className="button" onClick={()=>setSelected({item,mode:'complete'})}>{completeLabel(item)}</button>}
    </WorkCard>):<Empty>채택한 업무가 없습니다.</Empty>}
   </Panel>
   {selected&&<WorkDialog item={selected.item} mode={selected.mode} onClose={()=>setSelected(null)}/>}

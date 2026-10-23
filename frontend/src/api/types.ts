@@ -29,7 +29,16 @@ export interface Incident {
  activeJob?:Obj|null;
  jobStatus?:string;
  severity:string;
+ investigationPriority?:InvestigationPriority|null;
  timeline?:Obj[];
+}
+/** 조사 우선순위 — 서버가 저장한 판정값(GET /api/incidents). severity(입력 알림 심각도)와 별개다. */
+export interface InvestigationPriority {
+ status:'NOT_EVALUATED'|'PENDING'|'COMPLETED'|'FAILED';
+ level:'HIGH'|'MEDIUM'|'LOW'|null;
+ /** 근거 부족으로 잠정 분류한 '중'일 때만 true */
+ provisional:boolean;
+ reason:string|null;
 }
 export interface SensorSample {
  sensorId:string;
@@ -60,7 +69,7 @@ export const labels:Record<string,string>={
  WAITING_APPROVAL:'제안 검토 대기',
  SUCCEEDED:'분석 완료',
  FAILED:'분석 실패',
- REPLIED:'회신 완료',
+ REPLIED:'회신 완료',ACCEPTED:'수락 · 회신 대기',
  DRAFT:'초안',
  CONFIRMED:'확정',
  NOT_VERIFIED:'효과 미확인',

@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
-import {useQuery} from '@tanstack/react-query';
+import {useQueries,useQuery} from '@tanstack/react-query';
 import {ArrowUpRight,Check} from 'lucide-react';
 import {api,write} from '../api/client';
 import {labels,when,type Incident,type Obj,type Page} from '../api/types';
@@ -84,15 +84,12 @@ function ApprovalReviewModal({approval,canDecide,comment,onCommentChange,classif
   </div>}
  </Modal>;
 }
-export function Approvals(){
+/** 승인 검토 창의 상태와 결정 — 승인함과 사건 화면이 같이 쓴다 */
+function useApprovalReview(selected:string,setSelected:(id:string)=>void){
  const {session}=useAuth();
- const [params,setParams]=useSearchParams();
- const selected=params.get('approval')||'';
- const setSelected=(id:string)=>setParams(id?{approval:id}:{},{replace:true});
  const [comment,setComment]=useState('');
  const [classification,setClassification]=useState<ClassificationDraft>(emptyClassificationDraft);
  const command=useCommand();
- const approvals=useQuery({queryKey:['approvals'],queryFn:()=>api<Page<Obj>>('/api/approvals'),refetchInterval:5000});
  const detail=useQuery({queryKey:['approval',selected],queryFn:()=>api<Obj>('/api/approvals/'+selected),enabled:!!selected});
  const decide=(decision:string)=>command.exec(
   ()=>decideApproval(selected,detail.data!,decision,comment,classification),
@@ -103,6 +100,63 @@ export function Approvals(){
   setComment('');
   setClassification(emptyClassificationDraft);
  };
+ const modal=selected&&detail.data?<ApprovalReviewModal
+  approval={detail.data}
+  canDecide={detail.data.status==='PENDING'&&canManageInvestigation(session,detail.data.processCode)}
+  comment={comment}
+  onCommentChange={setComment}
+  classification={classification}
+  onClassificationChange={setClassification}
+  command={command}
+  onDecide={decide}
+  onClose={()=>setSelected('')}
+ />:null;
+ return {command,openApproval,modal};
+}
+/** 사건 화면 승인 칸에서 무엇을 승인하는지 앞에 붙이는 이름 */
+export const approvalKindLabels:Record<string,string>={
+ CHECK_REQUEST:'타팀 확인 요청',MAINTENANCE_REQUEST:'정비 요청',CONFIRM_REPORT:'보고서 확정',RECORD_ACTION:'조치 기록',
+};
+function IncidentApprovalRow({approval,onOpen}:{approval:Obj;onOpen:()=>void}){
+ const payload=approval.payload||{};
+ const target=[payload.targetProcessCode,payload.equipmentId].filter(Boolean).join(' · ');
+ return <button className="request-row" onClick={onOpen}>
+  <div>
+   <span className="approval-kind">{approvalKindLabels[approval.actionType]||approval.actionType}</span>
+   <h3>{payload.question||approval.rationale||labels[approval.actionType]}</h3>
+   <span className="small muted">{target&&target+' · '}{approval.source==='AGENT'?'AI 제안':'사용자 제안'} · {when(approval.createdAt)}</span>
+  </div>
+  <Badge value={approval.status}/>
+ </button>;
+}
+/** 사건 화면에서 바로 승인·거절 — 이 사건의 승인 대기 제안만 보여준다 */
+export function IncidentApprovals({incidentId}:{incidentId:string}){
+ const [selected,setSelected]=useState('');
+ const {command,openApproval,modal}=useApprovalReview(selected,setSelected);
+ const approvals=useQuery({
+  queryKey:['approvals',incidentId],
+  queryFn:()=>api<Page<Obj>>(`/api/approvals?incidentId=${encodeURIComponent(incidentId)}&size=100`),
+ });
+ const pending=(approvals.data?.items||[]).filter(approval=>approval.status==='PENDING');
+ // 목록 응답에는 요청 내용(payload)이 없어 승인 대기 건만 상세를 불러온다 — 검토 창과 같은 캐시
+ const details=useQueries({queries:pending.map(approval=>({
+  queryKey:['approval',approval.approvalId],
+  queryFn:()=>api<Obj>('/api/approvals/'+approval.approvalId),
+ }))});
+ if(!pending.length&&!command.message)return null;
+ return <Panel title={`승인 대기 중 ${pending.length}건`} className="incident-approvals">
+  <p className="small muted">승인해야 실제로 발송·확정됩니다.</p>
+  {command.message&&<Notice tone={command.isError?'error':'info'}>{command.message}</Notice>}
+  {pending.map((approval,index)=><IncidentApprovalRow key={approval.approvalId} approval={details[index]?.data||approval} onOpen={()=>openApproval(approval.approvalId)}/>)}
+  {modal}
+ </Panel>;
+}
+export function Approvals(){
+ const [params,setParams]=useSearchParams();
+ const selected=params.get('approval')||'';
+ const setSelected=(id:string)=>setParams(id?{approval:id}:{},{replace:true});
+ const {command,openApproval,modal}=useApprovalReview(selected,setSelected);
+ const approvals=useQuery({queryKey:['approvals'],queryFn:()=>api<Page<Obj>>('/api/approvals'),refetchInterval:5000});
  return <>
   <PageHeading kicker="HUMAN REVIEW" title="제안 검토·승인" description="실행할 내용과 근거를 검토합니다."/>
   {command.message&&<Notice tone={command.isError?'error':'info'}>{command.message}</Notice>}
@@ -114,16 +168,6 @@ export function Approvals(){
     onOpen={()=>openApproval(approval.approvalId)}
    />):<Empty>검토할 제안이 없습니다. 이상 조사에서 추가 질문하거나 확인 요청 제안을 만들 수 있습니다.</Empty>}
   </Panel>
-  {selected&&detail.data&&<ApprovalReviewModal
-   approval={detail.data}
-   canDecide={detail.data.status==='PENDING'&&canManageInvestigation(session,detail.data.processCode)}
-   comment={comment}
-   onCommentChange={setComment}
-   classification={classification}
-   onClassificationChange={setClassification}
-   command={command}
-   onDecide={decide}
-   onClose={()=>setSelected('')}
-  />}
+  {modal}
  </>;
 }
