@@ -71,7 +71,8 @@ def _answer(**over) -> dict:
     return {"nextStep": "CURRENT_CHECK", "observedFacts": [{"text": "헤드 압력 낮음", "evidenceIds": ["E-1"]}],
             "limitations": [], "candidateCauses": [{"priority": 1, "hypothesis": "CMP 헤드 압력 공급 저하",
                                                     "causeIds": ["CMP_PRESSURE"], "supportingEvidenceIds": ["E-1"],
-                                                    "missingData": [], "nextCheck": "헤드 압력 공급 계통 확인"}]} | over
+                                                    "missingData": [], "nextCheck": "헤드 압력 공급 계통 확인"}],
+            "answer": "헤드 압력 공급 저하가 1순위입니다(E-1)."} | over
 
 
 def test_submit_with_suggestions_is_accepted():

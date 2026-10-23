@@ -35,6 +35,15 @@ def tool_text(messages) -> str:
     return "\n".join(str(message.content) for message in messages if isinstance(message, ToolMessage))
 
 
+def looked_up_text(messages, selected_inputs=None) -> str:
+    """조회한 글 — 업무 · 지식 도구 결과와 작업자가 고른 조사 결과. 질문 글은 넣지 않는다.
+    제출 · 제안의 반려 문장도 도구 메시지라 뺀다 — 반려 문장에 적은 ID가 「조회한 것」이 되면 안 된다"""
+    from fab.agent.tools import HARNESS_NAMES  # 순환 import 방지
+
+    looked_up = [m for m in messages if isinstance(m, ToolMessage) and m.name not in HARNESS_NAMES]
+    return "\n".join([tool_text(looked_up), str(selected_inputs or "")])
+
+
 def data(env: dict) -> dict:
     return (env or {}).get("data") or {}
 

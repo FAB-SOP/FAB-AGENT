@@ -10,13 +10,15 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 
-from fab.agent.evidence import tool_results
+from fab.agent.evidence import looked_up_text, tool_results
 from fab.agent.graph.state import AgentState, current_job, record_evidence, runtime
 from fab.agent.harness import context, guard, incident_rules, limits
 from fab.agent.harness.retry import TransientJobError
 from fab.agent import purpose
 from fab.agent.purpose import may_propose
 from fab.agent.tools import HARNESS_NAMES, PROPOSALS, ToolCallError
+from fab.agent.answer import missing_statements, validate_answer
+from fab.agent import doc_citation
 from fab.agent.work import validate_work_suggestions
 
 
@@ -92,7 +94,14 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
         return
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
     errs += validate_work_suggestions(args.get("workSuggestions"), _cited(args))
+    errs += validate_answer(args, state.get("purpose"), turn.known_ids())
+    errs += guard.validate_seen_ids(args, _seen_text(turn))
     note = ""
+    if not errs:
+        args, doc_error = _check_documents(turn, args)
+        args, id_error = _check_question_ids(turn, args)
+        args, statement_error = _check_statements(turn, args)
+        errs = [e for e in (doc_error, id_error, statement_error) if e]
     if not errs:
         args, note, change_error = _check_conclusion(turn, args)
         errs = [change_error] if change_error else []
@@ -103,6 +112,53 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str) -> None:
     else:
         turn.say("[ACCEPTED] 결과를 접수했습니다." + note, cid, name)
         turn.update["result"] = args
+
+
+def _check_documents(turn: _Turn, args: dict) -> tuple[dict, str | None]:
+    """문서 근거를 요구하는 질문인데 원문을 인용하지 않았으면 한 번 반려하고, 두 번째는 한계에 남기고 받는다"""
+    if not doc_citation.asks_for_documents(turn.state.get("question")) or doc_citation.cites_document(args):
+        return args, None
+    if turn.counters.get("documentRejects", 0) == 0:
+        turn.counters["documentRejects"] = 1
+        return args, doc_citation.REJECT
+    return _with_limitation(args, doc_citation.LIMITATION), None
+
+
+def _check_question_ids(turn: _Turn, args: dict) -> tuple[dict, str | None]:
+    """질문에 나온 로트 · 웨이퍼 · run이 조회되지 않았는데 답이 그 대상을 말하지 않으면(평가셋 AE07 — 없는 로트를 묻는데
+    이번 사건 분석만 냈다) 한 번 반려하고, 두 번째는 Harness가 「조회되지 않았다」를 한계에 남기고 받는다"""
+    missing = guard.unanswered_question_ids(turn.state.get("question"), args, _seen_text(turn))
+    if not missing:
+        return args, None
+    if turn.counters.get("questionIdRejects", 0) == 0:
+        turn.counters["questionIdRejects"] = 1
+        return args, (f"질문의 {', '.join(missing)}는 이번 조회 결과에 없습니다. 도구로 조회하거나, 조회되지 않으면 answer 첫 문장에 "
+                      f"「{missing[0]}는 조회되지 않아 확인할 수 없습니다」라고 답하세요.")
+    return _with_limitation(args, guard.not_found_limitation(missing)), None
+
+
+def _check_statements(turn: _Turn, args: dict) -> tuple[dict, str | None]:
+    """원인 확률 · 설정값을 묻는 질문에 답이 할 수 없다고 말하지 않으면 한 번 반려하고, 두 번째는 Harness가 그 문장을
+    답 맨 앞에 넣고 받는다 — 확률 · 설정값 질문의 답에는 이 말이 반드시 있다"""
+    missing = missing_statements(turn.state.get("question"), args)
+    if not missing:
+        return args, None
+    if turn.counters.get("statementRejects", 0) == 0:
+        turn.counters["statementRejects"] = 1
+        return args, ("질문이 할 수 없는 요청(원인 확률 · 설정값)을 묻습니다. answer 첫 문장에 할 수 없다고 밝히세요 — 예: "
+                      + " / ".join(f"「{sentence}」" for sentence in missing) + " 그다음에 근거로 할 수 있는 것을 씁니다.")
+    return {**args, "answer": " ".join([*missing, str(args.get("answer") or "").strip()]).strip()}, None
+
+
+def _with_limitation(args: dict, text: str) -> dict:
+    limitations = args.get("limitations") or []
+    limitations = [limitations] if isinstance(limitations, str) else list(limitations)
+    return {**args, "limitations": [*limitations, text]}
+
+
+def _seen_text(turn: _Turn) -> str:
+    """조회한 글 — 이번 작업의 앞선 노드 · 이 묶음의 도구 결과와 작업자가 고른 조사 결과"""
+    return looked_up_text([*(turn.state.get("messages") or []), *turn.out], turn.state.get("selectedInputs"))
 
 
 def _cited(result: dict) -> set[str]:
@@ -237,6 +293,7 @@ async def save_proposal(turn: _Turn, name: str, args: dict, cid: str) -> None:
         turn.fixable_proposal_reject |= fixable
         if rejection.startswith("[LIMIT]"):  # 사람에게도 이유를 보인다 — 결과의 한계로(finalize)
             turn.update["proposalLimit"] = True
+        turn.rt.tracer.event("proposal_reject", tool=name, fixable=fixable, reason=rejection[:300])  # 왜 요청서가 없는지 trace에
         return turn.say(rejection, cid, name)
     turn.rt.tracer.event("proposal", approvalId=approval["approvalId"], actionType=action_type)
     turn.say(f"[PROPOSED] 승인 {approval['approvalId']}로 저장했습니다. 사람의 승인을 기다립니다. "

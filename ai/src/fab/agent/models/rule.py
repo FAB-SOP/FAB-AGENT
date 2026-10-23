@@ -322,6 +322,7 @@ def _submit(step, facts, headline, cause, support, counter=None, limitations=Non
     if not facts:
         facts = [{"text": headline, "evidenceIds": support[:1]}] if support else []
     return _call("submit_result", {
+        "answer": f"{headline}." + (f" (근거 {support[0]})" if support and support[0] else ""),
         "nextStep": step, "observedFacts": facts,
         "candidateCauses": [{"priority": 1, "hypothesis": headline, "causeIds": [cause["causeId"]] if cause else [],
                              "supportingEvidenceIds": [evidence_id for evidence_id in support if evidence_id],

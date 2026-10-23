@@ -176,3 +176,52 @@ def validate_brief(brief: dict, known_evidence: set[str], tool_text: str) -> lis
     if unknown:
         errors.append(f"관련 기록의 근거 ID {unknown}는 이번 조사에서 조회하지 않았습니다.")
     return errors
+
+
+# 대상 ID — 로트(CURRENT-L006 · 접두어 없이 L006도) · 웨이퍼(W-CURRENT-006-3) · run(RUN-W-CURRENT-006-3-CMP)
+# 경계는 ASCII로 본다 — \b는 한글 조사(「L088도」)를 낱말로 읽어 경계를 놓친다
+_TARGET_ID = re.compile(r"(?<![A-Za-z0-9-])(?:RUN-W-[A-Z]+-\d{3}-\d+-[A-Z]+|W-[A-Z]+-\d{3}-\d+|(?:[A-Z]+-)?L\d{3})(?![A-Za-z0-9])")
+# 조회되지 않았다고 밝힌 문장은 그 ID를 써도 된다 — 「CURRENT-L088는 조회되지 않아 비교할 수 없습니다」
+_NOT_FOUND = re.compile(r"조회되지\s*않|조회\s*결과가\s*없|찾을\s*수\s*없|확인할\s*수\s*없|확인되지\s*않|존재하지\s*않|"
+                        r"(?:데이터|자료|기록)가\s*없|없는\s*(?:로트|웨이퍼|run)")
+_SENTENCE = re.compile(r"[^.。!?\n]+")
+# 후속 확인 run — 분석 시점 이후 자료라 내부 API가 막는다. 조회하지 않고 「후속 run에서 정상으로 돌아왔다」고 쓰면 지어낸 관측이다
+_FOLLOWUP = re.compile(r"후속\s*(?:확인\s*)?(?:run|런|계측|결과)|FOLLOWUP")
+_NOT_YET = re.compile(r"없|않|못|아직|이후\s*자료|필요|전이|전에|기다|확인해야|봐야")
+
+
+def unanswered_question_ids(question: str | None, result: dict, seen_text: str) -> list[str]:
+    """질문에 나온 대상 중 조회되지 않은 것을 답이 말하지 않았으면 그 ID들 — 없는 대상을 묻는 질문의 답은 「없다」이다"""
+    answer = str(result.get("answer") or "")
+    asked = dict.fromkeys(i for i in _TARGET_ID.findall(question or "") if i not in seen_text)
+    short = {i: re.sub(r"^[A-Z]+-(?=L\d{3}$)", "", i) for i in asked}  # 로트는 접두어 없이(L088) 써도 같은 대상
+    return [i for i in asked if i not in answer and short[i] not in answer]
+
+
+def not_found_limitation(ids: list[str]) -> str:
+    return f"질문의 {', '.join(ids)}는 이번 조회 결과에 없어 확인하지 않았습니다(조회되지 않음)."
+
+
+def validate_seen_ids(result: dict, seen_text: str) -> list[str]:
+    """조회하지 않은 대상 — 답 · 관측 사실 · 원인 가설에 나온 로트 · 웨이퍼 · run ID가 이번 작업의 도구 결과에 없으면 반려.
+    없는 로트를 이번 사건과 같은 원인이라고 답한 일(평가셋 AE07) — 조회되지 않았다고 밝힌 문장은 받는다"""
+    texts = [str(result.get("answer") or "")]
+    texts += [str(fact.get("text") or "") for fact in result.get("observedFacts") or []]
+    texts += [str(cause.get("hypothesis") or "") for cause in result.get("candidateCauses") or []]
+    unseen = []
+    for sentence in (s for text in texts for s in _SENTENCE.findall(text)):
+        if _NOT_FOUND.search(sentence):
+            continue
+        unseen += [i for i in _TARGET_ID.findall(sentence) if i not in seen_text and i not in unseen]
+    followup = None
+    if "FOLLOWUP" not in seen_text:
+        followup = next((s.strip() for text in texts for s in _SENTENCE.findall(text)
+                         if _FOLLOWUP.search(s) and not _NOT_YET.search(s)), None)
+    errors = []
+    if followup:
+        errors.append(f"후속 확인 run은 조회하지 않았습니다(분석 시점 이후 자료라 조회되지 않습니다) — 「{followup[:80]}」처럼 그 결과를 "
+                      "관측으로 쓰지 않습니다. 후속 run 결과는 아직 볼 수 없다고 답하세요.")
+    if not unseen:
+        return errors
+    return errors + [f"조회하지 않은 대상 {', '.join(unseen)}가 결과에 있습니다. 도구로 조회해 확인하거나, 조회되지 않으면 "
+            "「조회되지 않아 확인할 수 없다」고 답하세요 — 조회하지 않은 대상에 대해 원인 · 상태를 말하지 않습니다."]

@@ -67,6 +67,11 @@ HARNESS_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "answer": {"type": "string",
+                               "description": "질문에 대한 1~3문장 직접 답 — 결과의 첫 문장(질문 · 추가 분석 · 요청서 작업은 필수). "
+                                              "예/아니오 · 수치 · 「확인할 수 없음」을 먼저 쓰고 근거 ID를 괄호로 붙인다. 할 수 없는 요청"
+                                              "(원인 확률 · 보고서 확정 · 분석 시점 이후 자료 · 설정값 처방)은 할 수 없다고 먼저 밝히고 이유와 "
+                                              "대신 할 수 있는 것을 쓴다. 기본 분석은 비워도 된다"},
                     "nextStep": {"type": "string", "enum": ["CURRENT_CHECK", "UPSTREAM_CHECK", "OBSERVE",
                                                            "INSUFFICIENT_EVIDENCE", "NEEDS_DEEP_ANALYSIS"],
                                  "description": "1순위 가설의 원인 ID가 사건 공정이면 CURRENT_CHECK, 앞 공정이면 "
