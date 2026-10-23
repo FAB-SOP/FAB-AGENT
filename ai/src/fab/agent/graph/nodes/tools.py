@@ -153,17 +153,18 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
         turn.rt.tracer.event("guard_reject", tool=name, errors=errs)
         turn.say("[REJECTED] " + " / ".join(err.removeprefix("[REJECTED] ") for err in errs), cid, name)
     else:
-        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + _missing_proposal_note(turn, args), cid, name)
+        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + _missing_request(turn, args), cid, name)
         turn.update["result"] = args
         turn.accepted_cid = cid
 
 
-def _missing_proposal_note(turn: _Turn, args: dict) -> str:
-    """질문 작업에서 원인 확인이 필요하다는 답(CURRENT_CHECK · UPSTREAM_CHECK)을 냈는데 요청서가 없으면 — 근거가 있는 요청을
-    낼지 한 번 알린다. 강제하지 않는다(필요 없다고 보면 그대로 끝난다). 실제 모델은 같은 질문에 요청서를 냈다 안 냈다 했다(평가셋 AE01)"""
+def _missing_request(turn: _Turn, args: dict) -> str:
+    """질문 작업에서 원인 확인이 필요하다는 답(CURRENT_CHECK · UPSTREAM_CHECK)을 냈는데 요청서가 없으면 — 근거가 있는 요청서
+    초안을 Harness가 낸다(fab.agent.auto_request). 알림만 주면 실제 모델은 같은 원인 질문에 요청서를 냈다 안 냈다 했다(평가셋 AE01).
+    초안은 승인 카드로만 나간다 — 보낼지는 사람이 정한다"""
     state = turn.state
     if (state.get("purpose") != purpose.QUESTION or args.get("nextStep") not in ("CURRENT_CHECK", "UPSTREAM_CHECK")
-            or not args.get("candidateCauses")  # 원인을 묻지 않은 사실 답에는 요청서를 권하지 않는다
+            or not args.get("candidateCauses")  # 원인을 묻지 않은 사실 답에는 요청서를 내지 않는다
             or not may_propose(state) or state.get("proposals") or turn.update.get("pending")
             or turn.counters.get("heldProposal") or turn.counters.get("proposalNudges", 0) >= 1):
         return ""
@@ -175,9 +176,8 @@ def _missing_proposal_note(turn: _Turn, args: dict) -> str:
     if suggestion is None:
         return ""
     turn.counters["proposalNudges"] = 1
-    turn.nudge_retry = True
-    return (f" 이 답은 {args['nextStep']}인데 요청서가 없습니다. 근거가 있는 요청을 낼지 정하세요 — {suggestion}. "
-            "필요 없다고 보면 그대로 두면 됩니다(다시 제출하지 않아도 이 답으로 끝납니다).")
+    turn.update["autoRequest"] = True
+    return f" 이 답은 {args['nextStep']}인데 요청서가 없어 Harness가 근거 있는 요청서 초안을 냅니다 — {suggestion}."
 
 
 def _check_documents(turn: _Turn, args: dict) -> tuple[dict, str | None]:

@@ -37,6 +37,6 @@ async def start(state: AgentState, config) -> dict:
     if selected:  # 추가 분석 — 작업자가 고른 결과를 진술 근거로 넣는다(인용할 수 있게 근거로 등록)
         messages.append(HumanMessage(content=followup.note(selected)))
     runtime(config).tracer.event("node", node="start", mode=state["mode"], promptVersion=prompt_version)
-    return {"messages": messages, "counters": limits.new_window(), "answerOnly": answer_only, "result": None, "previousResult": None, "requestSent": None, "proposalLimit": None, "analysis": None, "report": None, "conclusion": None,
+    return {"messages": messages, "counters": limits.new_window(), "answerOnly": answer_only, "autoRequest": None, "result": None, "previousResult": None, "requestSent": None, "proposalLimit": None, "analysis": None, "report": None, "conclusion": None,
             "stopReason": None, "promptVersion": prompt_version,
             **({"evidence": followup.evidence_of(selected, state.get("dataVersion"))} if selected else {})}

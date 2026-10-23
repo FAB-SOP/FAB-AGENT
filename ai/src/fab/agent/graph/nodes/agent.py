@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage
+import uuid
 
+from langchain_core.messages import AIMessage, HumanMessage
+
+from fab.agent import auto_request
+from fab.agent.evidence import tool_results
 from fab.agent.graph.state import AgentState, runtime
 from fab.agent.harness import context, limits
 from fab.agent.harness.retry import call_with_recovery
@@ -20,9 +24,29 @@ def _last_call(state: AgentState, counters: dict) -> bool:
     return counters["modelCalls"] == limits.LIMITS.max_model_calls - 1 and not state.get("result") and state["mode"] != "REPORT"
 
 
+def _drafted_request(state: AgentState, counters: dict, tracer) -> dict:
+    """원인 질문의 답에 요청서가 없다 — 모델을 부르지 않고 Harness가 담당자 조회 · 요청서 초안을 낸다(fab.agent.auto_request).
+    담당자 조회 한 번 뒤에도 초안을 못 만들면 그만둔다(답만으로 끝난다)"""
+    result = state.get("result") or {}
+    top = min(result.get("candidateCauses") or [{}], key=lambda cause: cause.get("priority") or 99) or None
+    call = auto_request.draft(tool_results(state["messages"], keep_text=True), state.get("incidentProcess"),
+                              result.get("nextStep"), top, set(state.get("evidence") or {}))
+    steps = counters.get("autoRequestSteps", 0)
+    if call is None or steps >= 2 or (call[0] == "get_process_owner" and steps >= 1):
+        tracer.event("auto_request", drafted=False, step=call[0] if call else None)
+        return {"autoRequest": None, "counters": counters}
+    counters["autoRequestSteps"] = steps + 1
+    tracer.event("auto_request", drafted=call[0] != "get_process_owner", step=call[0])
+    message = AIMessage(content="(Harness가 근거 있는 요청서 초안을 냅니다)",
+                        tool_calls=[{"id": f"auto_{uuid.uuid4().hex[:8]}", "name": call[0], "args": call[1]}])
+    return {"messages": [message], "counters": counters, "autoRequest": call[0] == "get_process_owner" or None}
+
+
 async def agent(state: AgentState, config) -> dict:
     job_runtime = runtime(config)
     counters = dict(state["counters"])
+    if state.get("autoRequest"):
+        return _drafted_request(state, counters, job_runtime.tracer)
     reason = limits.check(counters)
     if reason:
         job_runtime.tracer.event("limit", reason=reason)

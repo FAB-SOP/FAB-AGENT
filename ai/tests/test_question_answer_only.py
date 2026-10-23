@@ -84,7 +84,7 @@ def test_fact_answer_without_causes_is_accepted_and_sheds_work_suggestions():
     assert str(turn.out[-1].content).startswith("[ACCEPTED]"), turn.out[-1].content
     assert turn.update["result"]["workSuggestions"] == [] and "candidateCauses" not in turn.update["result"]
     assert "work_suggestions_dropped" in turn.rt.tracer.events
-    assert "요청서가 없습니다" not in str(turn.out[-1].content)  # 사실 답에는 요청을 권하지 않는다
+    assert not turn.update.get("autoRequest")  # 사실 답에는 요청서를 내지 않는다
 
 
 def test_answer_only_submit_sheds_causes_the_model_sent_anyway():
