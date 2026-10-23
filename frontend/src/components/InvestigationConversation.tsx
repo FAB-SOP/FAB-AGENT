@@ -1,5 +1,5 @@
 import {LoaderCircle} from 'lucide-react';
-import {type Obj,when} from '../api/types';
+import {approvalKindLabels,type Obj,when} from '../api/types';
 import {Badge,Empty} from './ui';
 import {ConclusionNotice,StanceBadge} from './AnalysisMarks';
 import {answerText,counterIds,nextCheck} from '../domain/analysisMarks';
@@ -53,19 +53,26 @@ function ConversationItem({item,latestCauseId}:{item:Obj;latestCauseId?:string|n
  case 'APPROVAL_REQUESTED':{
   const approval=item.data?.approval;
   return <div className="conversation-note">
-   <div className="row-between"><strong>{approval?.source==='AGENT'?'AI 확인 요청 제안':`승인 요청 · ${item.actor?.displayName}`}</strong>{at}</div>
-   {item.text&&<p>{item.text}</p>}
+   <div className="row-between"><strong>{approval?.source==='AGENT'?'AI가 제안':`${item.actor?.displayName} 님이 제안`} · {approvalSubject(approval)}</strong>{at}</div>
+   <p>{approval?.payload?.question||item.text}</p>
+   {approval?.payload?.question&&item.text&&item.text!==approval.payload.question&&<p className="small muted">이유 · {item.text}</p>}
    {approval?.status==='PENDING'&&<p className="small muted">아래 승인 대기에서 검토하세요.</p>}
   </div>;
  }
- case 'APPROVAL_DECIDED':
+ case 'APPROVAL_DECIDED':{
+  const approval=item.data?.approval;
+  const rejected=item.eventType==='REJECTED';
   return <div className="conversation-note">
-   <div className="row-between"><strong>{item.eventType==='REJECTED'?'승인 거절':'승인'} · {item.actor?.displayName}</strong>{at}</div>
-   {item.text&&<p>{item.text}</p>}
+   <div className="row-between"><strong>{item.actor?.displayName} 님이 {rejected?'거절':'승인'} · {approvalSubject(approval)}</strong>{at}</div>
+   {approval?.payload?.question&&<p className="one-line">{approval.payload.question}</p>}
+   {!rejected&&approval?.executionRef?.type==='CHECK_REQUEST'&&<p className="small muted">요청을 담당자에게 보냈습니다.</p>}
+   {item.text&&<p className="small">{rejected?'거절 사유':'검토 의견'} · {item.text}</p>}
   </div>;
+ }
  case 'REPLY':
   return <div className="conversation-note">
-   <div className="row-between"><strong>다른 팀 회신 · {item.actor?.displayName}</strong>{at}</div>
+   <div className="row-between"><strong>{item.actor?.displayName} 님의 회신{item.request?.targetProcessCode?` · ${item.request.targetProcessCode}`:''}</strong>{at}</div>
+   {item.request?.question&&<p className="small muted one-line">요청 · {item.request.question}</p>}
    <p>{item.text}</p>
    <p className="small muted">아래 결과 검토에서 추가 분석에 반영할 수 있습니다.</p>
   </div>;
@@ -78,6 +85,12 @@ function ConversationItem({item,latestCauseId}:{item:Obj;latestCauseId?:string|n
   return null;
  }
 }
+/** 무엇을 누구에게 — 예: 정비 요청 → CMP */
+const approvalSubject=(approval?:Obj)=>{
+ const kind=approvalKindLabels[approval?.actionType]||'승인 요청';
+ const target=approval?.payload?.targetProcessCode;
+ return target?`${kind} → ${target}`:kind;
+};
 /** 요청이 아직 끝나지 않았으면 현재 작업(재개까지 따라간 것) 상태를 보여 준다. 실패는 별도 항목이 있다 */
 function JobProgress({job}:{job?:Obj|null}){
  if(!job||['SUCCEEDED','FAILED','CANCELLED'].includes(job.status))return null;

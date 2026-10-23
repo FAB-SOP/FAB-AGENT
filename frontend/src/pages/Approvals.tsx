@@ -3,7 +3,7 @@ import {useSearchParams} from 'react-router-dom';
 import {useQuery} from '@tanstack/react-query';
 import {ArrowUpRight,Check} from 'lucide-react';
 import {api,write} from '../api/client';
-import {labels,when,type Incident,type Obj,type Page} from '../api/types';
+import {approvalKindLabels,labels,when,type Incident,type Obj,type Page} from '../api/types';
 import {useAuth} from '../auth';
 import {Badge,Empty,ErrorMessage,Field,Modal,Notice,PageHeading,Panel} from '../components/ui';
 import {PayloadDetails} from '../components/InvestigationContext';
@@ -128,10 +128,6 @@ function useApprovalReview(selected:string,setSelected:(id:string)=>void){
  />:null;
  return {command,openApproval,modal};
 }
-/** 사건 화면 승인 칸에서 무엇을 승인하는지 앞에 붙이는 이름 */
-export const approvalKindLabels:Record<string,string>={
- CHECK_REQUEST:'타팀 확인 요청',MAINTENANCE_REQUEST:'정비 요청',CONFIRM_REPORT:'보고서 확정',RECORD_ACTION:'조치 기록',
-};
 function IncidentApprovalRow({approval,onOpen}:{approval:Obj;onOpen:()=>void}){
  const payload=approval.payload||{};
  const target=[payload.targetProcessCode,payload.equipmentId].filter(Boolean).join(' · ');

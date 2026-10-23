@@ -27,6 +27,14 @@ describe('incident conversation API',()=>{
    .map(type=>({entryId:type,type})))]);
   expect(items.map(item=>item.type)).toEqual(['REPLY','QUESTION']);
  });
+ it('attaches the original request to each reply',()=>{
+  const items=conversationItems([page([
+   {entryId:'s',type:'REQUEST_SENT',links:{requestId:'chk_1'},data:{request:{question:'제거량 확인 부탁',targetProcessCode:'ETCH'}}},
+   {entryId:'r',type:'REPLY',links:{requestId:'chk_1'},text:'이상 없음'},
+  ])]);
+  expect(items).toHaveLength(1);
+  expect(items[0].request.question).toBe('제거량 확인 부탁');
+ });
  it('blocks new questions only while a job runs',()=>{
   expect(runningJob(page([],{waitingJobs:[{status:'WAITING_APPROVAL'}]}))).toBeUndefined();
   expect(runningJob(page([],{runningJobs:[{status:'RUNNING'}]}))?.status).toBe('RUNNING');

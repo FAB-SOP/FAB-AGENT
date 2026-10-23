@@ -10,7 +10,7 @@ export const statusMessages:Record<string,string>={
  QUEUED:'분석 요청을 접수했습니다.',
  RUNNING:'센서 데이터와 문서를 분석하고 있습니다.',
  WAITING_APPROVAL:'AI가 확인 요청을 제안했습니다. 실행할 내용을 검토해 주세요.',
- WAITING_REPLY:'담당자에게 확인을 요청했습니다. 회신 후 분석이 이어집니다.',
+ WAITING_REPLY:'담당자에게 확인을 요청했습니다. 회신이 오면 아래 결과 검토에서 골라 추가 분석을 요청하세요.',
  SUCCEEDED:'요청한 분석이 완료되었습니다.',
  FAILED:'분석에 실패했습니다.',
  CANCELLED:'분석 요청이 취소되었습니다.',

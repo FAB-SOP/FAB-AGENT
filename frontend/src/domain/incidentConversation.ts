@@ -21,7 +21,11 @@ const CONVERSATION_TYPES=new Set([
 export function conversationItems(pages:ConversationPage[]){
  const byId=new Map<string,Obj>();
  for(const page of [...pages].reverse())for(const item of page.items)byId.set(item.entryId,item);
- return [...byId.values()].filter(item=>CONVERSATION_TYPES.has(item.type));
+ const all=[...byId.values()];
+ // 회신에는 무엇에 대한 회신인지 원래 요청(대화에는 안 그림)을 붙인다
+ const requests=new Map(all.filter(item=>item.type==='REQUEST_SENT').map(item=>[item.links?.requestId,item.data?.request]));
+ return all.filter(item=>CONVERSATION_TYPES.has(item.type))
+  .map(item=>item.type==='REPLY'?{...item,request:requests.get(item.links?.requestId)}:item);
 }
 /** 대화 속 AI 분석 결과 — 추천 조치안을 분석별로 묶을 때 쓴다 */
 export const conversationResults=(items:Obj[],latest?:Obj|null)=>{
