@@ -134,3 +134,63 @@ def test_request_rejected_by_owner_blocked_until_cause_changes():
     assert reason and "거절" in reason
     assert proposal_block(CHECK, "ETCH", requests, [], lambda _at: True, 3) is None
     assert proposal_block(CHECK, "ETCH", requests, [], _never, 3, human_requested=True) is None
+
+
+# ---- 사람이 연 요청서 작업의 범위 — 지정한 대상 공정으로만(재생성 · 대체는 이번 MVP에서 제외)
+
+from fab.agent.harness.incident_rules import request_scope_error  # noqa: E402
+
+
+def test_request_for_a_named_process_stays_on_it():
+    assert request_scope_error(CHECK, "ETCH", {"targetProcessCode": "ETCH"}) is None
+    reason = request_scope_error(CHECK, "CVD", {"targetProcessCode": "ETCH"})
+    assert reason and "ETCH" in reason
+
+
+def test_plain_request_without_scope_is_free():
+    assert request_scope_error(MNT, "CMP", {}) is None
+    assert request_scope_error(MNT, "CMP", None) is None
+
+
+# ---- 한도 도달 이유 — 모델에게만 알리던 것을 결과에도 남겨 사람이 왜 요청서가 없는지 본다
+
+async def test_limit_rejection_is_kept_for_the_result(monkeypatch):
+    from langchain_core.messages import AIMessage
+
+    import importlib
+
+    from fab.agent.harness import limits
+
+    tools = importlib.import_module("fab.agent.graph.nodes.tools")  # 패키지가 같은 이름의 함수 tools를 내보내서 모듈을 직접 가져온다
+
+    async def _limit(turn, args, action_type):
+        return "[LIMIT] 이 사건의 요청 한도(3개)에 닿았습니다."
+    monkeypatch.setattr(tools, "_proposal_rejection", lambda *a, **k: None)
+    monkeypatch.setattr(tools, "_incident_block", _limit)
+
+    class _Tracer:
+        def event(self, *a, **k):
+            pass
+
+    class _Runtime:
+        tracer = _Tracer()
+    state = {"mode": "DEEP", "messages": [AIMessage(content="", tool_calls=[])], "counters": limits.new_window(),
+             "evidence": {}, "proposals": [], "briefs": {"c1": {"brief": {}}}}
+    turn = tools._Turn(state, {"configurable": {"runtime": _Runtime()}})
+    await tools.save_proposal(turn, "propose_cross_process_check", {"processCode": "ETCH"}, "c1")
+    assert turn.update["proposalLimit"] is True
+    assert str(turn.out[-1].content).startswith("[LIMIT]")
+
+
+async def test_finalize_says_why_no_request_was_proposed():
+    from fab.agent.graph.nodes.finalize import finalize
+
+    class _Runtime:
+        job_id = "JOB-1"
+    state = {"mode": "DEEP", "incidentId": "INC-1", "jobId": "JOB-1", "evidence": {"E-1": {"evidenceId": "E-1"}},
+             "proposalLimit": True,
+             "result": {"nextStep": "UPSTREAM_CHECK", "observedFacts": [{"text": "사실", "evidenceIds": ["E-1"]}],
+                        "candidateCauses": [], "limitations": []}}
+    out = await finalize(state, {"configurable": {"runtime": _Runtime()}})
+    assert out["analysis"]["proposalLimit"] is True
+    assert any("요청 한도" in line and "업무 후보" in line for line in out["result"]["limitations"])
