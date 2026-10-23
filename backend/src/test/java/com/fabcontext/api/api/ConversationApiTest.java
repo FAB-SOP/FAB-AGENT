@@ -107,8 +107,11 @@ class ConversationApiTest extends ApiTestSupport {
 
     private record RequestFlow(CaseIncident incident, String question, String approval, String resume, String request) {}
     private RequestFlow requestFlow(Session user) throws Exception {
+        return requestFlow(user, "정비 이력 확인");
+    }
+    private RequestFlow requestFlow(Session user, String requestQuestion) throws Exception {
         var incident = base(true); String question = ask(user, incident.incidentId(), "앞 공정 확인 요청");
-        String approval = json(internal("/internal/jobs/{id}/proposals", Map.of("actionType", "CREATE_CHECK_REQUEST", "payload", Map.of("ownerUserId", "USR-ETCH-01", "targetProcessCode", "ETCH", "question", "정비 이력 확인"),
+        String approval = json(internal("/internal/jobs/{id}/proposals", Map.of("actionType", "CREATE_CHECK_REQUEST", "payload", Map.of("ownerUserId", "USR-ETCH-01", "targetProcessCode", "ETCH", "question", requestQuestion),
                 "rationale", "원인 확인 필요", "idempotencyKey", "proposal-conv-" + question), question).andExpect(status().isCreated()), "$.data.approvalId");
         event(question, "APPROVAL_REQUIRED", Map.of("approvalId", approval, "approvalVersion", 1, "interruptId", "INT-private",
                 "result", Map.of("answer", "승인 전에 확인 가능한 분석 답변"))).andExpect(status().isOk());
@@ -117,6 +120,82 @@ class ConversationApiTest extends ApiTestSupport {
                 .andExpect(status().isOk()), "$.data.data.requestId");
         event(resume, "WAITING_REPLY", Map.of("requestId", request, "interruptId", "INT-REPLY-private")).andExpect(status().isOk());
         return new RequestFlow(incident, question, approval, resume, request);
+    }
+
+    @Test void lateReplyCarriesItsOriginalBlockAndRequestContextWithoutLoadingPreviousPages() throws Exception {
+        Session user = cmp(); var flow = requestFlow(user, "정비 기록 " + "🤖".repeat(220));
+        String later = ask(user, flow.incident().incidentId(), "그 뒤 별도 질문"); finish(later, "뒤 질문 답변", null);
+        Session receiver = login("etch.lee"); acceptRequest(receiver, flow.request());
+        postAs(receiver, "/api/check-requests/{id}/replies", "{\"findings\":\"원 요청의 늦은 회신\",\"confirmedByUser\":true,\"expectedVersion\":2}", flow.request()).andExpect(status().isCreated());
+        long version = incidentVersion(user, flow.incident().incidentId()), count = jobs.count();
+        JsonNode page = new tools.jackson.databind.json.JsonMapper().readTree(getAs(user, PATH + "?size=1", flow.incident().incidentId())
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).get("data");
+        JsonNode reply = one(page, "REPLY");
+        assertThat(entries(page)).hasSize(1);
+        assertThat(reply.path("requestSummary").path("targetProcessCode").asText()).isEqualTo("ETCH");
+        String summary = reply.path("requestSummary").path("question").asText();
+        assertThat(summary.codePointCount(0, summary.length())).isEqualTo(200); assertThat(summary).endsWith("…");
+        assertThat(reply.path("requestSummary").size()).isEqualTo(3); // 원문 brief·분석을 복사하지 않는 최소 요약
+        assertThat(reply.path("placement").path("blockId").asText()).isEqualTo("job:" + flow.question() + ":requested");
+        assertThat(reply.path("placement").path("title").asText()).isEqualTo("앞 공정 확인 요청");
+        assertThat(reply.path("placement").path("flowId").asText()).isEqualTo("approval:" + flow.approval());
+        assertThat(reply.path("links").path("approvalId").asText()).isEqualTo(flow.approval());
+        assertThat(reply.path("links").path("sourceResultId").asText()).isNotBlank();
+        assertThat(incidentVersion(user, flow.incident().incidentId())).isEqualTo(version); assertThat(jobs.count()).isEqualTo(count);
+    }
+
+    private String proposeWork(Session user, CaseIncident incident, String operation) throws Exception {
+        String result = results.findFirstByJobIdOrderByCreatedAtDesc(incident.jobId()).orElseThrow().getResultId();
+        return json(postAs(user, "/api/incidents/{id}/work-items", Json.write(Map.of("operationCode", operation, "title", "상태 확인", "reason", "추가 확인 필요",
+                "sourceResultId", result, "expectedIncidentVersion", incidentVersion(user, incident.incidentId()))), incident.incidentId()).andExpect(status().isCreated()), "$.data.taskId");
+    }
+
+    @Test void workRequestApprovalAndReplyShareTheSourceAnswerFlow() throws Exception {
+        Session user = cmp(); var incident = base(true); String task = proposeWork(user, incident, "UPSTREAM_CHECK");
+        String request = json(postAs(user, "/api/work-items/{id}/adoptions", "{\"expectedVersion\":1,\"ownerUserId\":\"USR-ETCH-01\",\"targetProcessCode\":\"ETCH\"}", task)
+                .andExpect(status().isOk()), "$.data.requestId");
+        Session receiver = login("etch.lee"); acceptRequest(receiver, request);
+        postAs(receiver, "/api/check-requests/{id}/replies", "{\"findings\":\"점검 완료\",\"confirmedByUser\":true,\"expectedVersion\":2}", request).andExpect(status().isCreated());
+        JsonNode data = data(user, incident.incidentId());
+        String source = results.findFirstByJobIdOrderByCreatedAtDesc(incident.jobId()).orElseThrow().getResultId();
+        for (String type : List.of("WORK_PROPOSED", "WORK_EVENT", "APPROVAL_REQUESTED", "APPROVAL_DECIDED", "REQUEST_SENT", "REQUEST_ACCEPTED", "REPLY")) {
+            JsonNode entry = one(data, type);
+            assertThat(entry.path("placement").path("blockId").asText()).as(type).isEqualTo("job:" + incident.jobId() + ":requested");
+            assertThat(entry.path("placement").path("flowId").asText()).as(type).isEqualTo("work:" + task);
+            assertThat(entry.path("links").path("taskId").asText()).as(type).isEqualTo(task);
+            assertThat(entry.path("links").path("sourceResultId").asText()).as(type).isEqualTo(source);
+        }
+        assertThat(one(data, "APPROVAL_REQUESTED").path("links").path("parentEntryId").asText()).isEqualTo("work:" + task + ":proposed");
+    }
+
+    @Test void directWorkCompletionStaysUnderTheAdoptedSuggestion() throws Exception {
+        Session user = cmp(); var incident = base(true); String task = proposeWork(user, incident, "REVIEW_SENSOR_DATA");
+        postAs(user, "/api/work-items/{id}/adoptions", "{\"expectedVersion\":1}", task).andExpect(status().isOk());
+        postAs(user, "/api/work-items/{id}/completions", Json.write(Map.of("description", "설정값과 실측값 일치 확인", "performedAt", "2026-10-22T00:00:00Z",
+                "confirmedByUser", true, "expectedVersion", 2, "expectedIncidentVersion", incidentVersion(user, incident.incidentId()))), task).andExpect(status().isOk());
+        JsonNode data = data(user, incident.incidentId());
+        assertThat(one(data, "ACTION_RESULT").path("placement")).isEqualTo(one(data, "WORK_PROPOSED").path("placement"));
+        assertThat(one(data, "ACTION_RESULT").path("links").path("parentEntryId").asText()).isEqualTo("work:" + task + ":proposed");
+    }
+
+    @Test void requestButtonUsesItsBasisBlockWhileUnrelatedQuestionsStaySeparate() throws Exception {
+        Session user = cmp(); var incident = base(true);
+        String source = results.findFirstByJobIdOrderByCreatedAtDesc(incident.jobId()).orElseThrow().getResultId();
+        Job draft = tx.execute(s -> rawJob(incident.incidentId(), JobKind.DEEP, "draft", null, Instant.now(), Map.of("purpose", "REQUEST", "sourceResultId", source)));
+        JsonNode entry = one(data(user, incident.incidentId()), "REQUEST_DRAFT_REQUESTED");
+        assertThat(entry.path("links").path("jobId").asText()).isEqualTo(draft.getJobId());
+        assertThat(entry.path("placement").path("blockId").asText()).isEqualTo("job:" + incident.jobId() + ":requested");
+    }
+
+    @Test void manualApprovalHasItsOwnDirectBlockWithoutInventingAnAnalysis() throws Exception {
+        Session user = cmp(); var incident = base(true);
+        Approval manual = approvals.save(Approval.builder().approvalId("apv_" + UUID.randomUUID()).incidentId(incident.incidentId()).processCode("CMP")
+                .actionType(ApprovalActionType.CHECK_REQUEST).payload(Map.of("question", "직접 확인 요청")).rationale("직접 판단").source("USER").createdBy("USR-CMP-01")
+                .createdAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).build());
+        JsonNode entry = one(data(user, incident.incidentId()), "APPROVAL_REQUESTED");
+        assertThat(entry.path("placement").path("blockType").asText()).isEqualTo("DIRECT");
+        assertThat(entry.path("placement").path("blockId").asText()).isEqualTo("approval:" + manual.getApprovalId());
+        assertThat(entry.path("links").get("sourceResultId").isNull()).isTrue();
     }
 
     @Test void approvalReplyAndSelectedFollowupStayConnectedAcrossResumeJobs() throws Exception {
@@ -135,10 +214,13 @@ class ConversationApiTest extends ApiTestSupport {
         var followup = one(after, "FOLLOWUP_REQUESTED");
         assertThat(followup.path("data").path("followup").path("selectedInputs").get(0).path("content").asText()).isEqualTo("시즈닝 기록 확인 완료");
         assertThat(followup.path("data").path("followup").path("selectedInputs").get(0).path("citedInResult").asBoolean()).isTrue();
+        assertThat(followup.path("placement").path("blockId").asText()).isEqualTo("followup:" + arq);
         JsonNode answer = entries(after).stream().filter(e -> result.equals(e.path("links").path("resultId").asText())).findFirst().orElseThrow();
         assertThat(answer.path("links").path("analysisRequestId").asText()).isEqualTo(arq);
         assertThat(answer.path("links").path("rootJobId").asText()).isEqualTo(flow.question());
         assertThat(answer.path("links").path("parentJobId").asText()).isEqualTo(flow.resume());
+        assertThat(answer.path("placement").path("blockId").asText()).isEqualTo("followup:" + arq);
+        assertThat(one(after, "REPLY").path("placement").path("blockId").asText()).isEqualTo("job:" + flow.question() + ":requested");
         assertThat(after.path("jobs").size()).isEqualTo(4);
         assertThat(one(after, "QUESTION").path("currentJob").path("jobId").asText()).isEqualTo(followupJob);
         assertThat(one(before, "QUESTION").path("currentJob").path("status").asText()).isEqualTo("WAITING_REPLY");
@@ -283,6 +365,7 @@ class ConversationApiTest extends ApiTestSupport {
         JsonNode data = data(user, incident.incidentId());
         JsonNode entry = entries(data).stream().filter(e -> broken.getJobId().equals(e.path("links").path("jobId").asText())).findFirst().orElseThrow();
         assertThat(entry.path("links").path("linkStatus").asText()).isEqualTo("MISSING_PARENT");
+        assertThat(entry.get("placement").isNull()).isTrue();
         assertThat(data.toString()).doesNotContain(other.incidentId(), "private-secret");
         assertThat(data.path("jobs").size()).isEqualTo(2);
     }
