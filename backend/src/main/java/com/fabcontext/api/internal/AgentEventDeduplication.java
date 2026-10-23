@@ -52,8 +52,10 @@ class AgentEventDeduplication {
             String type, String hash, boolean logical) {
         em.refresh(receipt, LockModeType.PESSIMISTIC_WRITE);
         boolean sameScope = receipt.getJobId().equals(job.getJobId()) && receipt.getAttempt() == attempt && receipt.getEventType().equals(type);
-        if (sameScope && receipt.getContentHash() == null) {
-            // 기존 행을 새 요청의 내용으로 채우면 과거 결과를 잘못 확정하므로 해시를 사후 기록하지 않는다.
+        boolean legacyRetry = "RETRY_SCHEDULED".equals(type) && receipt.getContentHash() != null
+                && receipt.getContentHash().startsWith("sha256:");
+        if (sameScope && (receipt.getContentHash() == null || legacyRetry)) {
+            // 원문/옛 nextRetryAt이 없어 변환할 수 없다. 새 요청으로 과거 해시를 채우거나 덮어쓰지 않는다.
             AfterCommit.run(() -> log.warn("event=agent.event.legacy-unverifiable jobId={} eventId={}", job.getJobId(), eventId));
             return ignored(job, logical ? "JOB_FINISHED" : "DUPLICATE_EVENT");
         }

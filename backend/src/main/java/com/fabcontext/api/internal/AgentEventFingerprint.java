@@ -17,12 +17,16 @@ final class AgentEventFingerprint {
         content.putIfAbsent("incidentId", job.getIncidentId());
         content.putIfAbsent("threadId", job.getThreadId());
         Object raw = event.getOrDefault("payload", Map.of());
-        if (raw instanceof Map<?, ?> payload && "JOB_STARTED".equals(event.get("type"))) {
+        String type = String.valueOf(event.get("type"));
+        String ignored = "JOB_STARTED".equals(type) ? "startedAt" : "RETRY_SCHEDULED".equals(type) ? "nextRetryAt" : null;
+        if (raw instanceof Map<?, ?> payload && ignored != null) {
             Map<String, Object> clean = new TreeMap<>();
-            payload.forEach((k, v) -> { if (!"startedAt".equals(k)) clean.put(k.toString(), v); });
+            payload.forEach((k, v) -> { if (!ignored.equals(k)) clean.put(k.toString(), v); });
             content.put("payload", clean);
         } else content.put("payload", raw);
-        return Hashing.canonicalSha256(normalize(content));
+        String hash = Hashing.canonicalSha256(normalize(content));
+        // v1 RETRY 행은 nextRetryAt을 포함했다. 다른 이벤트 해시는 그대로 두고 변경된 종류만 구분한다.
+        return "RETRY_SCHEDULED".equals(type) ? "v2:" + hash : hash;
     }
     private static Object normalize(Object value) {
         if (value instanceof Map<?, ?> map) {
