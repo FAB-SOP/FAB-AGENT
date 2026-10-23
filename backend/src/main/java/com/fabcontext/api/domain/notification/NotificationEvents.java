@@ -23,8 +23,7 @@ import org.springframework.stereotype.Component;
  * 업무 서비스는 자기 트랜잭션 안에서 해당 메서드 하나만 부른다 — 저장은 커밋 직전, 전달은 커밋 후({@link NotificationService}).
  * 여기서는 업무 상태를 바꾸거나 분석 · Agent를 실행하지 않는다.
  * <p>
- * 확장 지점: 보고서 요약(SUMMARY) 완료 · 실패 알림은 이번 범위가 아니다. 추가할 때 {@link NotificationType}에 종류를 더하고
- * 요약 결과 반영 트랜잭션(SUMMARY_READY 검증을 통과한 경우만)에서 이 클래스의 새 메서드를 부른다. 수신자는 보고서 확정자로 할지 합의가 필요하다.
+ * 보고서 요약(SUMMARY) 완료 · 실패는 보고서 확정자에게 보낸다(003 결정) — 요약 결과 반영 트랜잭션에서 검증을 통과한 경우만 부른다.
  */
 @Component
 @RequiredArgsConstructor
@@ -118,6 +117,17 @@ public class NotificationEvents {
 		notifications.publish(new NotificationDraft(type, job.getJobId(), job.getJobId(),
 			new Ref("INCIDENT", incident.getIncidentId()), incident.getIncidentId(), incident.getDisplayId(), null),
 			List.of(job.getRequestedBy()));
+	}
+
+	/** 확정본 요약 완료 · 실패 → 보고서 확정자. 요약 작업마다 한 번(sourceKey = 작업 ID) */
+	public void reportSummaryFinished(boolean ready, String summaryJobId, String reportId, String incidentId,
+			String confirmedBy) {
+		if (confirmedBy == null) {
+			return;
+		}
+		notifications.publish(new NotificationDraft(
+			ready ? NotificationType.REPORT_SUMMARY_READY : NotificationType.REPORT_SUMMARY_FAILED, summaryJobId, reportId,
+			new Ref("INCIDENT", incidentId), incidentId, displayId(incidentId), null), List.of(confirmedBy));
 	}
 
 	List<String> incidentAssignees(String processCode) {

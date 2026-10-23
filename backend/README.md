@@ -17,7 +17,7 @@ src/main/java/com/fabcontext/api/
 ├─ config/        FabProperties — 토큰 · 승인 만료 · 시드 · Agent 모드 · 데모 경로 · 묶음 경로(pack-dir · rag-dir)
 ├─ auth/          로그인 · 세션 · CSRF · 서비스 토큰(/api/events → ROLE_SERVICE, /internal → ROLE_AGENT) · 공정 범위 권한 · 시연 계정 전환
 ├─ domain/        화면(공개 API /api/**) 기능 — 기능마다 Controller · Service · Entity · Repository · Dtos
-│  ├─ incident/      P03 사건 목록 · 상세 · 관리자 상태 전이 · 타임라인
+│  ├─ incident/      P03 사건 목록 · 상세 · 보류 사건 조사 재개 · 타임라인
 │  ├─ events/        이상 이벤트 접수 (탐지 서비스 → 사건 생성 + 기본 분석 작업)
 │  ├─ processdata/   P04~P06 run · 계측 · 특징 · 센서 시계열 · 경로 · 변경 · 공정 비교
 │  │                 PackStore(묶음 파일 읽기) · ProcessEvidenceService(서버 쪽 계산 — R1 · OOS · 정상 분포 대비 z · 참고 범위)
@@ -123,7 +123,7 @@ python3 ../ops/tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-do
 | 쓰기 | 모든 POST · PATCH에 `X-CSRF-TOKEN`. 계약에 표시된 쓰기는 `Idempotency-Key`도 필수 |
 | Idempotency | 같은 키 + 같은 본문 → 최초 응답 재생(`Idempotent-Replayed: true`), 같은 키 + 다른 본문 → 422 |
 | 낙관적 버전 | `expectedVersion` · `expectedIncidentVersion` · `expectedContentRevision`이 다르면 409 → 다시 조회 |
-| 권한 | 사건 · 데이터는 `processScopes` 기준, 확인 요청은 요청자 · 담당자 관계 기준, 상태 전이는 MANAGER만 |
+| 권한 | 사건 · 데이터는 `processScopes` 기준, 확인 요청은 요청자 · 담당자 관계 기준, 사건 종료는 보고서 확정으로만 · 보류 사건 재개는 MANAGER만 |
 
 ## 화면별 흐름 (P01~P12)
 
@@ -133,10 +133,10 @@ python3 ../ops/tools/openapi_diff.py http://localhost:8090   # 서버 /v3/api-do
 4. **승인** `POST /api/approvals/{id}/decisions` → 권한 · 만료 · 버전 · `actionHash`를 다시 검증합니다. 실행되는 것은 언제나 **저장된 payload**입니다. Agent가 기다리던 작업이면 승인만 기록하고 같은 `threadId`로 RESUME 작업이 생깁니다(`resumeJobId`) — 실행은 재개된 Agent가 승인 ID로 요청합니다(아래 「내부 API」).
 5. **회신** 요청 담당자가 `POST .../replies` → 요청 REPLIED, 대기하던 작업에서 RESUME 작업 생성, 사건은 다시 INVESTIGATING.
 6. **조치 · 효과** 실제 수행한 조치만 기록합니다(미래 시각이면 422). 효과를 기록해도 사건은 자동 종료되지 않습니다.
-7. **보고서** 사용자가 요청할 때만 REPORT 작업으로 DRAFT를 만듭니다. 편집(`contentRevision`) → 확정(스냅샷 보존) → Markdown 내보내기. 확정 후 변경하려면 새 version을 만듭니다.
-8. **관리자 전이** OPEN · INVESTIGATING · WAITING_REPLY → ON_HOLD, ON_HOLD → INVESTIGATING, 그 외 모든 상태 → CLOSED.
+7. **보고서** 사용자가 요청할 때만 REPORT 작업으로 DRAFT를 만듭니다. 편집(`contentRevision`) → 확정(스냅샷 · 확정본 보존, 사건 종료) → Markdown 내보내기. 확정은 사건당 한 번이며 확정 뒤 새 판본 · 재확정은 없습니다.
+8. **사건 종료 · 관리자 전이** 사건은 최신 판본 보고서를 확정할 때만 종료됩니다(사건당 확정 1회, 남은 분석 · 승인 · 미회신 요청 · 미수행 업무가 있으면 409 `CONFIRMATION_BLOCKED`). 요청은 철회, 업무는 미수행으로 닫아 정리합니다. 확정과 함께 확정본 AI 요약이 접수됩니다. 관리자는 기존에 보류된 사건의 조사 재개(ON_HOLD → INVESTIGATING)만 할 수 있고, 보류 · 수동 종료는 409 `TRANSITION_REMOVED`.
 
-SSE `GET /api/incidents/{id}/stream` 이벤트: `snapshot`, `job.status`, `analysis.result`, `approval.created`, `approval.decided`, `approval.executed`, `work-item.updated`, `check-request.created`, `check-request.replied`, `action.recorded`, `action.verified`, `report.ready`, `report.confirmed`, `incident.updated`. 연결이 끊기면 `getJob`으로 상태를 복구합니다. 대시보드 전역 스트림은 계약에 없으므로 `GET /api/dashboard`를 다시 조회합니다.
+SSE `GET /api/incidents/{id}/stream` 이벤트: `snapshot`, `job.status`, `analysis.result`, `approval.created`, `approval.decided`, `approval.executed`, `work-item.updated`, `check-request.created`, `check-request.replied`, `action.recorded`, `action.verified`, `report.ready`, `report.confirmed`, `report.summary`, `incident.updated`. 연결이 끊기면 `getJob`으로 상태를 복구합니다. 대시보드 전역 스트림은 계약에 없으므로 `GET /api/dashboard`를 다시 조회합니다.
 
 ## 시드 시나리오
 
@@ -146,9 +146,9 @@ SSE `GET /api/incidents/{id}/stream` 이벤트: `snapshot`, `job.status`, `analy
 | EV-1006 | 기동 직후 기본 분석 | `W-CURRENT-006-3` CMP-PM3, `head_pressure` 참고 범위 이탈 — 현재 공정(정비 요청) |
 | EV-1007 | 기동 직후 기본 분석 | `W-CURRENT-007-3` CMP-PM3, `slurry_flow` 참고 범위 이탈 — 현재 공정(정비 요청) |
 | EV-1023 | INVESTIGATING | CVD-PM1 증착 속도 드리프트. `cvd.kim`이 만든 PENDING 수동 제안 1건(CMP 담당에게 확인 요청) |
-| EV-1022 | ON_HOLD | CMP-PM2 패드 온도 드리프트, 관리자 보류 |
+| EV-1022 | ON_HOLD | CMP-PM2 패드 온도 드리프트, 관리자 보류(이전 규칙의 이력 데이터) |
 | EV-1021 | CLOSED | CMP-PM2 슬러리 유량 저하 — 조치(IMPROVED) + 확정 보고서 v1 |
-| EV-1018~1020 | CLOSED | 추이 · 대시보드용 과거 사건(웨이퍼 데이터 없음) |
+| EV-1018~1020 | CLOSED | 추이 · 대시보드용 과거 사건(웨이퍼 데이터 없음, 보고서 없이 종료된 이전 규칙의 이력) |
 
 EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run이다. 분석 시점은 팩의 `analysisAsOf`(2026-10-20 11:59 KST) — 그 뒤 공개된 계측과 FOLLOWUP run은 내부 API가 막는다(403).
 시연 옵션(`fab.agent`): `step-delay-ms`(단계 지연, 기본 1500), `failure-rate`. 질문에 `[fail]`을 넣거나 이벤트 `metrics.simulateAgentFailure: true`로 첫 기본 분석을 실패시킬 수 있다.
@@ -175,6 +175,10 @@ EV-10NN은 데이터 팩 현재 로트 `CURRENT-L0NN`에서 R1을 벗어난 run�
 4. `ApprovalService.executeApproved`가 상태 · 종류 · 만료를 다시 보고 **저장된 payload만** 그 종류의 실행기(`ApprovedActionHandler`)로 한 번 실행한다. 이미 실행했으면 같은 결과를 돌려준다. 시뮬레이터도 같은 메서드를 부른다
 
 **외부 Agent 모드**(`AGENT_MODE=external`) — 시뮬레이터가 작업을 잡지 않는다. Worker가 QUEUED 작업을 가져가 `claims`로 확보하고(같은 attempt면 409), 이벤트(`contracts/schemas/agent-event.schema.json`)를 `POST /internal/jobs/{jobId}/events`로 돌려준다 — `APPROVAL_REQUIRED` · `WAITING_REPLY` · `RESULT_READY` · `REPORT_DRAFT_READY` · `RETRY_SCHEDULED`(attempt+1로 다시 QUEUED) · `JOB_FAILED`. Kafka를 붙이면 같은 이벤트를 소비자가 `AgentEventService.handle()`로 넘기면 된다.
+
+- 이벤트의 `eventId` · `attempt`는 필수다. 현재 작업의 시도 번호와 다른 이벤트, 처리한 ID의 재전송, 끝난 작업의 이벤트는 HTTP 200 + `applied: false`로 무시한다(`reason`: `ATTEMPT_MISMATCH` · `DUPLICATE_EVENT` · `JOB_FINISHED`). 무시한 이벤트의 metrics · 알림도 반영하지 않는다.
+- 사건 → 작업 순서의 DB 행 잠금으로 이벤트 수신과 작업 확보를 직렬화한다. `processed_agent_event`에 처리한 ID를 업무 변경과 같은 트랜잭션으로 저장하므로, 재시작 뒤에도 중복을 막고 처리 실패 시에는 같은 ID로 다시 보낼 수 있다. `RETRY_SCHEDULED.nextAttempt`는 현재 시도보다 정확히 1 커야 한다. 다른 시도 번호의 작업 확보는 409다.
+- 외부 Agent의 `attempt`는 같은 작업의 재시도 번호다. 기본 분석을 사람이 다시 요청해 새 `jobId`를 만들면 1부터 시작한다(같은 사건의 누적 실행 횟수가 아니다).
 
 ## 계약과의 차이 · 결정 사항
 

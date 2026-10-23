@@ -28,6 +28,7 @@ import com.fabcontext.api.domain.job.JobRepository;
 import com.fabcontext.api.domain.job.JobService;
 import com.fabcontext.api.domain.job.JobStatus;
 import com.fabcontext.api.domain.report.Report;
+import com.fabcontext.api.domain.report.ReportAiSummaryService;
 import com.fabcontext.api.domain.report.ReportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +52,7 @@ public class AgentWorker {
 	private final AnalysisResultRepository resultRepository;
 	private final ApprovalService approvalService;
 	private final ReportService reportService;
+	private final ReportAiSummaryService reportSummaries;
 	private final CheckRequestRepository checkRequestRepository;
 	private final ReplyRepository replyRepository;
 	private final IncidentStreamHub streamHub;
@@ -64,6 +66,9 @@ public class AgentWorker {
 			return false;
 		}
 		jobService.start(job, incident(job));
+		if (job.getKind() == JobKind.SUMMARY) {
+			reportSummaries.markStarted(job);
+		}
 		return true;
 	}
 
@@ -83,6 +88,7 @@ public class AgentWorker {
 			case DEEP -> completeDeep(job, incident);
 			case RESUME -> completeResume(job, incident);
 			case REPORT -> completeReport(job, incident);
+			case SUMMARY -> completeSummary(job, incident);
 		}
 	}
 
@@ -161,6 +167,36 @@ public class AgentWorker {
 		jobService.succeed(job, incident, new Ref("REPORT", report.getReportId()));
 	}
 
+	/** 규칙 요약 — 확정본의 개요 · 미해결 첫 문장(각 120자). Agent의 SUMMARY_READY와 같은 반영 경로를 탄다 */
+	@SuppressWarnings("unchecked")
+	private void completeSummary(Job job, Incident incident) {
+		Map<String, Object> summaryRef = (Map<String, Object>) job.getInput().get("summaryRef");
+		Map<String, Object> snapshot = reportSummaries.confirmedSnapshot(String.valueOf(summaryRef.get("reportId")));
+		Map<String, Object> sections = (Map<String, Object>) snapshot.getOrDefault("sections", Map.of());
+		java.util.List<String> lines = java.util.stream.Stream.of("overview", "unresolved")
+			.map(key -> firstSentence(sections.get(key)))
+			.filter(line -> !line.isBlank())
+			.toList();
+		Map<String, Object> summary = new java.util.LinkedHashMap<>();
+		summary.put("lines", lines.isEmpty() ? java.util.List.of(String.valueOf(snapshot.get("title"))) : lines);
+		summary.put("evidenceIds", snapshot.getOrDefault("evidenceIds", java.util.List.of()));
+		summary.put("generatedBy", "rule");
+		Map<String, Object> payload = new java.util.LinkedHashMap<>();
+		payload.put("reportId", summaryRef.get("reportId"));
+		payload.put("snapshotRef", summaryRef.get("snapshotRef"));
+		payload.put("summary", summary);
+		reportSummaries.applyResult(job, incident, payload);
+	}
+
+	private static String firstSentence(Object text) {
+		String body = text == null ? "" : String.valueOf(text).strip();
+		String first = body.lines().map(String::strip).map(line -> line.replaceFirst("^[-*#>\\s]+", ""))
+			.filter(line -> !line.isBlank()).findFirst().orElse("");
+		int end = first.indexOf(". ");
+		String sentence = end > 0 ? first.substring(0, end + 1) : first;
+		return sentence.length() > 120 ? sentence.substring(0, 119) + "…" : sentence;
+	}
+
 	private void finishWithResult(Job job, Incident incident, AnalysisResult result, String message) {
 		jobService.succeed(job, incident, new Ref("ANALYSIS_RESULT", result.getResultId()));
 		if (incident.getStatus() == IncidentStatus.OPEN) {
@@ -173,6 +209,11 @@ public class AgentWorker {
 	}
 
 	private void fail(Job job, Incident incident, String code, String message) {
+		if (job.getKind() == JobKind.SUMMARY) {
+			// 요약 실패는 조사 이력에 남기지 않는다
+			reportSummaries.fail(job, incident, code, message);
+			return;
+		}
 		jobService.fail(job, incident, code, message);
 		incident.record(Instant.now(clock), "ANALYSIS_FAILED", "agent", job.getKind() + " 작업 실패: " + message, "JOB",
 			job.getJobId());

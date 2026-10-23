@@ -28,6 +28,8 @@ import com.fabcontext.api.domain.report.ReportService;
 import com.fabcontext.api.internal.InternalError;
 import com.fabcontext.api.internal.query.InternalIncidentQuery;
 import com.fabcontext.api.internal.view.InternalViews;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +48,7 @@ public class AgentJobService {
 	private final ReportService reportService;
 	private final InternalIncidentQuery incidents;
 	private final InternalViews views;
+	private final EntityManager entityManager;
 
 	/** job-message(contracts/schemas/job-message.schema.json) + 질문 — Kafka 메시지 대신 HTTP로 가져갈 때 쓴다 */
 	public Map<String, Object> jobContext(String jobId) {
@@ -68,6 +71,10 @@ public class AgentJobService {
 		msg.put("attempt", Math.max(1, Math.min(3, job.getAttempt())));
 		msg.put("contextRef", "job-context://" + jobId);
 		msg.put("resume", resume);
+		if (job.getKind() == JobKind.SUMMARY) {
+			// 팀 계약(job-message) — SUMMARY는 요약할 확정본(summaryRef)만 싣는다. job.input을 통째로 내보내지 않는다
+			msg.put("input", Map.of("summaryRef", job.getInput().get("summaryRef")));
+		}
 		msg.put("createdAt", iso(job.getCreatedAt()));
 		msg.put("traceId", "TRACE-" + jobId);
 		Map<String, Object> out = new LinkedHashMap<>();
@@ -89,6 +96,14 @@ public class AgentJobService {
 	@Transactional
 	public Map<String, Object> claim(String jobId, int attempt, String workerId, int leaseSeconds) {
 		Job job = jobService.load(jobId);
+		Incident incident = incidentRepository.findById(job.getIncidentId()).orElseThrow();
+		// 이벤트 수신과 같은 순서로 잠가, 확보와 이벤트가 동시에 와도 서로 상태를 덮지 않는다.
+		entityManager.refresh(incident, LockModeType.PESSIMISTIC_WRITE);
+		entityManager.refresh(job, LockModeType.PESSIMISTIC_WRITE);
+		if (attempt != job.getAttempt()) {
+			throw new InternalError("CONFLICT", "작업 " + jobId + "의 현재 시도는 " + job.getAttempt() + "입니다.",
+				"이전 시도의 메시지는 건너뛰고 현재 작업 메시지를 다시 조회하세요.");
+		}
 		if (job.getStatus() != JobStatus.QUEUED && job.getStatus() != JobStatus.RUNNING) {
 			throw new InternalError("CONFLICT", "작업 " + jobId + "은 이미 " + job.getStatus() + " 상태입니다.",
 				"중복 전달이면 건너뜁니다.");
@@ -98,7 +113,7 @@ public class AgentJobService {
 			throw new InternalError("CONFLICT", "작업 " + jobId + "(attempt " + attempt + ")은 이미 처리 중이거나 처리됐습니다.",
 				"중복 전달이면 건너뜁니다.");
 		}
-		jobService.startExternal(job, incidentRepository.findById(job.getIncidentId()).orElseThrow());
+		jobService.startExternal(job, incident);
 		Map<String, Object> out = new LinkedHashMap<>();
 		out.put("jobId", jobId);
 		out.put("attempt", attempt);

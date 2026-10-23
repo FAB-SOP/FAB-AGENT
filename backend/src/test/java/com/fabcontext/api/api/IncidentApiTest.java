@@ -12,9 +12,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fabcontext.api.support.ApiTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @DisplayName("P03 사건 목록 · 상세 · 관리자 상태 전이")
 class IncidentApiTest extends ApiTestSupport {
+
+	@Autowired
+	JdbcTemplate jdbc;
 
 	@Test
 	void listIsScopedToProcessAndSortedNewestFirst() throws Exception {
@@ -111,17 +116,30 @@ class IncidentApiTest extends ApiTestSupport {
 		postAs(mgr, "/api/incidents/{id}/transitions", "{\"targetStatus\":\"ON_HOLD\",\"expectedVersion\":" + v + "}", id)
 			.andExpect(status().isUnprocessableEntity());
 
-		v = number(postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("ON_HOLD", "데이터 대기", v), id)
-			.andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("ON_HOLD")), "$.data.version");
-		v = number(postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("INVESTIGATING", "재개", v), id)
-			.andExpect(jsonPath("$.data.status").value("INVESTIGATING")), "$.data.version");
-		v = number(postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("CLOSED", "종료", v), id)
-			.andExpect(jsonPath("$.data.status").value("CLOSED"))
-			.andExpect(jsonPath("$.data.timeline[-1].message", containsString("INVESTIGATING → CLOSED"))), "$.data.version");
-		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("CLOSED", "again", v), id)
-			.andExpect(status().isConflict());
-		postAs(etch, "/api/incidents/{id}/questions",
-			"{\"question\":\"q\",\"expectedIncidentVersion\":" + v + "}", id)
-			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("INCIDENT_CLOSED"));
+		// 사건 종료는 보고서 확정으로만(003) — 관리자의 새 보류 · 수동 종료는 없다
+		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("ON_HOLD", "데이터 대기", v), id)
+			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("TRANSITION_REMOVED"));
+		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("CLOSED", "종료", v), id)
+			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("TRANSITION_REMOVED"));
+		getAs(etch, "/api/incidents/{id}", id).andExpect(jsonPath("$.data.status").value(not(is("CLOSED"))));
+
+		// 기존에 보류된 사건(도입 전 이력)의 해제만 남는다
+		jdbc.update("update incident set status = 'ON_HOLD' where incident_id = ?", id);
+		v = incidentVersion(etch, id);
+		postAs(etch, "/api/incidents/{id}/transitions", body.formatted("INVESTIGATING", "재개", v), id)
+			.andExpect(status().isForbidden());
+		postAs(mgr, "/api/incidents/{id}/transitions", body.formatted("INVESTIGATING", "재개", v), id)
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("INVESTIGATING"))
+			.andExpect(jsonPath("$.data.timeline[-1].message", containsString("ON_HOLD → INVESTIGATING")));
+	}
+
+	@Test
+	void legacyHistoryIsPreserved() throws Exception {
+		Session mgr = manager();
+		getAs(mgr, "/api/incidents/{id}", seededIncident(mgr, "EV-1022")).andExpect(jsonPath("$.data.status").value("ON_HOLD"));
+		String closedWithoutReport = seededIncident(mgr, "EV-1018");
+		getAs(mgr, "/api/incidents/{id}", closedWithoutReport).andExpect(jsonPath("$.data.status").value("CLOSED"));
+		getAs(mgr, "/api/incidents/{id}/reports", closedWithoutReport).andExpect(jsonPath("$.data.items", hasSize(0)));
 	}
 }

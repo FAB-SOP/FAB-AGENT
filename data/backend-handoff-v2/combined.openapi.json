@@ -66,7 +66,8 @@
               }
             }
           }
-        }
+        },
+        "description": "최신 판본 초안을 확정하면 같은 처리 단위에서 사건이 종료(CLOSED)되고 확정본 요약이 PENDING으로 접수된다(사건당 확정 1회). 오류(기존 순서 유지): 422 REVIEW_CONFIRMATION_REQUIRED → 409 REPORT_CONFIRMED · REVISION_CONFLICT → 409 REPORT_ALREADY_CONFIRMED(details.reportId) · NOT_LATEST_DRAFT(details.latestReportId) → 409 INCIDENT_CLOSED → 409 CONFIRMATION_BLOCKED(details.blockers[{kind, id, label}], kind: ANALYSIS_IN_PROGRESS · APPROVAL_PENDING · MANAGER_APPROVAL_PENDING · REQUEST_UNANSWERED · WORK_UNPERFORMED) → 422 원인 분류 오류."
       }
     },
     "/api/incidents/{incidentId}/transitions": {
@@ -74,7 +75,7 @@
         "tags": [
           "incidents"
         ],
-        "summary": "사건 종료/보류/보류 재개 (MANAGER)",
+        "summary": "보류된 사건의 조사 재개 (MANAGER)",
         "operationId": "transitionIncident",
         "parameters": [
           {
@@ -115,7 +116,8 @@
               }
             }
           }
-        }
+        },
+        "description": "사건 종료는 보고서 확정으로만 일어난다. 허용: 현재 ON_HOLD → INVESTIGATING. targetStatus ON_HOLD · CLOSED는 409 TRANSITION_REMOVED, 그 밖의 전이는 409 INVALID_TRANSITION."
       }
     },
     "/api/incidents/{incidentId}/report-jobs": {
@@ -172,7 +174,8 @@
               }
             }
           }
-        }
+        },
+        "description": "종료된 사건은 409 INCIDENT_CLOSED."
       }
     },
     "/api/incidents/{incidentId}/questions": {
@@ -2584,6 +2587,170 @@
         },
         "description": "보고서 목록 · 제목 검색(페이지 단위). 공정 필수, 제목 부분 일치(대소문자 무시 · % _ 글자 그대로 · 최대 100자), category=MATERIAL·MAN·METHOD·MACHINE·HOLD·UNCLASSIFIED, equipmentParameter는 MACHINE일 때만, detectedFrom/To는 한국 시간 날짜(종료일 포함). 정렬은 이상 감지일 최신순 고정(sort 무시), size 최대 100, 전체 건수 없이 hasNext만."
       }
+    },
+    "/api/reports/{reportId}/summary-jobs": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "실패한 확정본 요약 다시 요청",
+        "description": "summary.status가 FAILED일 때만 새 요약 작업을 접수하고 PENDING으로 바꾼다(그 외 409 SUMMARY_NOT_RETRYABLE). 확정 권한(사건 운영 권한)이 필요하며 종료된 사건에서도 허용한다. 성공 시 202 + ReportView(data.summary.status=PENDING).",
+        "operationId": "retryReportSummary",
+        "parameters": [
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/check-requests/{requestId}/withdrawals": {
+      "post": {
+        "tags": [
+          "check-requests"
+        ],
+        "summary": "회신이 오지 않은 요청 철회",
+        "description": "OPEN · ACCEPTED에서만. 사건 운영 권한자(요청을 보낸 공정)가 사유와 함께 철회하면 CANCELLED가 된다. 연결된 업무는 바꾸지 않는다. 오류: 403 PROCESS_FORBIDDEN · INVESTIGATION_WRITE_DENIED, 409 VERSION_CONFLICT · CHECK_REQUEST_NOT_WITHDRAWABLE · INCIDENT_CLOSED, 422 사유 누락.",
+        "operationId": "withdrawCheckRequest",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckRequestWithdrawal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseCheckRequestView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-items/{id}/unperformed-closures": {
+      "post": {
+        "tags": [
+          "work-controller"
+        ],
+        "summary": "채택한 업무를 미수행으로 닫기",
+        "description": "READY · APPROVED · REQUESTED에서만. 담당자 또는 사건 운영 권한자가 사유와 함께 닫으면 CLOSED_UNPERFORMED. 연결된 확인 요청은 바꾸지 않는다. 오류: 409 VERSION_CONFLICT · WORK_NOT_CLOSABLE · INCIDENT_CLOSED, 422 사유 누락. 성공 시 WorkItemView(status=CLOSED_UNPERFORMED).",
+        "operationId": "closeWorkItemUnperformed",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkItemUnperformedClosure"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3156,7 +3323,8 @@
               "BASIC",
               "DEEP",
               "RESUME",
-              "REPORT"
+              "REPORT",
+              "SUMMARY"
             ]
           },
           "status": {
@@ -3518,6 +3686,9 @@
           },
           "classification": {
             "$ref": "#/components/schemas/ClassificationView"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ReportAiSummary"
           }
         }
       },
@@ -3782,7 +3953,8 @@
               "BASIC",
               "DEEP",
               "RESUME",
-              "REPORT"
+              "REPORT",
+              "SUMMARY"
             ]
           },
           "status": {
@@ -4142,6 +4314,9 @@
           },
           "classification": {
             "$ref": "#/components/schemas/ClassificationView"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ReportAiSummary"
           }
         }
       },
@@ -4902,6 +5077,18 @@
             "items": {
               "$ref": "#/components/schemas/ReplyView"
             }
+          },
+          "withdrawnBy": {
+            "type": "string",
+            "description": "철회한 사람 — 철회된 요청(CANCELLED)만"
+          },
+          "withdrawnAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "withdrawReason": {
+            "type": "string",
+            "description": "철회 사유(500자 이내)"
           }
         }
       },
@@ -5981,7 +6168,8 @@
               "APPROVED",
               "REJECTED",
               "REQUESTED",
-              "COMPLETED"
+              "COMPLETED",
+              "CLOSED_UNPERFORMED"
             ]
           },
           "decisionComment": {
@@ -6004,6 +6192,18 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "closedBy": {
+            "type": "string",
+            "description": "미수행 종결 처리자"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closeReason": {
+            "type": "string",
+            "description": "미수행 사유(500자 이내)"
           }
         }
       },
@@ -6237,6 +6437,83 @@
             "$ref": "#/components/schemas/Meta"
           }
         }
+      },
+      "ReportAiSummary": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "READY",
+              "FAILED"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "generatedBy": {
+            "type": "string",
+            "enum": [
+              "model",
+              "rule"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "description": "확정본 AI 요약 — 확정과 함께 PENDING으로 접수. READY일 때 lines 1~2줄(줄당 120자 이내) · evidenceIds · generatedBy. FAILED일 때 error(짧은 안내). 초안 · 기능 도입 전 확정본은 null"
+      },
+      "CheckRequestWithdrawal": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 0
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "expectedVersion",
+          "reason"
+        ]
+      },
+      "WorkItemUnperformedClosure": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 0
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "expectedVersion",
+          "reason"
+        ]
       }
     },
     "securitySchemes": {

@@ -9,6 +9,33 @@ BEGIN
 	ALTER TABLE check_request ADD CONSTRAINT check_request_status_check
 		CHECK (status IN ('OPEN','ACCEPTED','REJECTED','REPLIED','CANCELLED'));
 
+	-- 확정본 요약 작업(SUMMARY) · 업무 미수행 종결(CLOSED_UNPERFORMED)을 기존 체크 제약에 더한다. 데이터는 보존한다.
+	ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
+	ALTER TABLE job ADD CONSTRAINT job_kind_check
+		CHECK (kind IN ('BASIC','DEEP','RESUME','REPORT','SUMMARY'));
+	ALTER TABLE work_item DROP CONSTRAINT IF EXISTS work_item_status_check;
+	ALTER TABLE work_item ADD CONSTRAINT work_item_status_check
+		CHECK (status IN ('PROPOSED','DECLINED','READY','WAITING_MANAGER','APPROVED','REJECTED','REQUESTED','COMPLETED',
+			'CLOSED_UNPERFORMED'));
+	-- 확정본 요약 완료 · 실패 알림 종류
+	IF to_regclass('user_notification') IS NOT NULL THEN
+		ALTER TABLE user_notification DROP CONSTRAINT IF EXISTS user_notification_type_check;
+		ALTER TABLE user_notification ADD CONSTRAINT user_notification_type_check
+			CHECK (type IN ('INCIDENT_CREATED','CHECK_REQUEST_RECEIVED','CHECK_REQUEST_ACCEPTED','CHECK_REQUEST_REJECTED',
+				'CHECK_REQUEST_REPLIED','WORK_APPROVAL_REQUESTED','WORK_APPROVED','WORK_REJECTED','ANALYSIS_SUCCEEDED',
+				'ANALYSIS_FAILED','REPORT_SUMMARY_READY','REPORT_SUMMARY_FAILED'));
+	END IF;
+
+	-- 사건당 확정본은 하나 — 확정은 사건 행 잠금으로 직렬화하고, 이 인덱스는 다른 경로 · 버그에 대한 마지막 보장이다.
+	-- 예전 규칙(확정 뒤 새 판본 재확정)으로 확정본이 둘 이상인 사건이 있으면 만들지 않고 알린다.
+	IF to_regclass('uq_report_confirmed_per_incident') IS NULL THEN
+		IF EXISTS (SELECT 1 FROM report WHERE status = 'CONFIRMED' GROUP BY incident_id HAVING count(*) > 1) THEN
+			RAISE NOTICE 'uq_report_confirmed_per_incident 생략: 확정본이 둘 이상인 사건이 있습니다';
+		ELSE
+			CREATE UNIQUE INDEX uq_report_confirmed_per_incident ON report (incident_id) WHERE status = 'CONFIRMED';
+		END IF;
+	END IF;
+
 	-- check_request.approval_id → approval (확인 요청을 만든 승인)
 	IF NOT EXISTS (SELECT 1 FROM pg_constraint
 			WHERE conname = 'fk_check_request_approval' AND conrelid = to_regclass('check_request')) THEN

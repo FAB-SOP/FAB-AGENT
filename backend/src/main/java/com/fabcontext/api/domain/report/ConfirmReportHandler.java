@@ -55,7 +55,10 @@ class ConfirmReportHandler implements ApprovedActionHandler {
 
 	@Override
 	public Ref execute(Approval approval, Incident incident, String actorId, String threadId) {
-		return new Ref("REPORT", reportService.confirmFromApproval(incident, approval.getPayload(), actorId,
+		// 실행 중인 이 승인과, 이 승인을 기다리던 · 재개한 작업은 확정을 막는 남은 일로 세지 않는다
+		ConfirmationContext context = ConfirmationContext.fromApproval(actorId, approval.getApprovalId(),
+			approval.getJobId(), approval.getResumeJobId());
+		return new Ref("REPORT", reportService.confirmFromApproval(incident, approval.getPayload(), context,
 			toInput(approval.getDecisionInput())).getReportId());
 	}
 

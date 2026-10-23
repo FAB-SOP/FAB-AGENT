@@ -3,6 +3,7 @@ package com.fabcontext.api.domain.report;
 import java.time.Instant;
 import java.util.List;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -15,11 +16,27 @@ public final class ReportDtos {
 	}
 
 	public record ReportSummary(String reportId, int version, ReportStatus status, String title,
-			long contentRevision, Instant createdAt, Instant confirmedAt, ClassificationView classification) {
+			long contentRevision, Instant createdAt, Instant confirmedAt, ClassificationView classification,
+			AiSummaryView summary) {
 
 		static ReportSummary from(Report r) {
 			return new ReportSummary(r.getReportId(), r.getVersion(), r.getStatus(), r.getTitle(),
-				r.getContentRevision(), r.getCreatedAt(), r.getConfirmedAt(), ClassificationView.from(r.getClassification()));
+				r.getContentRevision(), r.getCreatedAt(), r.getConfirmedAt(), ClassificationView.from(r.getClassification()),
+				AiSummaryView.from(r.getAiSummary()));
+		}
+	}
+
+	/** 확정본의 AI 요약 — 초안 · 도입 전 확정본은 응답에서 null */
+	@Schema(name = "ReportAiSummary")
+	public record AiSummaryView(ReportAiSummaryStatus status, List<String> lines, List<String> evidenceIds,
+			@Schema(allowableValues = {"model", "rule"}) String generatedBy, Instant updatedAt, String error) {
+
+		static AiSummaryView from(ReportAiSummary s) {
+			if (s == null || s.getStatus() == null) {
+				return null;
+			}
+			return new AiSummaryView(s.getStatus(), s.getLines(), s.getEvidenceIds(), s.getGeneratedBy(), s.getUpdatedAt(),
+				s.getError());
 		}
 	}
 
@@ -43,7 +60,7 @@ public final class ReportDtos {
 			long contentRevision, long sourceRevision, List<ReportSection> sections, List<String> evidenceIds,
 			Integer baseReportVersion, String generatedByJobId, String snapshotRef, String createdBy,
 			Instant createdAt, String updatedBy, Instant updatedAt, String confirmedBy, Instant confirmedAt,
-			ClassificationView classification) {
+			ClassificationView classification, AiSummaryView summary) {
 
 		public static ReportView from(Report r) {
 			return new ReportView(r.getReportId(), r.getIncidentId(), r.getVersion(), r.getStatus(), r.getTitle(),
@@ -52,7 +69,7 @@ public final class ReportDtos {
 					s.get("body") == null ? "" : String.valueOf(s.get("body")))).toList(),
 				List.copyOf(r.getEvidenceIds()), r.getBaseReportVersion(), r.getGeneratedByJobId(), r.getSnapshotRef(),
 				r.getCreatedBy(), r.getCreatedAt(), r.getUpdatedBy(), r.getUpdatedAt(), r.getConfirmedBy(),
-				r.getConfirmedAt(), ClassificationView.from(r.getClassification()));
+				r.getConfirmedAt(), ClassificationView.from(r.getClassification()), AiSummaryView.from(r.getAiSummary()));
 		}
 	}
 

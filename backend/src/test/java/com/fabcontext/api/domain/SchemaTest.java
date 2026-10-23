@@ -29,7 +29,7 @@ class SchemaTest extends ApiTestSupport {
 		assertThat(fks).contains("fk_job_incident", "fk_analysis_result_incident", "fk_analysis_result_job",
 			"fk_approval_incident", "fk_approval_job", "fk_check_request_incident", "fk_check_request_approval",
 			"fk_check_reply_incident", "fk_check_reply_request", "fk_incident_action_incident", "fk_report_incident",
-			"fk_metrology_run", "fk_run_feature_run", "fk_route_run_upstream");
+			"fk_metrology_run", "fk_run_feature_run", "fk_route_run_upstream", "fk_processed_agent_event_job");
 	}
 
 	@Test
@@ -40,15 +40,25 @@ class SchemaTest extends ApiTestSupport {
 	}
 
 	@Test
+	void confirmedReportUniquenessIsPreservedInTheDefaultSchema() {
+		String index = jdbc.queryForObject("""
+			select indexdef from pg_indexes
+			where schemaname = current_schema() and indexname = 'uq_report_confirmed_per_incident'
+			""", String.class);
+		assertThat(index).contains("UNIQUE", "incident_id", "WHERE", "CONFIRMED");
+	}
+
+	@Test
 	void jsonColumnsAndRenamedColumn() {
 		assertThat(jdbc.queryForObject("select current_schema()", String.class)).isEqualTo(SCHEMA);
-		// @JdbcTypeCode(SqlTypes.JSON) 컬럼 30개가 전부 jsonb다(json · text가 아니다)
+		// @JdbcTypeCode(SqlTypes.JSON) 컬럼 33개가 전부 jsonb다(json · text가 아니다)
 		List<String> json = jdbc.queryForList("""
 			select table_name || '.' || column_name from information_schema.columns
 			where table_schema = current_schema() and data_type in ('json', 'jsonb')""", String.class);
-		assertThat(json).hasSize(30).contains("incident.wafer_ids", "incident.run_ids", "user_account.process_scopes", "analysis_request.inputs",
+		assertThat(json).hasSize(33).contains("incident.wafer_ids", "incident.run_ids", "user_account.process_scopes", "analysis_request.inputs",
 			"incident_action.related_source", "work_item.evidence_ids", "work_item.brief", "job.metrics",
-			"report.cause_equipment_parameters", "approval.decision_input");
+			"report.cause_equipment_parameters", "approval.decision_input",
+			"report.confirmed_snapshot", "report.summary_lines", "report.summary_evidence_ids");
 		assertThat(jdbc.queryForObject("""
 			select count(*) from information_schema.columns where table_schema = current_schema() and data_type = 'json'""",
 			Integer.class)).isZero();
