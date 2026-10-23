@@ -12,8 +12,11 @@ Resource: doc://{chunkId} · case://{caseId} — 검색 결과의 전문과 메�
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import sys
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastmcp import FastMCP
@@ -38,6 +41,72 @@ META_KEYS = ("title", "publisher", "documentId", "version", "originalPdfPage", "
              "figuresEquationsTablesRequireSourceCheck", "sourceUrl", "causeId", "candidate", "sensorIds", "causeIds",
              "resolutionStatus", "caseDate", "origin", "synthetic", "approvedForProductionAction")
 VERSION = "KNOWLEDGE-v2"
+TERMS_PATH = Path(__file__).with_name("terms.json")
+
+
+def load_terms(path: Path = TERMS_PATH) -> dict[str, str]:
+    """한국어 → 영어 용어 사전(terms.json). '_'로 시작하는 키는 설명이다."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {k: v for k, v in raw.items() if not k.startswith("_")}
+
+
+GENERIC_MIN_DOCS = 4  # 문서 7편 중 이만큼 이상에 나오는 영어 용어는 구분력이 낮다(범용어)
+
+
+def _term_pattern(alt: str) -> re.Pattern:
+    flags = 0 if alt.isupper() else re.IGNORECASE
+    return re.compile(r"\b" + re.escape(alt).replace(r"\ ", r"[\s\-]+") + r"s?\b", flags)
+
+
+def _alternatives(en: str) -> list[str]:
+    """'mass flow controller MFC' → ['mass flow controller MFC', 'mass flow controller', 'MFC'].
+
+    전체 구절, 약어를 뺀 구절(두 단어 이상일 때만), 약어를 따로 센다. 약어를 빼고 한 단어만 남으면
+    ('ICP power' → 'power') 그 한 단어는 세지 않는다 — 흔한 단어로 범용어가 잘못 정해지는 것을 막는다.
+    """
+    words = en.split()
+    acronyms = [w for w in words if w.isupper() and len(w) >= 2]
+    rest = " ".join(w for w in words if w not in acronyms)
+    alts = [en]
+    if rest and rest != en and (len(rest.split()) >= 2 or not acronyms):
+        alts.append(rest)
+    return alts + [a for a in acronyms if a != en]
+
+
+def generic_terms(terms: dict[str, str], docs: dict[str, str], min_docs: int = GENERIC_MIN_DOCS) -> frozenset[str]:
+    """영어 값(구절 또는 약어)이 min_docs편 이상의 문서에 나오는 한국어 용어 — 코퍼스로 정한다(평가 질의를 보지 않는다)."""
+    out = set()
+    for ko, en in terms.items():
+        pats = [_term_pattern(a) for a in _alternatives(en)]
+        if sum(1 for text in docs.values() if any(p.search(text) for p in pats)) >= min_docs:
+            out.add(ko)
+    return frozenset(out)
+
+
+def augment_query(query: str, terms: dict[str, str], generic: frozenset[str] = frozenset()) -> str:
+    """실제 원문(영어) 검색용 질의 보강 — 한국어 용어 옆에 영어 용어를 괄호로 병기한다.
+
+    긴 용어부터 치환하고, 같은 영어가 이미 질의에 있으면 붙이지 않으며, 한 용어는 한 번만 붙인다.
+    범용어(generic: 여러 문서에 두루 나오는 용어)는 구체 용어가 하나도 안 붙었을 때만 붙인다.
+    한국어는 지우지 않는다. FAB_QUERY_AUGMENT=0이면 끈다.
+    """
+    if os.getenv("FAB_QUERY_AUGMENT", "1").lower() in ("0", "false", "no"):
+        return query
+
+    def apply(text: str, keys: list[str]) -> tuple[str, int]:
+        count = 0
+        for ko in keys:
+            en = terms[ko]
+            if ko not in text or f"{ko}(" in text or en.split()[0].lower() in text.lower():
+                continue
+            text, count = text.replace(ko, f"{ko}({en})", 1), count + 1
+        return text, count
+
+    ordered = sorted(terms, key=len, reverse=True)
+    out, specific = apply(query, [k for k in ordered if k not in generic])
+    if specific == 0:
+        out, _ = apply(out, [k for k in ordered if k in generic])
+    return out
 
 
 class Knowledge:
@@ -45,7 +114,14 @@ class Knowledge:
         self.chunks = {chunk.chunkId: chunk for chunk in load_corpora()}
         self.as_of = analysis_as_of()
         self.store = make_store(make_embedder())
+        self.terms = load_terms()
+        tech_docs: dict[str, str] = {}
+        for chunk in self.chunks.values():
+            if chunk.corpus == "TECH":
+                tech_docs[chunk.docId] = tech_docs.get(chunk.docId, "") + " " + chunk.text
+        self.generic = generic_terms(self.terms, tech_docs)
         self.index_info = self.store.index(list(self.chunks.values()))
+        self.index_info["genericTerms"] = sorted(self.generic)
         self.index_info["corpora"] = {k: sum(1 for chunk in self.chunks.values() if chunk.corpus == k)
                                       for k in ("TECH", "PLAYBOOK", "CASE")}
 
@@ -55,9 +131,13 @@ class Knowledge:
             raise FabToolError("NOT_FOUND", f"{key}가 색인에 없습니다.", hint="검색 결과의 resourceUri를 그대로 쓰세요.")
         return chunk
 
+    def augment(self, query: str, corpus: str) -> str:
+        """영어 원문(TECH)에만 한·영 용어 병기를 적용한다."""
+        return augment_query(query, self.terms, self.generic) if corpus == "TECH" else query
+
     def search(self, query: str, corpus: str, filters: dict, top_k: int) -> list[dict]:
         items = []
-        for chunk, score in self.store.search(query, corpus, filters, top_k * 3):
+        for chunk, score in self.store.search(self.augment(query, corpus), corpus, filters, top_k * 3):
             if corpus == "CASE" and chunk.meta.get("availableAt") and chunk.meta["availableAt"] > self.as_of:
                 continue  # 분석 시점 이후 사례는 쓰지 않는다
             items.append({"chunkId": chunk.chunkId, "docId": chunk.docId, "corpus": chunk.corpus, "excerpt": chunk.text[:EXCERPT],
@@ -115,7 +195,11 @@ def _register_document_search_tools(mcp: FastMCP, kb: Knowledge) -> None:
         원문은 영어다 — 질의에 영어 용어 · 약어를 함께 쓰면 잘 찾는다(예: 질량유량제어기(MFC) calibration 오차)."""
         items = kb.search(query, "TECH", {"process": process, "retrievalTier": retrievalTier, "documentId": documentId,
                                           "version": version}, topK)
-        return _result(kb, query, items, ["실제 원문은 일반 원리의 근거이며 우리 장비의 허용값 · 조치 SOP가 아닙니다."], "TECH")
+        res = _result(kb, query, items, ["실제 원문은 일반 원리의 근거이며 우리 장비의 허용값 · 조치 SOP가 아닙니다."], "TECH")
+        augmented = kb.augment(query, "TECH")
+        if augmented != query:  # 서버가 한·영 용어를 병기해 검색했음을 모델에게 알린다
+            res["data"]["augmentedQuery"] = augmented
+        return res
 
     @mcp.tool(annotations=READ)
     def search_applicable_playbooks(

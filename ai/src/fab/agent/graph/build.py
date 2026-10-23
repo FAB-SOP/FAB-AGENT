@@ -21,7 +21,7 @@ def build_graph(checkpointer):
     graph.add_conditional_edges("agent", route_agent, ["request_brief", "tools", "finalize", "agent"])
     graph.add_edge("request_brief", "tools")
     graph.add_conditional_edges("tools", route_tools, ["approval_wait", "finalize", "agent"])
-    graph.add_conditional_edges("approval_wait", route_approval, ["reply_wait", "agent"])
+    graph.add_conditional_edges("approval_wait", route_approval, ["reply_wait", "finalize", "agent"])
     graph.add_edge("reply_wait", "agent")
     graph.add_edge("finalize", END)
     return graph.compile(checkpointer=checkpointer)

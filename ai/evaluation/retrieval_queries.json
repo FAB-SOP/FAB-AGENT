@@ -1,5 +1,5 @@
 {
- "about": "지식 MCP 검색 평가 질의셋 — 한국어 위주. 기대 조각은 knowledge/cause-matrix · 팀 점검 문서 · 원문 조각 내용을 보고 정했다(정답 파일 · 시나리오 문서는 쓰지 않았다). paraphrase=true는 문서와 겹치는 낱말을 일부러 피한 질의다. agentQuery는 Agent 프롬프트가 권하는 꼴(한국어 + 영어 용어 · 약어)로 같은 뜻을 쓴 질의다 — 원문(영어) 검색에만 둔다.",
+ "about": "지식 MCP 검색 평가 질의셋 — 한국어 위주. 기대 조각은 knowledge/cause-matrix · 팀 점검 문서 · 원문 조각 내용을 보고 정했다(정답 파일 · 시나리오 문서는 쓰지 않았다). paraphrase=true는 문서와 겹치는 낱말을 일부러 피한 질의다. agentQuery는 Agent 프롬프트가 권하는 꼴(한국어 + 영어 용어 · 약어)로 같은 뜻을 쓴 질의다 — 원문(영어) 검색에만 둔다. 2026-10-22 확장(25→50): 기술 문서 +10(문서별 1~2개, 전부 agentQuery 짝), 점검 문서 +12(원인 15개 전부 포함, sensorQuery=true는 센서 ID로 묻는 질의 5개), 가상 사례 +3(004·005 추가). 기대 조각은 원문 조각의 용어 분포와 점검 문서·사례 본문을 보고 정했다. heldout=true(H01~H15, 2026-10-22)는 용어 사전(terms.json) 작성 뒤 사전을 보지 않고 원문 절 이름·내용만 보고 쓴 한국어 일상어 질의다. 영어 병기 짝을 두지 않는다. 사전 일반화 측정용.",
  "metrics": "Hit@3 = 기대 조각이 상위 3개 안에 있는 비율, MRR = 첫 기대 조각 순위의 역수 평균(상위 10개까지)",
  "queries": [
   {
@@ -267,6 +267,441 @@
     ]
    },
    "paraphrase": true
+  },
+  {
+   "id": "T11",
+   "tool": "search_technical_documents",
+   "query": "sccm 유량 단위는 어떤 기준 조건으로 정의되나",
+   "expect": {
+    "documentId": [
+     "DOC03"
+    ]
+   },
+   "agentQuery": "sccm(standard cubic centimeters per minute) 유량 단위의 기준 조건"
+  },
+  {
+   "id": "T12",
+   "tool": "search_technical_documents",
+   "query": "가스가 얼마나 흐르는지 열로 재는 원리",
+   "expect": {
+    "documentId": [
+     "DOC03"
+    ]
+   },
+   "paraphrase": true,
+   "agentQuery": "열식 질량유량(thermal mass flow) 측정 원리"
+  },
+  {
+   "id": "T13",
+   "tool": "search_technical_documents",
+   "query": "증착 반응에서 전구체와 희석 가스의 역할",
+   "expect": {
+    "documentId": [
+     "DOC04"
+    ]
+   },
+   "agentQuery": "CVD precursor 와 diluent 가스의 역할"
+  },
+  {
+   "id": "T14",
+   "tool": "search_technical_documents",
+   "query": "웨이퍼 표면 근처 경계층에서 반응물이 확산하는 과정",
+   "expect": {
+    "documentId": [
+     "DOC04"
+    ]
+   },
+   "agentQuery": "CVD boundary layer 에서 반응물 diffusion 과정"
+  },
+  {
+   "id": "T15",
+   "tool": "search_technical_documents",
+   "query": "식각 중 바이어스 전력과 정전척 헬륨 냉각 조건",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "agentQuery": "플라스마 식각의 bias RF 와 ESC helium 냉각 조건"
+  },
+  {
+   "id": "T16",
+   "tool": "search_technical_documents",
+   "query": "플라스마가 내는 빛의 스펙트럼으로 공정 이상을 알아내는 방법",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "paraphrase": true,
+   "agentQuery": "광방출 분광(optical emission spectroscopy, OES)로 플라스마 공정 이상 감지"
+  },
+  {
+   "id": "T17",
+   "tool": "search_technical_documents",
+   "query": "박막 두께 계산에 쓰는 굴절률과 광학 모델",
+   "expect": {
+    "documentId": [
+     "DOC06"
+    ]
+   },
+   "agentQuery": "박막 두께 계산의 굴절률(refractive index)과 optical model"
+  },
+  {
+   "id": "T18",
+   "tool": "search_technical_documents",
+   "query": "개별값 관리도와 이동범위를 계산하는 방법",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "agentQuery": "개별값·이동범위 관리도(individuals and moving range, I-MR chart) 계산"
+  },
+  {
+   "id": "T19",
+   "tool": "search_technical_documents",
+   "query": "연속 측정값이 서로 상관될 때 관리도를 어떻게 해석하나",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "agentQuery": "자기상관(autocorrelation)·정상성(stationarity)이 있을 때 control chart 해석"
+  },
+  {
+   "id": "T20",
+   "tool": "search_technical_documents",
+   "query": "회로 패턴 밀도가 연마 결과에 미치는 영향",
+   "expect": {
+    "documentId": [
+     "DOC01"
+    ]
+   },
+   "agentQuery": "CMP 에서 pattern density 가 removal 에 미치는 영향"
+  },
+  {
+   "id": "P11",
+   "tool": "search_applicable_playbooks",
+   "query": "플래튼 회전 속도가 레시피와 다르게 나온다",
+   "expect": {
+    "causeId": [
+     "CMP_SPEED"
+    ]
+   }
+  },
+  {
+   "id": "P12",
+   "tool": "search_applicable_playbooks",
+   "query": "platen_speed head_speed 편차",
+   "expect": {
+    "causeId": [
+     "CMP_SPEED"
+    ]
+   },
+   "sensorQuery": true
+  },
+  {
+   "id": "P13",
+   "tool": "search_applicable_playbooks",
+   "query": "식각 가스 혼합비가 바뀌었을 때 확인할 것",
+   "expect": {
+    "causeId": [
+     "ETCH_GAS"
+    ]
+   }
+  },
+  {
+   "id": "P14",
+   "tool": "search_applicable_playbooks",
+   "query": "gas_CF4 gas_CHF3 실제값과 설정값 차이",
+   "expect": {
+    "causeId": [
+     "ETCH_GAS"
+    ]
+   },
+   "sensorQuery": true
+  },
+  {
+   "id": "P15",
+   "tool": "search_applicable_playbooks",
+   "query": "챔버 압력이 흔들리고 배기가 불안정하다",
+   "expect": {
+    "causeId": [
+     "ETCH_PRESSURE"
+    ]
+   }
+  },
+  {
+   "id": "P16",
+   "tool": "search_applicable_playbooks",
+   "query": "chamber_pressure 편차 식각",
+   "expect": {
+    "causeId": [
+     "ETCH_PRESSURE"
+    ]
+   },
+   "sensorQuery": true
+  },
+  {
+   "id": "P17",
+   "tool": "search_applicable_playbooks",
+   "query": "증착 가스 공급이 변해서 두께가 달라졌다",
+   "expect": {
+    "causeId": [
+     "CVD_GAS"
+    ]
+   }
+  },
+  {
+   "id": "P18",
+   "tool": "search_applicable_playbooks",
+   "query": "gas_SiH4_feed gas_N2O 유량 확인",
+   "expect": {
+    "causeId": [
+     "CVD_GAS"
+    ]
+   },
+   "sensorQuery": true
+  },
+  {
+   "id": "P19",
+   "tool": "search_applicable_playbooks",
+   "query": "증착 압력과 플라스마 조건이 바뀌었을 때",
+   "expect": {
+    "causeId": [
+     "CVD_PRESSURE_RF"
+    ]
+   }
+  },
+  {
+   "id": "P20",
+   "tool": "search_applicable_playbooks",
+   "query": "두께는 같은데 막 성질이 달라서 뒤 공정 결과가 바뀐다",
+   "expect": {
+    "causeId": [
+     "CVD_FILM"
+    ]
+   },
+   "paraphrase": true
+  },
+  {
+   "id": "P21",
+   "tool": "search_applicable_playbooks",
+   "query": "slurry_flow 저하",
+   "expect": {
+    "causeId": [
+     "CMP_SLURRY"
+    ]
+   },
+   "sensorQuery": true
+  },
+  {
+   "id": "P22",
+   "tool": "search_applicable_playbooks",
+   "query": "소모품을 오래 써서 깎이는 양이 줄었다",
+   "expect": {
+    "causeId": [
+     "CMP_PAD"
+    ]
+   },
+   "paraphrase": true
+  },
+  {
+   "id": "C06",
+   "tool": "search_past_cases",
+   "query": "관리 범위 안이지만 두께가 조금 올라간 CVD 사례",
+   "expect": {
+    "chunkId": [
+     "DEMO-CASE-004"
+    ]
+   }
+  },
+  {
+   "id": "C07",
+   "tool": "search_past_cases",
+   "query": "압력 회전 유량이 다 정상인데 제거량이 줄어 패드가 의심된 사례",
+   "expect": {
+    "chunkId": [
+     "DEMO-CASE-005"
+    ]
+   }
+  },
+  {
+   "id": "C08",
+   "tool": "search_past_cases",
+   "query": "다시 재니 두께가 정상으로 나온 일",
+   "expect": {
+    "chunkId": [
+     "DEMO-CASE-006"
+    ]
+   },
+   "paraphrase": true
+  },
+  {
+   "id": "H01",
+   "tool": "search_technical_documents",
+   "query": "연마 중에 언제 멈춰야 하는지 센서가 알려주는 방식",
+   "expect": {
+    "documentId": [
+     "DOC01"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H02",
+   "tool": "search_technical_documents",
+   "query": "회로가 빽빽한 곳과 성긴 곳이 다르게 깎이는 현상",
+   "expect": {
+    "documentId": [
+     "DOC01"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H03",
+   "tool": "search_technical_documents",
+   "query": "RF 반사파가 늘었을 때 정합기 상태를 보는 이유",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H04",
+   "tool": "search_technical_documents",
+   "query": "웨이퍼 뒷면에 넣는 헬륨 압력이 하는 일",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H05",
+   "tool": "search_technical_documents",
+   "query": "식각 중에 실시간으로 이상을 잡아내는 실험 방법",
+   "expect": {
+    "documentId": [
+     "DOC02"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H06",
+   "tool": "search_technical_documents",
+   "query": "설정한 유량과 실제 흐르는 양이 다른 원인",
+   "expect": {
+    "documentId": [
+     "DOC03"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H07",
+   "tool": "search_technical_documents",
+   "query": "압력을 일정하게 유지하는 밸브 제어 방식",
+   "expect": {
+    "documentId": [
+     "DOC03"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H08",
+   "tool": "search_technical_documents",
+   "query": "반응 가스가 기판 위에 닿기 전에 거치는 과정",
+   "expect": {
+    "documentId": [
+     "DOC04"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H09",
+   "tool": "search_technical_documents",
+   "query": "증착이 끝난 뒤 생기는 부산물 가스는 어떻게 빠져나가나",
+   "expect": {
+    "documentId": [
+     "DOC04"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H10",
+   "tool": "search_technical_documents",
+   "query": "ICP 장비에서 압력을 바꿀 때 주의할 점",
+   "expect": {
+    "documentId": [
+     "DOC05"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H11",
+   "tool": "search_technical_documents",
+   "query": "같은 시편을 여러 번 재면 값이 얼마나 흔들리나",
+   "expect": {
+    "documentId": [
+     "DOC06"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H12",
+   "tool": "search_technical_documents",
+   "query": "두 층으로 된 막의 두께를 계산하는 모델",
+   "expect": {
+    "documentId": [
+     "DOC06"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H13",
+   "tool": "search_technical_documents",
+   "query": "관리 상태인데도 제품이 규격을 못 맞추는 경우",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H14",
+   "tool": "search_technical_documents",
+   "query": "부분군으로 나눠서 변동을 보는 방법",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "heldout": true
+  },
+  {
+   "id": "H15",
+   "tool": "search_technical_documents",
+   "query": "한 점이 튀었을 때 공정이 바뀐 건지 우연인지 구분하는 기준",
+   "expect": {
+    "documentId": [
+     "DOC07"
+    ]
+   },
+   "heldout": true
   }
  ]
 }
