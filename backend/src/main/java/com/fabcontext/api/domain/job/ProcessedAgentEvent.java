@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 
 /** 업무 상태와 같은 트랜잭션으로 저장하는 수신 기록 — 재전송 · 서버 재시작 뒤에도 같은 이벤트는 한 번만 반영한다. */
 @Entity
-@Table(name = "processed_agent_event", indexes = @Index(columnList = "jobId"))
+@Table(name = "processed_agent_event", indexes = {@Index(columnList = "jobId"), @Index(columnList = "jobId,attempt,eventType")})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ProcessedAgentEvent {
@@ -41,6 +41,29 @@ public class ProcessedAgentEvent {
 
 	@Column(nullable = false)
 	private Instant processedAt;
+
+	/** nullable: 이전 버전에서 저장한 수신 기록은 원문이 없어 사후 해시를 만들지 않는다. */
+	@Column(length = 80)
+	private String contentHash;
+
+	private Integer conflictCount;
+
+	@Column(length = 80)
+	private String lastConflictHash;
+
+	@Column(length = 255)
+	private String lastConflictEventId;
+
+	private Instant lastConflictAt;
+
+	public void fingerprint(String hash) { this.contentHash = hash; }
+
+	public void recordConflict(String incomingEventId, String hash, Instant at) {
+		this.conflictCount = (conflictCount == null ? 0 : conflictCount) + 1;
+		this.lastConflictHash = hash;
+		this.lastConflictEventId = incomingEventId;
+		this.lastConflictAt = at;
+	}
 
 	public ProcessedAgentEvent(String eventId, String jobId, int attempt, String eventType, Instant processedAt) {
 		this.eventId = eventId;
