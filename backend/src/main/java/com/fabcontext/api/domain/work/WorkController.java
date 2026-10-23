@@ -44,6 +44,13 @@ public class WorkController {
 		@RequestHeader(IdempotencyService.HEADER) String key,@Valid @RequestBody WorkDtos.Decision body) {
 		return idempotency.execute(user.userId(),"decideWork:"+id,key,body,()->ResponseEntity.ok(ApiResponse.of(service.decide(id,user,body))));
 	}
+	@io.swagger.v3.oas.annotations.Operation(operationId="closeWorkItemUnperformed",summary="채택한 업무를 미수행으로 닫기",
+		description="READY · APPROVED · REQUESTED에서만. 담당자 또는 사건 운영 권한자가 사유와 함께 닫으면 CLOSED_UNPERFORMED. 연결된 확인 요청은 바꾸지 않는다.")
+	@PostMapping("/api/work-items/{id}/unperformed-closures")
+	public ResponseEntity<?> closeUnperformed(@PathVariable String id,@AuthenticationPrincipal AuthUser user,@RequestHeader(SecurityConfig.CSRF_HEADER) String csrf,
+		@RequestHeader(IdempotencyService.HEADER) String key,@Valid @RequestBody WorkDtos.UnperformedClosure body) {
+		return idempotency.execute(user.userId(),"closeWorkUnperformed:"+id,key,body,()->ResponseEntity.ok(ApiResponse.of(service.closeUnperformed(id,user,body))));
+	}
 	@PostMapping("/api/work-items/{id}/completions")
 	public ResponseEntity<?> complete(@PathVariable String id,@AuthenticationPrincipal AuthUser user,@RequestHeader(SecurityConfig.CSRF_HEADER) String csrf,
 		@RequestHeader(IdempotencyService.HEADER) String key,@Valid @RequestBody WorkDtos.Completion body) {

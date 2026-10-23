@@ -51,8 +51,12 @@ public final class CheckRequestDtos {
 			String targetProcessCode, String approvalId, String requestType, String equipmentId, String question,
 			Map<String, Object> brief, List<String> causeIds, List<String> evidenceIds,
 			String requesterUserId, String ownerUserId, CheckRequestStatus status, long version, String threadId,
-			String waitingJobId, Instant dueAt, Instant createdAt, Instant repliedAt, List<ReplyView> replies, Instant decisionAt, String decisionComment, List<String> allowedActions) {
+			String waitingJobId, Instant dueAt, Instant createdAt, Instant repliedAt, List<ReplyView> replies, Instant decisionAt, String decisionComment, List<String> allowedActions,
+			String withdrawnBy, Instant withdrawnAt, String withdrawReason) {
 	}
+
+	@Schema(name = "CheckRequestWithdrawal")
+	public record WithdrawalInput(@NotBlank @Size(max = 500) String reason, @NotNull Long expectedVersion) {}
 
 	@Schema(name="CheckRequestDecisionInput")
 	public record DecisionInput(@Schema(allowableValues={"ACCEPT","REJECT"}, example="ACCEPT") @NotBlank @jakarta.validation.constraints.Pattern(regexp="ACCEPT|REJECT") String decision,

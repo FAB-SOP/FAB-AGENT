@@ -12,4 +12,6 @@ public interface ReportRepository extends JpaRepository<Report, String> {
 	Optional<Report> findByIncidentIdAndVersion(String incidentId, int version);
 
 	Optional<Report> findFirstByIncidentIdOrderByVersionDesc(String incidentId);
+
+	Optional<Report> findFirstByIncidentIdAndStatus(String incidentId, ReportStatus status);
 }

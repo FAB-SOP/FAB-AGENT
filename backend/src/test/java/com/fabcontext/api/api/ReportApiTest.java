@@ -17,7 +17,7 @@ import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("P11 보고서 초안 · 편집 · 확정 · 내보내기 · 새 버전")
+@DisplayName("P11 보고서 초안 · 편집 · 확정 · 내보내기")
 class ReportApiTest extends ApiTestSupport {
 
 	private String draft(Session s, String incidentId, Integer base) throws Exception {
@@ -103,12 +103,12 @@ class ReportApiTest extends ApiTestSupport {
 			.andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
 		assertThat(md).startsWith("# 수정한 제목").contains("CONFIRMED").contains("편집된 개요").doesNotContain("DRAFT");
 
-		String v2 = draft(etch, id, 1);
-		getAs(etch, "/api/reports/{id}", v2).andExpect(jsonPath("$.data.version").value(2))
-			.andExpect(jsonPath("$.data.baseReportVersion").value(1))
-			.andExpect(jsonPath("$.data.sections[0].body").value(containsString("이전 보고서 v1")));
-		getAs(etch, "/api/incidents/{id}/reports", id).andExpect(jsonPath("$.data.items[*].version", contains(2, 1)))
-			.andExpect(jsonPath("$.data.items[*].status", contains("DRAFT", "CONFIRMED")));
+		// 확정이 사건을 닫는다(003) — 확정 뒤 새 판본은 만들 수 없다. 이전 판본 기반 새 초안은 ReportConfirmCloseApiTest
+		postAs(etch, "/api/incidents/{id}/report-jobs",
+				"{\"expectedIncidentVersion\":" + incidentVersion(etch, id) + ",\"baseReportVersion\":1}", id)
+			.andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("INCIDENT_CLOSED"));
+		getAs(etch, "/api/incidents/{id}/reports", id).andExpect(jsonPath("$.data.items[*].version", contains(1)))
+			.andExpect(jsonPath("$.data.items[*].status", contains("CONFIRMED")));
 		getAs(etch, "/api/reports/{id}", reportId).andExpect(jsonPath("$.data.status").value("CONFIRMED"));
 	}
 

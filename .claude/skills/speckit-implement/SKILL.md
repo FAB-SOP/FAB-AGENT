@@ -373,3 +373,60 @@ speckit 명령이 만든 산출물이다. 블록은 `<!-- ARTIFACT:<기능>:<문
 - 화면 수동 확인(T031) · README(T032, 기존 문서 수정)는 사용자 확인 대기
 
 <!-- ARTIFACT:002-report-title-search:implementation-notes.md END -->
+
+<!-- ARTIFACT:003-report-confirm-summary:implementation-notes.md BEGIN -->
+# Implementation Notes: 보고서 확정 · 사건 자동 종료 · AI 요약 연결
+
+
+## T001 기준선 (2026-10-23, HEAD 6c3ce85 · 변경 전)
+
+| 대상 | 결과 |
+|------|------|
+| backend `./gradlew test --rerun-tasks` | 225 tests · 2 skipped · **0 failed** |
+| frontend `npm test && npm run build` | 8 files · 47 passed, build 성공 |
+| ai `uv run pytest -q` | 133 passed · 3 skipped |
+| 스모크(새로 시드한 서버) | 직전 측정(002 통합 main, 같은 코드) 102 passed · **5 failed** — 요청 수락 단계 4건 · LOT 개수(데이터 v2.1) 1건, main에 이미 있는 실패 |
+
+
+## 결정 기록
+
+- 이름: 기존 목록 DTO `ReportDtos.ReportSummary`와 겹치지 않게 요약 값 객체는 `ReportAiSummary` · `ReportAiSummaryStatus`, 서비스 · 컨트롤러는 `ReportAiSummaryService` · `ReportAiSummaryController`, 응답 record는 `ReportDtos.AiSummaryView`(JSON 필드 이름은 계약대로 `summary`)
+- 확정본 jsonb 열은 기존 `snapshotRef` · `snapshotMarkdown`과 구별되게 `confirmedSnapshot`(`confirmed_snapshot`)
+- `Incident`에는 이미 공개 `setStatus`가 있어 시드의 옛 상태 직접 설정에 그대로 쓴다 — `Incident`의 기존 메서드는 바꾸지 않고 `closeByConfirmedReport`만 추가
+
+- 회신 대기 작업 차단 규칙 변경(사용자 결정 2026-10-23) — 기다리는 요청이 OPEN · ACCEPTED일 때만 차단, 확정 때 남은 대기 작업은 `JobService.finishWaitingOnIncidentClosed`로 닫음(알림 없음). research R3에 기록
+- 추가한 저장소 메서드(목록 밖이지만 기존 메서드 무변경 · 추가만): `ApprovalRepository.findByIncidentIdAndStatus`, `ReportRepository.findFirstByIncidentIdAndStatus`
+- 동시 확정: 사건 행을 `refresh(PESSIMISTIC_WRITE)`로 잠근 뒤 보고서를 다시 읽는다 — 10건 동시 요청에서 200 1건 · 409 9건(`REPORT_CONFIRMED`). 부분 유니크 인덱스 위반은 전역 처리기의 409 `DUPLICATE_OR_CONFLICT`로 둔다(잠금이 먼저 막으므로 따로 바꾸지 않음)
+- 요청 철회 권한: 요청자 본인, 아니면 요청을 보낸 공정의 사건 운영 권한(`requireInvestigationScope`). 받는 사람(다른 공정)은 403. `allowedActions`(받는 사람 동작)는 바꾸지 않았다 — 화면은 요청자 · 상태로 철회 버튼을 판단
+- 업무 미수행 닫기 권한: 담당자 본인, 아니면 사건 운영 권한자(`loadForWrite`)
+- `ConfirmReportHandler`(P4)는 US1에서 먼저 바꿈 — 승인 ID · 기다리던 작업 · 재개 작업을 제외 대상으로 넘김
+
+- 목록 밖 추가 수정(동의 2026-10-23): **P22** `internal/job/AgentJobService.jobContext` — SUMMARY 작업 메시지에 `input.summaryRef`만 싣는다(팀 계약 job-message 필수 필드)
+- P13 범위 안 추가: `schema.sql`에서 알림 종류 체크 제약(`user_notification_type_check`)도 새 값(REPORT_SUMMARY_READY · FAILED)으로 다시 만든다
+- P5 범위 안 추가: `IncidentController` 전이 API의 문서 문구(summary · description)를 새 규칙으로
+- T037: `Incident`에 이미 공개 `setStatus`가 있어 기존 메서드는 바꾸지 않았다. 시드는 `restoreLegacyStatus`로 옛 상태 · 이력 문구를 직접 넣는다
+- 요약 대조: 다른 보고서 · 다른 확정본의 결과면 그 작업을 `STALE_RESULT`로 닫고, 그 작업이 현재 요약 작업이었으면 요약도 실패(다시 요청 가능)로 둔다. 예전 작업의 결과는 공통 앞단(끝난 작업 무시) 또는 `accepts` 대조로 버린다
+- 시뮬레이터 요약 실패 주입: 요약 작업 질문 = 보고서 제목이라, 제목에 `[fail]`이 있으면 기존 `shouldFail` 규칙으로 실패한다(테스트용)
+- 외부 Agent 경로는 `ReportAiSummaryExternalAgentApiTest`(외부 모드 · 자기 스키마 backend_ext)로 작업 메시지 · 확정본 조회 · SUMMARY_READY 대조를 결정적으로 시험
+
+## 마무리 검증 (2026-10-23)
+
+| 항목 | 결과 |
+|------|------|
+| backend `./gradlew test --rerun-tasks` | **246 tests · 2 skipped · 0 failed** (기준선 225 + 새 21) |
+| frontend `npm test && npm run build` | **9 files · 50 passed**, build(tsc 포함) 성공 (기준선 47 + 새 3) |
+| ai `uv run pytest -q` (회귀, 코드 변경 없음) | 133 passed · 3 skipped — 기준선과 같음 |
+| 스모크(새로 시드한 서버, 임시 DB) | **108 passed · 5 failed** — 실패 5건은 기준선과 같은 main 기존 실패(요청 수락 단계 4 · LOT 개수 1). 새 검사(확정 차단 → 철회 → 확정 = 종료 · 요약 READY(rule) · 관리자 보류/종료 409) 모두 통과 |
+| `openapi_diff` | 이번 기능 차이(새 operation 3 · 작업 종류 SUMMARY · 보고서 summary · 업무 상태 · 철회 필드) 계약 반영 후 **새 차이 0건**. 남은 행은 변경 전에도 있던 종류(요청 상태 enum ACCEPTED/REJECTED 미반영 · 업무 응답 서버 미정의 · 알림 등 main 미반영 operation) |
+| `java_pkgdeps` | 순환 묶음 변경 없음(기존 `[action, analysis, approval, checkrequest, job, notification, work]`). 새 의존: internal → domain.report(허용 방향) |
+
+- **사고 기록**: 검증 서버를 기존 임시 컨테이너(`fab-verify-pg`)의 새 스키마로 띄우려 했으나 `application.yml`이 `hibernate.default_schema: backend`로 고정돼 있어 8090 개발 서버가 쓰던 `backend` 스키마를 `DDL_AUTO=create`로 다시 만들었다(데이터 삭제). `fab-deploy-*`는 영향 없음. 검증은 별도 임시 컨테이너(`fab-verify003-pg`, 검증 뒤 삭제)로 다시 했고, 8090 서버는 새 코드로 재시작 · 재시드했다
+- T044: quickstart 시나리오 1–7은 API 테스트(ReportConfirmClose · Blockers · AiSummary · External · IncidentApiTest)와 스모크로 확인. **T051(화면 확인)은 사용자 확인 필요**
+
+## 전달 메모
+
+- **재현(화면)**: 확정 409 `CONFIRMATION_BLOCKED`의 `details.blockers[{kind,id,label}]`로 「확정 전 정리 목록」, `ReportView.summary`(status · lines · evidenceIds · generatedBy · error)와 `POST /api/reports/{id}/summary-jobs`(FAILED에서만), 요청 철회 `POST /api/check-requests/{id}/withdrawals`, 업무 `POST /api/work-items/{id}/unperformed-closures`, 관리자 전이는 보류 해제만. 이번에 Reports · IncidentDetail · Requests · WorkItems에 기본 화면을 넣었다 — 디자인 다듬기는 재현 님 판단
+- **아름(리뷰)**: `JobKind.affectsInvestigationState` · `JobService`(SUMMARY 격리, `finishWaitingOnIncidentClosed`) · `AgentEventService`(SUMMARY_READY · SUMMARY JOB_FAILED) · `AgentWorker`(규칙 요약 · 실패 시 이력 없음) · `NotificationEvents.reportSummaryFinished` · `AgentJobService.jobContext`(SUMMARY input)
+- **의진 · 계약 주인**: 공개 계약 변경 기록 초안(plan contracts/public-api.md 「변경 기록 초안」) — `ai/docs/contract-changes.md` 반영은 `ai/` 미수정 원칙에 따라 계약 주인에게 넘긴다. 내부 확정본 조회 `GET /internal/reports/{id}/snapshot` 필드는 합의안 그대로
+
+<!-- ARTIFACT:003-report-confirm-summary:implementation-notes.md END -->

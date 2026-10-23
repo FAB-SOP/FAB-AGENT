@@ -38,6 +38,7 @@ public class CheckRequestService {
 	private final IncidentStreamHub streamHub;
 	private final Clock clock;
 	private final com.fabcontext.api.domain.work.WorkItemRepository workItems;
+	private final com.fabcontext.api.auth.AccessPolicy accessPolicy;
 
 	@Transactional(readOnly=true)
 	public List<CheckRequestSummary> acceptedInbox(AuthUser user) {
@@ -171,6 +172,32 @@ public class CheckRequestService {
 		return view(request,user.userId());
 	}
 
+	/**
+	 * 회신이 오지 않은 요청을 사유와 함께 철회한다 — 요청자 또는 요청을 보낸 공정의 사건 운영 권한자. 연결된 업무 · 대기 중인 분석은
+	 * 자동으로 바꾸지 않는다(정리는 사람이 한다).
+	 */
+	@Transactional
+	public CheckRequestView withdraw(String requestId, AuthUser user, CheckRequestDtos.WithdrawalInput input) {
+		CheckRequest request = loadVisible(requestId, user);
+		if (!user.userId().equals(request.getRequesterUserId())) {
+			accessPolicy.requireInvestigationScope(user, request.getProcessCode());
+		}
+		entityManager.refresh(request, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		Incident incident = incidentRepository.findById(request.getIncidentId()).orElseThrow();
+		incident.requireNotClosed();
+		ApiException.checkVersion("checkRequest", input.expectedVersion(), request.getVersion());
+		Instant now = Instant.now(clock);
+		request.withdraw(user.userId(), input.reason(), now);
+		if (incident.getStatus() == IncidentStatus.WAITING_REPLY && !hasPending(incident.getIncidentId())) {
+			incident.setStatus(IncidentStatus.INVESTIGATING);
+		}
+		incident.record(now, "REQUEST_WITHDRAWN", user.userId(), "확인 요청 철회: " + input.reason().strip(), "CHECK_REQUEST",
+			requestId);
+		streamHub.publish(incident.getIncidentId(), "check-request.decided",
+			Map.of("requestId", requestId, "status", request.getStatus()));
+		return view(request, user.userId());
+	}
+
 	private boolean hasPending(String incidentId) {
 		return requestRepository.existsByIncidentIdAndStatusIn(incidentId,List.of(CheckRequestStatus.OPEN,CheckRequestStatus.ACCEPTED));
 	}
@@ -224,7 +251,8 @@ public class CheckRequestService {
 			List.copyOf(r.getCauseIds()), List.copyOf(r.getEvidenceIds()),
 			r.getRequesterUserId(), r.getOwnerUserId(), r.getStatus(), r.getVersion(), r.getThreadId(),
 			r.getWaitingJobId(), r.getDueAt(), r.getCreatedAt(), r.getRepliedAt(),
-			replyRepository.findByRequestIdOrderByCreatedAtAsc(r.getRequestId()).stream().map(ReplyView::from).toList(), r.getDecisionAt(), r.getDecisionComment(), CheckRequestDtos.allowed(r,userId));
+			replyRepository.findByRequestIdOrderByCreatedAtAsc(r.getRequestId()).stream().map(ReplyView::from).toList(), r.getDecisionAt(), r.getDecisionComment(), CheckRequestDtos.allowed(r,userId),
+			r.getWithdrawnBy(), r.getWithdrawnAt(), r.getWithdrawReason());
 	}
 
 	@SuppressWarnings("unchecked")

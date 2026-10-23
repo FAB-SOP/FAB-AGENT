@@ -159,7 +159,21 @@ BAD=$(echo "$SECTIONS" | jq '[.[1], .[0], .[2], .[3], .[4]]')
 req etch PATCH "/api/reports/$RPT" "{\"sections\":$BAD,\"expectedContentRevision\":1}"; expect 422 "editReport rejects reordered sections"
 req etch PATCH "/api/reports/$RPT" "{\"sections\":$EDITED,\"expectedContentRevision\":1}"; expect 200 "editReport"
 req etch POST "/api/reports/$RPT/confirmations" '{"expectedContentRevision":2,"reviewConfirmed":false}' -H "Idempotency-Key: $(key)"; expect 422 "confirm without review"
+# 확정 전 남은 일(003) — 회신이 오지 않은 확인 요청이 남아 있으면 확정이 막히고, 요청자가 사유와 함께 철회해 정리한다
+req etch GET "/api/check-requests/$CHK" ""
+if [[ "$(j .data.status)" == "OPEN" || "$(j .data.status)" == "ACCEPTED" ]]; then
+  CV=$(j .data.version)
+  req etch POST "/api/reports/$RPT/confirmations" '{"expectedContentRevision":2,"reviewConfirmed":true,"classification":{"category":"METHOD"}}' -H "Idempotency-Key: $(key)"
+  expect 409 "confirm blocked by unanswered request"
+  check "blockers include $CHK" "$(j '.error.code')/$(j "[.error.details.blockers[] | select(.id == \"$CHK\")] | length")" "CONFIRMATION_BLOCKED/1"
+  req etch POST "/api/check-requests/$CHK/withdrawals" "{\"reason\":\"보고서 확정 전 정리 — 다른 경로로 확인\",\"expectedVersion\":$CV}" -H "Idempotency-Key: $(key)"
+  expect 200 "withdrawCheckRequest"; check "request CANCELLED" "$(j .data.status)" "CANCELLED"
+fi
 req etch POST "/api/reports/$RPT/confirmations" '{"expectedContentRevision":2,"reviewConfirmed":true,"classification":{"category":"METHOD"}}' -H "Idempotency-Key: $(key)"; expect 200 "confirmReport"
+check "확정 = 요약 접수" "$(j .data.summary.status)" "PENDING"
+req etch GET "/api/incidents/$INC" ""; check "확정 = 사건 종료" "$(j .data.status)" "CLOSED"
+for _ in $(seq 1 60); do req etch GET "/api/reports/$RPT" ""; [[ "$(j .data.summary.status)" == "READY" || "$(j .data.summary.status)" == "FAILED" ]] && break; sleep 0.5; done
+check "요약 완료 (rule, 1~2줄)" "$(j .data.summary.status)/$(j .data.summary.generatedBy)/$(j '.data.summary.lines | length | . >= 1 and . <= 2')" "READY/rule/true"
 req etch PATCH "/api/reports/$RPT" "{\"sections\":$EDITED,\"expectedContentRevision\":2}"; expect 409 "edit confirmed report"
 req etch GET "/api/reports/$RPT/export?format=markdown" ""; expect 200 "exportReport"
 grep -qi "content-disposition: attachment" <<<"$HEADERS" && head -c 1 <<<"$BODY" | grep -q "#" && ok "markdown attachment" || bad "markdown attachment"
@@ -183,15 +197,15 @@ req etch GET "/api/knowledge/documents/$DOC" ""; expect 200 "getDocument $DOC (v
 req etch GET "/api/knowledge/documents/$DOC/content" ""; expect 200 "readDocument"
 req etch GET "/api/knowledge/documents/DEMO-CVD_GAS" ""; expect 403 "CVD document out of scope"
 
-step "10. 관리자 상태 전이 (P03)"
+step "10. 관리자 상태 전이 (P03 · 003 — 종료는 보고서 확정으로만)"
 V=$(incident_version etch "$INC")
 req etch POST "/api/incidents/$INC/transitions" "{\"targetStatus\":\"CLOSED\",\"reason\":\"x\",\"expectedVersion\":$V}"; expect 403 "engineer cannot transition"
 login mgr manager.choi
 req mgr POST "/api/incidents/$INC/transitions" "{\"targetStatus\":\"INVESTIGATING\",\"reason\":\"x\",\"expectedVersion\":$V}"; expect 409 "invalid transition"
-req mgr POST "/api/incidents/$INC/transitions" "{\"targetStatus\":\"ON_HOLD\",\"reason\":\"추가 데이터 대기\",\"expectedVersion\":$V}"; expect 200 "ON_HOLD"
-req mgr POST "/api/incidents/$INC/transitions" "{\"targetStatus\":\"INVESTIGATING\",\"reason\":\"재개\",\"expectedVersion\":$(j .data.version)}"; expect 200 "ON_HOLD → INVESTIGATING"
-req mgr POST "/api/incidents/$INC/transitions" "{\"targetStatus\":\"CLOSED\",\"reason\":\"조치 효과 확인, 보고서 확정\",\"evidenceIds\":[\"$ACT\"],\"expectedVersion\":$(j .data.version)}"; expect 200 "CLOSED"
-req etch POST "/api/incidents/$INC/questions" "{\"question\":\"q\",\"expectedIncidentVersion\":$(j .data.version)}" -H "Idempotency-Key: $(key)"; expect 409 "closed incident rejects new job"
+req mgr POST "/api/incidents/$INC/transitions" "{\"targetStatus\":\"ON_HOLD\",\"reason\":\"추가 데이터 대기\",\"expectedVersion\":$V}"; expect 409 "manual ON_HOLD removed"
+check "TRANSITION_REMOVED" "$(j .error.code)" "TRANSITION_REMOVED"
+req mgr POST "/api/incidents/$INC/transitions" "{\"targetStatus\":\"CLOSED\",\"reason\":\"x\",\"expectedVersion\":$V}"; expect 409 "manual CLOSED removed"
+req etch POST "/api/incidents/$INC/questions" "{\"question\":\"q\",\"expectedIncidentVersion\":$V}" -H "Idempotency-Key: $(key)"; expect 409 "closed incident rejects new job"
 
 step "11. 이벤트 접수 · 분석 실패 · 재실행"
 EV="{\"eventId\":\"EVT-SMOKE-$RANDOM$RANDOM\",\"anomalyType\":\"THICKNESS_OOC_R1\",\"severity\":\"MEDIUM\",\"processCode\":\"CMP\",\"equipmentId\":\"CMP-PM3\",\"lotId\":\"CURRENT-L007\",\"waferIds\":[\"W-CURRENT-007-3\"],\"runIds\":[\"RUN-W-CURRENT-007-3-CMP\"],\"detectedAt\":\"$NOW\",\"metrics\":{\"simulateAgentFailure\":true}}"

@@ -2,11 +2,12 @@ import {describe,it,expect} from 'vitest';
 import {groupBySourceResult,reasonRequired} from '../src/components/WorkItems';
 
 describe('work decision reasons',()=>{
- it('requires a reason only for a manager rejection',()=>{
+ it('requires a reason for a manager rejection or unperformed closure',()=>{
   expect(reasonRequired('decline')).toBe(false);
   expect(reasonRequired('reject')).toBe(true);
   expect(reasonRequired('approve')).toBe(false);
   expect(reasonRequired('adopt')).toBe(false);
+  expect(reasonRequired('unperformed')).toBe(true);
  });
  it('keeps every proposal under its source analysis, newest analysis first',()=>{
   const results=[{resultId:'r1',kind:'BASIC',createdAt:'2026-10-21T01:00:00Z'},{resultId:'r2',kind:'DEEP',createdAt:'2026-10-22T01:00:00Z'}];

@@ -16,16 +16,26 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.fabcontext.api.common.Json;
 import com.fabcontext.api.support.ApiTestSupport;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
 
-/** 실 Postgres의 집계·권한·페이지·JSONB를 검증. 보고서 작성 모듈을 바꾸지 않고 전용 fixture만 사용한다. */
+/** 실 Postgres의 집계·권한·페이지·JSONB를 검증. 중복 확정이 남은 옛 DB는 별도 스키마에서 재현한다. */
+@TestPropertySource(properties = {"spring.jpa.properties.hibernate.default_schema=backend_stats_legacy",
+        "spring.datasource.hikari.schema=backend_stats_legacy"})
 class CauseStatisticsApiTest extends ApiTestSupport {
     @Autowired JdbcTemplate jdbc;
     private final String prefix = "stat_" + UUID.randomUUID().toString().replace("-", "");
     private static final AtomicInteger DISPLAY = new AtomicInteger(900000);
     private int seq;
+
+    @BeforeEach
+    void allowLegacyDuplicateConfirmationsOnlyInThisSchema() {
+        assertThat(jdbc.queryForObject("select current_schema()", String.class)).isEqualTo("backend_stats_legacy");
+        jdbc.execute("drop index if exists backend_stats_legacy.uq_report_confirmed_per_incident");
+    }
 
     private String incident(String process, String equipment, String detectedAt) {
         String id = prefix + "i" + (++seq);

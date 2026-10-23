@@ -81,13 +81,12 @@ public class IncidentService {
 		incident.checkVersion(body.expectedVersion());
 		IncidentStatus from = incident.getStatus();
 		IncidentStatus to = body.targetStatus();
-		boolean allowed = switch (to) {
-			case ON_HOLD -> from == IncidentStatus.OPEN || from == IncidentStatus.INVESTIGATING
-					|| from == IncidentStatus.WAITING_REPLY;
-			case INVESTIGATING -> from == IncidentStatus.ON_HOLD;
-			case CLOSED -> from != IncidentStatus.CLOSED;
-			default -> false;
-		};
+		// 사건 종료는 보고서 확정으로만 일어난다(헌법 원칙 VI) — 관리자에게는 기존 보류의 해제(조사 재개)만 남는다
+		if (to == IncidentStatus.ON_HOLD || to == IncidentStatus.CLOSED) {
+			throw ApiException.conflict("TRANSITION_REMOVED", "사건은 보고서 확정으로만 종료할 수 있고, 새로 보류할 수 없습니다.",
+				Map.of("currentStatus", from.name(), "targetStatus", to.name()));
+		}
+		boolean allowed = to == IncidentStatus.INVESTIGATING && from == IncidentStatus.ON_HOLD;
 		if (!allowed) {
 			throw ApiException.conflict("INVALID_TRANSITION", from + " → " + to + " 전이는 허용되지 않습니다.",
 				Map.of("currentStatus", from.name(), "targetStatus", to.name()));

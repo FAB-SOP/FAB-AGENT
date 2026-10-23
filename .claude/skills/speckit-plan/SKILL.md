@@ -833,3 +833,420 @@ docker stop fab-explain-pg
 4. 결과가 20건 넘을 때 「더 보기」로 이어 붙음, 끝에서 버튼 사라짐.
 5. 회귀: 보고서 상세 · 확정 · 사건 화면의 보고서 탭 그대로.
 <!-- ARTIFACT:002-report-title-search:quickstart.md END -->
+
+<!-- ARTIFACT:003-report-confirm-summary:plan.md BEGIN -->
+# Implementation Plan: 보고서 확정 · 사건 자동 종료 · AI 요약 연결
+
+**Branch**: `feat/report-confirm-summary` (기능 `003-report-confirm-summary`) | **Date**: 2026-10-23 | **Spec**: `.claude/skills/speckit-specify/SKILL.md#003-report-confirm-summary:spec.md`
+
+**Input**: Feature specification block `003-report-confirm-summary:spec.md` in `.claude/skills/speckit-specify/SKILL.md`
+
+## Summary
+
+보고서 확정 한 번이 **확정 · 사건 종료 · 요약 접수**를 한 트랜잭션으로 처리한다. 확정 전에는 사건을 잠그고
+(PESSIMISTIC_WRITE) 최신 판본인지 · 남은 일(진행 중 분석 · 승인 대기 · 상급자 승인 · 미회신 요청 · 미수행 업무)이 없는지
+검사해, 있으면 409 `CONFIRMATION_BLOCKED` + 남은 항목 목록을 돌려준다. 확정 시 **구조화 확정본(jsonb)** 을 한 번 저장하고,
+`SUMMARY` 작업을 `input.summaryRef`와 함께 등록한다. Agent는 `GET /internal/reports/{id}/snapshot`으로 확정본을 읽고
+`SUMMARY_READY`를 보내며, 백엔드는 「그 보고서 · 그 확정본 · 현재 요약 작업」일 때만 저장한다. 관리자 수동 보류 · 종료는
+없애고(헌법 2.0.0 원칙 VI), 정리를 위해 **요청 철회** · **업무 미수행 닫기**를 추가한다.
+
+## Technical Context
+
+**Language/Version**: Java 21 · Spring Boot 4.1 (`backend`), TypeScript · React 18 (`frontend` — 범위는 아래 「화면 범위」)
+**Primary Dependencies**: Spring Web · Data JPA(Hibernate) · Validation — 새 의존성 없음
+**Storage**: PostgreSQL `backend` 스키마 — `report`에 확정본(jsonb) · 요약 열, `check_request`에 철회 열, `work_item`에 미수행 닫기 열.
+enum 열의 DB 체크 제약(Hibernate 생성 · `ddl-auto: update`로는 갱신 안 됨)은 `schema.sql`에서 다시 만든다
+**Testing**: `./gradlew test`(Testcontainers MockMvc · 도메인 단위), `npm test`, 스모크, `openapi_diff`, `java_pkgdeps`
+**Target Platform**: 로컬 compose · 시뮬레이터 모드(키 없음) · 외부 Agent 모드
+**Project Type**: web-service(+ 공개 계약). **`ai/`는 수정하지 않는다** — 팀 계약에 `SUMMARY` 작업 종류 · `SUMMARY_READY` 이벤트가 이미 있다(의진 반영)
+**Performance Goals**: 확정 처리 1초 이내, 확정 후 요약 완료 1분 이내(SC-005), 동시 확정 10회 중 성공 1건(SC-002)
+**Constraints**: 헌법 2.0.0 — I(승인 뒤 실행) · IV(계약) · VI(종료 = 확정) · VII(키 없이 동작) · IX(확장) · X(수정 전 동의)
+**Scale/Scope**: 사건당 보고서 판본 수 개 · 확정본 1개 · 요약 작업 1~3개
+
+## Constitution Check
+
+*GATE: Phase 0 전 · Phase 1 설계 뒤 재확인*
+
+| 원칙 | 판정 | 근거 |
+|------|------|------|
+| I. 승인 뒤 실행 | ✅ | Agent 제안 확정(CONFIRM_REPORT)은 기존처럼 승인 뒤 저장된 payload로만 실행. 차단 검사에서 **실행 중인 그 승인 · 그 승인으로 재개된 작업은 제외**(자기 자신에게 막히지 않게). 요약은 상태 변경이 아니라 확정본 읽기 · 결과 저장 |
+| II. 근거 기반 판단 | ✅ | 요약은 확정본 근거 ID만 쓴다. 분류는 사람이 정한다(001 그대로) |
+| III. 숫자는 서버 계산 | ✅ | 해당 없음 |
+| IV. 계약 우선 | ✅ 확인(2026-10-23) | 공개 API 추가 · 변경(확정 차단 응답, 요약 상태 · 재요청, 요청 철회, 업무 미수행 닫기, 상태 전이 축소) → `combined.openapi.json` 반영 · `openapi_diff`. 팀 계약은 이미 반영됨(내부 확정본 조회 응답만 의진과 맞춘 필드 그대로). `ai/docs/contract-changes.md` 기록은 초안으로 넘김. **계약 주인 확인 필요** |
+| V. 정답 격리 | ✅ | 해당 없음 |
+| VI. 종료 = 확정 | ✅ | 이 기능이 원칙 VI(2.0.0)의 구현이다 — 종료는 확정으로만, 수동 보류 · 종료 제거, 기존 보류 해제만, 종료 사건 변경 거부 |
+| VII. 결정적 검증 | ✅ | 시뮬레이터에 규칙 기반 요약 추가 — 키 없이 확정 → 요약 완료 |
+| VIII · IX | ✅ | 확정 차단 검사 · 확정본 생성 · 요약 처리를 새 클래스로 분리, 기존 클래스는 연결 지점만 수정 |
+| X. 기존 동작 보존 · 수정 전 확인 | ✅ 동의(2026-10-23) | 아래 「기존 코드 수정 목록」 P1–P20. **이번 기능은 의도적으로 기존 동작을 바꾼다**(종료 · 상태 전이) — 바뀌는 기존 테스트 기대값을 목록에 명시 |
+
+### 기존 코드 수정 목록 (원칙 X — 구현 전 동의 필요)
+
+**백엔드 — 보고서 · 사건**
+
+| # | 파일 | 바꾸는 것 | 왜 추가만으로 안 되는가 | 기존 동작 영향 |
+|---|------|-----------|------------------------|---------------|
+| P1 | `domain/report/ReportService.java` | 확정: 사건 잠금 → 최신 판본 · 차단 검사 → 확정 · 확정본 저장 → 사건 종료 → 요약 접수. 초안 생성 · 편집에 종료 사건 검사 | 확정 경로가 여기뿐 | 종료 전 초안 · 편집 · 분류 동작 그대로. **확정 뒤 새 판본 생성이 409로 바뀜**(재분류 예외 삭제) |
+| P2 | `domain/report/Report.java` | `snapshot`(jsonb) · `@Embedded ReportSummary` 필드, 요약 상태 전이 메서드 | 확정본 · 요약은 그 보고서에 고정된다 | 기존 행은 null → 「요약 없음」 |
+| P3 | `domain/report/ReportDtos.java` | `ReportView` · `ReportSummary`(목록 요약 DTO)에 `summary` | 공개 응답 | 필드 추가만 |
+| P4 | `domain/report/ConfirmReportHandler.java` | 실행 중 승인 ID · 재개 작업 ID를 확정 서비스에 넘김(차단 검사 제외용) | 승인 경로 확정이 여기서만 실행 | payload 검증 그대로 |
+| P5 | `domain/incident/IncidentService.java` · `Incident.java` | 상태 전이에서 `ON_HOLD` · `CLOSED` 대상 제거(409 `TRANSITION_REMOVED`), `ON_HOLD → INVESTIGATING`만 유지. `closeByConfirmedReport(at, reportId)` 추가 | 관리자 수동 종료 제거 · 종료 경로 단일화 | **관리자 보류 · 종료 API가 409로 바뀜** |
+
+**백엔드 — 공통 작업 · 이벤트 · 알림 · 시뮬레이터 (아름 담당 파일, 선웅이 SUMMARY 부분만 넣고 아름 리뷰)**
+
+| # | 파일 | 바꾸는 것 | 왜 | 영향 |
+|---|------|-----------|----|------|
+| P6 | `domain/job/JobKind.java` | `SUMMARY` 추가 | 팀 계약에 이미 있는 종류 | 추가만 |
+| P7 | `domain/job/JobService.java` | SUMMARY는 진행 중 작업 검사 제외 · 사건 `activeJobId` · `latestJobStatus`를 건드리지 않음 · 「분석 완료」 알림 안 보냄 | 요약은 조사 상태와 격리(닫힌 사건이 다시 분석 중으로 보이면 안 됨) | 다른 종류 그대로 |
+| P8 | `internal/AgentEventService.java` | `SUMMARY_READY` → 요약 처리기, SUMMARY의 `JOB_FAILED` → 요약 실패(조사 이력 기록 안 함) | 이벤트 수신 지점이 여기뿐 | 다른 이벤트 그대로 |
+| P9 | `simulator/AgentWorker.java` | `case SUMMARY` — 확정본 개요 · 미해결 첫 문장으로 규칙 요약 | 키 없이 흐름 검증(원칙 VII) | 다른 종류 그대로 |
+| P10 | `domain/notification/NotificationEvents.java`(+ 종류 enum) | 요약 완료 · 실패 알림(수신자: 확정자) | 주석에 「합의 필요」로 남아 있던 확장 지점 | 추가만 |
+
+**백엔드 — 정리 기능**
+
+| # | 파일 | 바꾸는 것 | 왜 | 영향 |
+|---|------|-----------|----|------|
+| P11 | `domain/checkrequest/CheckRequest.java` · `CheckRequestService.java` · `CheckRequestController.java` | 요청자 철회(`CANCELLED` + 사유 · 철회자 · 시각), `POST /api/check-requests/{id}/withdrawals` | 철회 API가 없다(`CANCELLED` 상태만 있음) | 수락 · 거절 · 회신 그대로 |
+| P12 | `domain/work/WorkItem.java` · `WorkService.java` · `WorkController.java` | 상태 `CLOSED_UNPERFORMED` + 사유 · 처리자 · 시각, `POST /api/work-items/{id}/unperformed-closures` | 채택 업무를 사유와 함께 닫는 상태가 없다 | 기존 전이 그대로 |
+| P13 | `backend/src/main/resources/schema.sql` | `job_kind_check` · `work_item_status_check` 다시 만들기(새 값), 사건당 확정 1개 **부분 유니크 인덱스**(중복 데이터가 없을 때만 생성) | enum 체크 제약은 `ddl-auto: update`로 갱신되지 않는다(main이 `check_request` 상태에 같은 방식 사용) | 기존 블록 그대로, `IF EXISTS` · 재실행 안전 |
+| P14 | `backend/src/main/java/com/fabcontext/api/seed/SeedRunner.java` | 옛 상태(보고서 없이 종료 3건 · 보류 1건)는 **이력 데이터로 직접 설정**, 확정 뒤 `close()` 호출 삭제 | 시드가 관리자 전이 API를 써서 새 규칙에 거부된다 | 시드 결과(사건 상태)는 지금과 같게 |
+
+**테스트 · 스크립트 · 계약 · 문서**
+
+| # | 파일 | 바꾸는 것 | 왜 |
+|---|------|-----------|----|
+| P15 | `api/IncidentApiTest.java` | 관리자 전이 테스트: 보류 · 종료 → 409 `TRANSITION_REMOVED`, 기존 보류 해제 → 200 | **기대값 변경**(기능 변경) |
+| P16 | `api/ReportApiTest.java` · `api/ReportClassificationApiTest.java` | 확정 뒤 새 판본 생성 → 409 `INCIDENT_CLOSED`로, 보류 확정 시 사건 상태 → `CLOSED`로 | **기대값 변경**(001 재분류 예외 삭제 · 확정 = 종료) |
+| P17 | `domain/SchemaTest.java` | jsonb 열 수(확정본 · 요약 줄 · 요약 근거 +3) | 새 jsonb 열 — **기대값 변경** |
+| P18 | `backend/scripts/smoke-test.sh` | 상태 전이 구간(188–193행)을 새 규칙으로, 확정 뒤 사건 종료 · 요약 확인 추가 | 스모크가 관리자 보류 · 종료를 쓴다 |
+| P19 | `data/backend-handoff-v2/combined.openapi.json` | 공개 계약 갱신(contracts/public-api.md) | 원칙 IV |
+| P20 | `README.md` · `backend/README.md` · 001 spec 블록 | 관리자 전이 설명 · 001 재분류 예외 삭제 | 헌법 2.0.0 후속(Sync Impact Report ⚠) |
+
+| P21 | `frontend/src/pages/Reports.tsx` · `IncidentDetail.tsx` · `Requests.tsx` · 업무 화면 · `api/*` | 확정 차단 목록 · 요약 패널 · 재요청, 관리자 보류 · 종료 버튼 제거, 철회 · 미수행 닫기 버튼 | 화면 범위 「포함」 결정(2026-10-23) |
+
+**동의 기록 (2026-10-23, 사용자)**: P1–P20 전체 동의 · 공개 계약 변경 확인됨(반영) · 화면 포함(P21).
+
+> 구현 중 목록 밖 수정이 나오면(예: 다른 테스트가 확정 뒤 종료 상태에 걸림) 멈추고 다시 확인받는다.
+
+### 화면 범위 (결정 필요)
+
+회의 문서 F에 화면은 재현 담당이다. 기본안은 **이번 plan은 백엔드 + 계약까지, 화면은 계약을 재현에게 넘김**이다.
+같이 하려면 아래를 추가한다(기존 파일 수정 — 동의 필요): `frontend/src/pages/Reports.tsx`(확정 차단 목록 · 요약 패널 · 재요청),
+`frontend/src/pages/IncidentDetail.tsx`(관리자 보류 · 종료 버튼 제거, 보류 해제만), 요청 · 업무 화면(`Requests.tsx` · `WorkItems.tsx`
+— 철회 · 미수행 닫기 버튼).
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+.claude/skills/
+├── speckit-specify/SKILL.md   # 003 spec · checklists/requirements
+├── speckit-plan/SKILL.md      # 003 plan(이 문서) · research · data-model · quickstart · contracts/public-api · contracts/internal-snapshot
+└── speckit-tasks/SKILL.md     # 003 tasks
+```
+
+### Source Code (repository root)
+
+```text
+backend/src/main/java/com/fabcontext/api/
+├── domain/report/
+│   ├── ReportConfirmationGuard.java     # 새: 확정 차단 검사(남은 일 목록) — 실행 중 승인 · 재개 작업 제외
+│   ├── ConfirmationBlocker.java         # 새: 차단 항목(kind · id · label) record
+│   ├── ConfirmationContext.java         # 새: 확정 주체 · 경로(직접/승인) · 제외할 승인 · 작업
+│   ├── ReportSnapshotFactory.java       # 새: 확정본 jsonb 생성(칸 이름별 글)
+│   ├── ReportSummary.java               # 새: @Embeddable 요약(상태 · 줄 · 근거 · 생성 방식 · 현재 작업 · 갱신 · 실패 안내)
+│   ├── ReportSummaryStatus.java         # 새: PENDING · RUNNING · READY · FAILED
+│   ├── ReportSummaryService.java        # 새: 요약 접수 · 결과 반영(대조) · 실패 · 재요청
+│   ├── ReportSummaryController.java     # 새: POST /api/reports/{id}/summary-jobs
+│   └── ReportService · Report · ReportDtos · ConfirmReportHandler   # 수정 P1–P4
+├── domain/incident/ IncidentService · Incident                       # 수정 P5
+├── domain/job/ JobKind · JobService                                  # 수정 P6–P7
+├── domain/checkrequest/ CheckRequest · Service · Controller          # 수정 P11
+├── domain/work/ WorkItem · WorkService · WorkController              # 수정 P12
+├── domain/notification/ NotificationEvents                           # 수정 P10
+├── internal/AgentEventService.java                                   # 수정 P8
+├── internal/query/InternalReportSnapshotController.java              # 새: GET /internal/reports/{id}/snapshot
+├── simulator/AgentWorker.java                                        # 수정 P9
+└── seed/SeedRunner.java                                              # 수정 P14
+backend/src/main/resources/schema.sql                                 # 수정 P13
+
+backend/src/test/java/com/fabcontext/api/
+├── api/ReportConfirmCloseApiTest.java      # 새: 종료 · 최신 판본 · 동시 확정 · 롤백 · 종료 후 거부
+├── api/ReportConfirmBlockersApiTest.java   # 새: 차단 목록 · 철회 · 미수행 닫기 · 승인 경로 자기 제외
+├── api/ReportSummaryApiTest.java           # 새: 요약 접수 · 완료 · 실패 · 재요청 · 늦은 결과 · 내부 확정본 조회
+├── domain/report/ReportConfirmationGuardTest.java  # 새
+└── IncidentApiTest · ReportApiTest · ReportClassificationApiTest · SchemaTest   # 수정 P15–P17
+```
+
+**Structure Decision**: 확정 · 요약 규칙은 보고서 기능이라 `domain/report`에 새 클래스로 둔다(차단 검사 · 확정본 · 요약 처리 분리).
+차단 검사는 보고서 도메인이 다른 도메인 저장소(job · approval · checkrequest · work)를 **읽기만** 한다 — 이미 있는 의존 방향
+(report → 각 도메인)이라 새 순환이 없다. 내부 확정본 조회는 기존 내부 API 위치(`internal/query`)에 둔다.
+
+## Complexity Tracking
+
+| 추가 개념 | 필요한 이유 | 더 단순한 대안을 버린 이유 |
+|-----------|-------------|--------------------------|
+| 사건 행 잠금 + 부분 유니크 인덱스(이중 보장) | 동시 확정 1건(SC-002) · 검사와 확정 사이 끼어들기 방지(FR-003) | 낙관적 버전만으로는 서로 다른 판본 · 다른 행에 대한 동시 확정을 못 막는다. 인덱스만으로는 차단 검사와의 경합을 못 막는다 |
+| 확정본 jsonb 별도 저장 | 확정본 불변(FR-012) · Agent 조회 형식(칸 이름별) | 원본 열에서 매번 다시 만들면 이후 열 변경 · 버그로 확정본이 달라질 수 있다 |
+| SUMMARY의 조사 상태 격리(P7) | 닫힌 사건에서 실행되는 유일한 작업 | 일반 작업 경로를 그대로 쓰면 종료 사건이 「분석 중」으로 보이고 진행 중 검사에 막힌다 |
+| 시드의 옛 상태 직접 설정(P14) | 보고서 없이 종료 · 보류된 「옛 데이터」 시연이 필요 | 새 규칙은 그런 상태를 만들 API가 없다(의도). 시드만 이력 데이터로 직접 넣는다 |
+| 변경 기록을 `ai/docs`에 쓰지 않음 | `ai/` 미수정 | 초안으로 넘김 |
+<!-- ARTIFACT:003-report-confirm-summary:plan.md END -->
+
+<!-- ARTIFACT:003-report-confirm-summary:research.md BEGIN -->
+# Research: 보고서 확정 · 사건 자동 종료 · AI 요약 연결
+
+## R1. 확정 트랜잭션 · 잠금 순서
+
+- **Decision**: `ReportService.confirm`(직접) · `confirmFromApproval`(승인 경로) 모두 한 메서드로 모인다.
+  ① 사건 행 `PESSIMISTIC_WRITE` 잠금(`JobService.enqueue`가 이미 쓰는 방식) → ② 보고서가 그 사건의 **최신 판본**인지
+  (`findFirstByIncidentIdOrderByVersionDesc`) → 이미 확정본이 있으면 409 `REPORT_ALREADY_CONFIRMED`(확정본 reportId) →
+  ③ 검토 · 판본 · 리비전(기존) → ④ 차단 검사(R3) → ⑤ 분류 검사(001) → ⑥ 확정 · 확정본 jsonb · Markdown 스냅샷 →
+  ⑦ 사건 `CLOSED` + 이력(보고서 확정 · 사건 종료) → ⑧ 요약 상태 `PENDING` + SUMMARY 작업 등록. 실패는 전부 롤백.
+- **Rationale**: 같은 사건의 확정 · 새 작업 등록이 사건 행 잠금으로 직렬화되어, 검사와 확정 사이에 분석 작업이 끼어들 수 없다.
+  최신 판본 검사 · 기존 확정본 검사가 잠금 안에 있어 동시 확정은 하나만 통과한다.
+- **검사 순서와 기존 오류**: 기존 오류 코드 순서(검토 미체크 422 → 판본 충돌 409 → 분류 422)는 유지하고, 새 검사(최신 판본 ·
+  기존 확정본 · 차단)는 판본 충돌 다음 · 분류 앞에 둔다. 편집은 `requireDraft`(REPORT_CONFIRMED) 다음에 종료 검사.
+- **커밋 뒤 이벤트**: 화면 SSE · 알림은 기존처럼 서비스 안에서 발행하되, 요약 알림은 결과 반영 트랜잭션 커밋 뒤
+  (`@TransactionalEventListener(AFTER_COMMIT)`) 보낸다 — 실패해 롤백된 요약에 알림이 나가지 않게.
+
+## R2. 동시 확정 이중 보장 — 부분 유니크 인덱스
+
+- **Decision**: `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_confirmed_per_incident ON report (incident_id) WHERE status = 'CONFIRMED'`.
+  기존 DB에 한 사건의 확정본이 둘 이상이면(001 재분류 예외 시기의 데이터) 만들지 않고 `RAISE NOTICE`로 남긴다.
+- **Rationale**: 잠금이 1차, 인덱스는 버그 · 다른 경로 대비 최후 보장. 위반 시 409로 바꿔 돌려준다.
+
+## R3. 확정 차단 검사 — `ReportConfirmationGuard`
+
+- **Decision**: 사건 하나에 대해 읽기 전용 질의로 남은 일을 모은다.
+
+| 종류 | 조건 | 제외 |
+|------|------|------|
+| `ANALYSIS_IN_PROGRESS` | 작업 상태 QUEUED · RUNNING · WAITING_APPROVAL · WAITING_REPLY, 종류 BASIC · DEEP · RESUME | 승인 경로: 그 승인으로 재개된 작업(`approval.resumeJobId`) · 그 승인을 기다리던 작업 |
+| `APPROVAL_PENDING` | 승인 상태 PENDING | 승인 경로: 실행 중인 그 승인 |
+| `MANAGER_APPROVAL_PENDING` | 업무 WAITING_MANAGER | — |
+| `REQUEST_UNANSWERED` | 확인 요청 OPEN · ACCEPTED | — |
+| `WORK_UNPERFORMED` | 업무 READY · APPROVED · REQUESTED | — |
+
+  REPORT · SUMMARY 작업, 업무 PROPOSED · DECLINED · REJECTED · COMPLETED · CLOSED_UNPERFORMED, 요청 REJECTED · REPLIED · CANCELLED는 막지 않는다.
+- **구현 중 수정(2026-10-23, 사용자 결정)**: 회신 대기(WAITING_REPLY) 작업은 **기다리는 확인 요청이 OPEN · ACCEPTED일 때만** 막는다.
+  기존 코드에서 회신 대기 작업은 「회신을 골라 추가 분석」으로만 풀리고 거절 · 철회로는 풀 방법이 없어, 무조건 막으면 철회한 사건을 확정할 수 없다.
+  확정 때 남은 대기 작업은 `JobService.finishWaitingOnIncidentClosed`로 「사건 종료로 끝남」(결과 참조 = 확정 보고서) 처리하고, 분석 완료 알림은 보내지 않는다.
+- **응답**: 409 `CONFIRMATION_BLOCKED`, `details.blockers = [{kind, id, label}]`.
+- **Rationale**: 승인 경로에서 Agent는 자기 RESUME 작업 안에서 확정 도구를 부른다. 이 작업 · 그 승인을 제외하지 않으면 승인된 확정이
+  자기 자신에게 막힌다(원칙 I 흐름이 깨짐). 보고서 → 각 도메인 읽기는 이미 있는 의존 방향이다.
+
+## R4. 확정본 — jsonb 한 번 저장, 내부 조회
+
+- **Decision**: 확정 때 `report.snapshot`(jsonb)에 다음을 저장하고 바꾸지 않는다:
+  `reportId · reportVersion · contentRevision · snapshotRef(기존 형식 그대로) · title · incidentDisplayId · sections{overview,
+  investigation, requestsAndReplies, actionsAndVerification, unresolved}(문자열) · classification{category, equipmentParameters} ·
+  evidenceIds · confirmedBy · confirmedAt`. `GET /internal/reports/{id}/snapshot`(서비스 토큰)은 이 값을 그대로 주고, 확정 전이면 404.
+- **Rationale**: 칸 이름별 문자열은 의진과 합의한 형식이며 변환 코드(`ReportSections.toMap`)가 이미 있다. 원본 열에서 다시 만들지 않아
+  확정본 불변을 보장한다. 기존 Markdown 스냅샷(내려받기)은 그대로 둔다.
+
+## R5. 요약 — 보고서에 붙는 상태 + SUMMARY 작업
+
+- **Decision**: `Report`에 `@Embedded ReportSummary`(summary_status · summary_lines jsonb · summary_evidence_ids jsonb ·
+  summary_generated_by · summary_job_id · summary_updated_at · summary_error). 확정 때 `PENDING` + SUMMARY 작업
+  (`input.summaryRef = {reportId, reportVersion, contentRevision, snapshotRef}`, attempt 1).
+  - 작업 시작(JOB_STARTED) → `RUNNING`
+  - `SUMMARY_READY` → payload의 `reportId` · `snapshotRef`가 그 보고서 확정본과 같고, 이벤트의 작업 ID가 `summary_job_id`와 같고, 상태가
+    `PENDING · RUNNING`일 때만 줄(1~2, 줄당 120자 · 서버 검사) · 근거 · 생성 방식 저장 → `READY` + 작업 성공(같은 트랜잭션)
+  - 대조 실패(옛 작업 · 다른 확정본 · 이미 READY) → 저장 안 함, 그 작업은 `FAILED(STALE_RESULT)`로 닫음, 알림 없음
+  - SUMMARY `JOB_FAILED`(최종) → `FAILED` + 짧은 안내, **조사 이력 기록 없음**
+  - 재요청 `POST /api/reports/{id}/summary-jobs` — 확정 권한, `FAILED`에서만, 사건 잠금 안에서 상태 확인 → 새 작업(attempt 1) · `summary_job_id` 교체 · `PENDING`
+- **Rationale**: 확정본이 사건당 하나라 요약도 보고서에 한 벌. 현재 작업 ID 대조로 늦은 결과를 막는다(Agent eventId에 jobId 포함).
+
+## R6. SUMMARY의 조사 상태 격리 — `JobService`
+
+- **Decision**: `kind == SUMMARY`이면 ① 진행 중 작업 검사(`assertNoRunningJob`) 제외 ② 사건 `activeJobId` · `latestJobStatus` 갱신 안 함
+  (`sync`에서 제외) ③ 「분석 완료」 알림 제외 ④ 종료 사건에서도 등록 허용. 작업 확보(claims) · 컨텍스트 · 재시도는 공통 그대로.
+- **Rationale**: 닫힌 사건이 목록에서 「분석 중」으로 보이거나, 승인 경로 확정 때 아직 도는 RESUME 작업 때문에 요약 등록이 막히면 안 된다.
+
+## R7. 이벤트 · 시뮬레이터 · 알림
+
+- **Decision**: `AgentEventService`에 `case "SUMMARY_READY"` → `ReportSummaryService.applyResult(job, payload)`.
+  `JOB_FAILED`는 `job.kind == SUMMARY`면 `ReportSummaryService.fail`(이력 기록 없음), 아니면 기존 그대로.
+  공통 검사(이미 끝난 작업 무시 · metrics 기록)는 그대로 앞단에서. 시뮬레이터 `case SUMMARY` → 확정본 개요 · 미해결 첫 문장(각 120자 자름) ·
+  `evidenceIds` · `generatedBy: "rule"`로 같은 반영 메서드 호출. 알림 `REPORT_SUMMARY_READY` · `REPORT_SUMMARY_FAILED` → 확정자, 링크 `/reports/{id}`.
+- **Rationale**: 승인 실행을 핸들러로 넘기는 기존 구조와 같다. 시뮬레이터가 실제 반영 경로를 그대로 타서 테스트 의미가 같다.
+
+## R8. 정리 기능 — 요청 철회 · 업무 미수행 닫기
+
+- **Decision**:
+  - 철회 `POST /api/check-requests/{id}/withdrawals {reason, expectedVersion}` — 요청자(또는 사건 운영 권한자)만, 상태 OPEN · ACCEPTED만,
+    사유 1~500자 → `CANCELLED` + `withdrawnBy · withdrawnAt · withdrawReason`, 사건 이력 「확인 요청 철회」, 받는 사람에게 상태로 보임
+  - 미수행 닫기 `POST /api/work-items/{id}/unperformed-closures {reason, expectedVersion}` — 담당자 또는 사건 운영 권한자, READY · APPROVED · REQUESTED만,
+    사유 필수 → `CLOSED_UNPERFORMED` + 처리자 · 시각 · 사유, 사건 이력 「업무 미수행 종결」
+  - 둘 다 종료 사건이면 409(기존 `requireNotClosed`). 연결된 요청 · 업무를 서로 자동으로 바꾸지 않는다(FR-009)
+- **Rationale**: `CANCELLED`는 이미 enum에 있다. 업무는 「사유 있는 종결」 상태가 없어 하나를 더한다(체크 제약은 R10).
+
+## R9. 관리자 상태 전이 축소 · 시드
+
+- **Decision**: `IncidentService.transition` — 대상 `INVESTIGATING`(현재 `ON_HOLD`일 때)만 허용, `ON_HOLD` · `CLOSED`는 409 `TRANSITION_REMOVED`
+  (「보고서 확정으로만 종료할 수 있습니다」). 사건 종료는 `Incident.closeByConfirmedReport(at, reportId)`로만.
+  시드는 옛 상태(EV-1018 · 1019 · 1020 보고서 없이 종료, EV-1022 보류)를 **엔티티에 직접 설정**(이력 데이터)하고, EV-1021 등 보고서 확정 시드는 확정이 종료까지 하므로 `close()` 삭제.
+- **Rationale**: 헌법 2.0.0 원칙 VI. 옛 상태를 만드는 API는 없어야 하지만, 「옛 데이터 보존」을 시연하려면 시드에는 있어야 한다.
+
+## R10. enum 체크 제약
+
+- **Decision**: `schema.sql` DO 블록에 `ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check; ADD CONSTRAINT … CHECK (kind IN (BASIC, DEEP, RESUME, REPORT, SUMMARY))`,
+  `work_item_status_check`도 새 값 포함으로 다시 만든다(main이 `check_request_status_check`에 쓴 방식과 같음). 요약 상태는 새 열이라 Hibernate가 만든다.
+- **Rationale**: Hibernate가 enum 열에 체크 제약을 만들고, `ddl-auto: update`는 기존 제약을 갱신하지 않는다 — 운영 DB에서 새 값 저장이 실패한다.
+
+## R11. 범위 밖
+
+- Kafka 전환(공통 작업 개선) · 자동 초안 · 통계 탭. 작업 전달은 지금처럼 `/internal/jobs` 조회.
+<!-- ARTIFACT:003-report-confirm-summary:research.md END -->
+
+<!-- ARTIFACT:003-report-confirm-summary:data-model.md BEGIN -->
+# Data Model: 보고서 확정 · 사건 자동 종료 · AI 요약 연결
+
+## Report (기존, 수정)
+
+| 추가 필드 | 열 | 규칙 |
+|-----------|----|------|
+| `snapshot` | `snapshot` jsonb | 확정 때 한 번 저장, 불변. 확정 전 null |
+| `summary` (@Embedded `ReportSummary`) | 아래 | 확정 전 · 기능 도입 전 확정본은 상태 null(「요약 없음」) |
+
+### ReportSummary (@Embeddable, 새)
+
+| 필드 | 열 | 규칙 |
+|------|----|------|
+| `status` | `summary_status` | `PENDING` · `RUNNING` · `READY` · `FAILED` |
+| `lines` | `summary_lines` jsonb | READY일 때 1~2줄, 줄당 ≤ 120자 |
+| `evidenceIds` | `summary_evidence_ids` jsonb | 확정본 근거의 부분집합 |
+| `generatedBy` | `summary_generated_by` | `model` · `rule` |
+| `jobId` | `summary_job_id` | 현재 요약 작업 — 늦은 결과 대조 기준 |
+| `updatedAt` | `summary_updated_at` | |
+| `error` | `summary_error` | FAILED일 때 사용자용 짧은 안내 |
+
+상태 전이: `(확정) → PENDING → RUNNING → READY` / `→ FAILED` · `FAILED —(재요청)→ PENDING`. READY는 끝 상태(덮어쓰기 없음).
+
+## 확정본 스냅샷 (jsonb, `contracts/internal-snapshot.md`)
+
+`reportId · reportVersion · contentRevision · snapshotRef · title · incidentDisplayId · sections{5칸 문자열} ·
+classification{category, equipmentParameters} · evidenceIds · confirmedBy · confirmedAt`
+
+## Incident (기존, 수정)
+
+- `closeByConfirmedReport(at, reportId)` — 상태 `CLOSED` + 이력. 다른 종료 경로 없음
+- 관리자 전이: `ON_HOLD → INVESTIGATING`만
+
+## CheckRequest (기존, 수정)
+
+| 추가 | 규칙 |
+|------|------|
+| `withdrawnBy` · `withdrawnAt` · `withdrawReason`(≤ 500자) | OPEN · ACCEPTED → `CANCELLED`, 요청자 · 사건 운영 권한자 |
+
+## WorkItem (기존, 수정)
+
+| 추가 | 규칙 |
+|------|------|
+| 상태 `CLOSED_UNPERFORMED` | READY · APPROVED · REQUESTED → 여기로만 |
+| `closedBy` · `closedAt` · `closeReason`(≤ 500자) | 사유 필수 |
+
+## Job (기존, 수정)
+
+- 종류 `SUMMARY` — 조사 상태와 격리(사건 activeJob · latestJobStatus 미반영), 종료 사건에서도 등록, attempt 1부터
+- `input.summaryRef = {reportId, reportVersion, contentRevision, snapshotRef}`
+
+## ConfirmationBlocker (응답용, 새)
+
+`{kind: ANALYSIS_IN_PROGRESS | APPROVAL_PENDING | MANAGER_APPROVAL_PENDING | REQUEST_UNANSWERED | WORK_UNPERFORMED, id, label}`
+
+## DB 제약 (schema.sql)
+
+- `uq_report_confirmed_per_incident` — `report(incident_id) WHERE status = 'CONFIRMED'`(중복 없을 때만 생성)
+- `job_kind_check` · `work_item_status_check` 새 값 포함으로 재생성
+<!-- ARTIFACT:003-report-confirm-summary:data-model.md END -->
+
+<!-- ARTIFACT:003-report-confirm-summary:contracts/public-api.md BEGIN -->
+# Contract: 공개 API 변경 (프론트 계약 `data/backend-handoff-v2/combined.openapi.json`)
+
+## 1. `POST /api/reports/{reportId}/confirmations` (confirmReport) — 동작 · 오류 추가
+
+- 성공 시 사건이 종료되고 응답 `ReportView`에 `summary.status = PENDING`
+- 새 오류(409): `CONFIRMATION_BLOCKED` `{details: {blockers: [{kind, id, label}]}}` · `NOT_LATEST_DRAFT` ·
+  `REPORT_ALREADY_CONFIRMED` `{details: {reportId}}` · `INCIDENT_CLOSED`. 기존 오류 · 순서 유지
+
+## 2. `ReportView` · `ReportSummary` — 응답 필드 추가
+
+```json
+"summary": { "status": "READY", "lines": ["…"], "evidenceIds": ["…"], "generatedBy": "model", "updatedAt": "…", "error": null }
+```
+도입 전 · 초안은 `null`.
+
+## 3. 새 `POST /api/reports/{reportId}/summary-jobs` (retryReportSummary)
+
+- 확정 권한, `summary.status = FAILED`일 때만 → 202 + `ReportView`. 그 외 409 `SUMMARY_NOT_RETRYABLE`. Idempotency-Key 지원
+
+## 4. 새 `POST /api/check-requests/{requestId}/withdrawals` (withdrawCheckRequest)
+
+- 본문 `{reason, expectedVersion}`, 요청자 · 사건 운영 권한자, OPEN · ACCEPTED만 → `CANCELLED`. 응답에 `withdrawnBy · withdrawnAt · withdrawReason`
+
+## 5. 새 `POST /api/work-items/{id}/unperformed-closures` (closeWorkItemUnperformed)
+
+- 본문 `{reason, expectedVersion}` → 상태 `CLOSED_UNPERFORMED`. 업무 응답에 `closedBy · closedAt · closeReason`, 상태 enum에 새 값
+
+## 6. `POST /api/incidents/{incidentId}/transitions` (transitionIncident) — 축소
+
+- 허용: `targetStatus = INVESTIGATING`(현재 `ON_HOLD`일 때)만. `ON_HOLD` · `CLOSED` → 409 `TRANSITION_REMOVED`
+
+## 7. 종료 사건 쓰기 — 409 `INCIDENT_CLOSED`
+
+- 보고서 초안 생성 · 편집 · 확정 추가(질문 · 분석 · 승인 · 조치 · 업무 · 요청 · 회신은 기존부터 거부). 요약 재요청만 예외
+
+## 변경 기록 초안 (#29, 계약 주인 전달용)
+
+| 위치 | 전 | 제안 | 이유 |
+|---|---|---|---|
+| 확정 · 상태 전이 · 요약 · 철회 · 미수행 닫기 | 관리자 수동 종료, 확정 후에도 사건 열림 | 위 1–7 | 헌법 2.0.0 원칙 VI · `003-report-confirm-summary` |
+<!-- ARTIFACT:003-report-confirm-summary:contracts/public-api.md END -->
+
+<!-- ARTIFACT:003-report-confirm-summary:contracts/internal-snapshot.md BEGIN -->
+# Contract: 내부 확정본 조회 (팀 계약 — 의진과 합의한 필드)
+
+## `GET /internal/reports/{reportId}/snapshot` (서비스 토큰)
+
+```json
+{ "data": {
+  "reportId": "rpt_…", "reportVersion": 3, "contentRevision": 7, "snapshotRef": "snapshot://reports/rpt_…/v3/r7",
+  "title": "…", "incidentDisplayId": "EV-1009",
+  "sections": { "overview": "…", "investigation": "…", "requestsAndReplies": "…", "actionsAndVerification": "…", "unresolved": "…" },
+  "classification": { "category": "MACHINE", "equipmentParameters": ["head_pressure"] },
+  "evidenceIds": ["…"], "confirmedBy": "USR-…", "confirmedAt": "…" },
+  "meta": { } }
+```
+확정 전 보고서 404. `sections` 값은 문자열. `classification`은 도입 전 확정본이면 null(요약 대상 아님).
+
+## SUMMARY 작업 · 결과 (팀 계약에 이미 정의)
+
+- 작업 `kind: SUMMARY`, `input.summaryRef = {reportId, reportVersion, contentRevision, snapshotRef}`, attempt 1부터
+- `SUMMARY_READY` payload `{reportId, snapshotRef, summary: {lines(1~2, ≤120자), evidenceIds, generatedBy: model|rule}}` — 백엔드 저장 필드는 이것뿐, metrics는 `job.metrics`
+<!-- ARTIFACT:003-report-confirm-summary:contracts/internal-snapshot.md END -->
+
+<!-- ARTIFACT:003-report-confirm-summary:quickstart.md BEGIN -->
+# Quickstart: 보고서 확정 · 사건 자동 종료 · AI 요약 연결 검증
+
+## 자동 검증
+
+```bash
+cd backend && ./gradlew test     # ReportConfirmCloseApiTest · ReportConfirmBlockersApiTest · ReportSummaryApiTest · Guard 단위 + 기존(수정 P15–P17 반영)
+cd ai && uv run pytest -q          # 회귀(팀 계약 SUMMARY 이미 반영)
+python3 ops/tools/openapi_diff.py http://localhost:8096   # 계약 문서 1–7 외 새 차이 0건
+python3 ops/tools/java_pkgdeps.py backend/src/main/java    # 새 순환 없음
+backend/scripts/smoke-test.sh http://localhost:8096        # 새로 시드한 서버 — 기존 main 실패 5건 외 0건
+```
+
+## 시나리오 (spec 대응)
+
+1. **확정 = 종료**(US1): 정리할 것 없는 CMP 사건 → 초안 → Method로 확정 → 사건 `CLOSED` · 이력 「보고서 확정 · 사건 종료」 → 질문 · 초안 생성 409 `INCIDENT_CLOSED`
+2. **동시 확정**(SC-002): 같은 보고서에 확정 요청 10개 동시 → 200 1건 · 409 9건
+3. **차단 · 정리**(US2): 미회신 요청이 있는 사건 확정 → 409 `CONFIRMATION_BLOCKED`(요청 ID) → 요청자 철회 → 확정 성공. 채택 업무 READY → 미수행 닫기 → 확정
+4. **승인 경로**: Agent 「보고서 확정」 제안 승인 → 자기 승인 · 재개 작업에 막히지 않고 확정 · 종료
+5. **요약**(US3): 확정 직후 `summary.status = PENDING` → 시뮬레이터에서 1분 안에 `READY`(rule) · 확정자 알림 / 실패 주입 → `FAILED` → 재요청 → `PENDING` / 옛 작업의 늦은 결과 → 무시
+6. **관리자**(US4): 열린 사건 보류 · 종료 → 409 `TRANSITION_REMOVED`, 시드 EV-1022(보류) 해제 → 200
+7. **회귀**: 001 분류 · 002 목록 · 검색, 종료 전 초안 · 편집 그대로
+<!-- ARTIFACT:003-report-confirm-summary:quickstart.md END -->
