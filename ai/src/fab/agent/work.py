@@ -18,8 +18,10 @@ _REQUEST_KIND = {"UPSTREAM_CHECK": "CROSS_PROCESS", "EQUIPMENT_INSPECTION": "MAI
 _FIELDS = ("operationCode", "title", "reason", "evidenceIds")
 
 
-def validate_work_suggestions(items: list[dict] | None, cited: set[str]) -> list[str]:
-    """후보 검사 — cited는 답(관측 사실 · 원인 후보 지지 근거)이 인용한 근거. backend는 결과 evidenceRefs 밖의 근거를 막는다"""
+def validate_work_suggestions(items: list[dict] | None, known: set[str]) -> list[str]:
+    """후보 검사 — known은 이번 작업에서 조회한 근거. backend는 결과 evidenceRefs 밖의 근거를 막으므로, 후보가 붙인 근거는
+    finalize가 evidenceRefs에 함께 싣는다. 예전에는 답(관측 사실 · 원인 후보)이 인용한 근거만 받아, 미리 조회한 점검 문서 ·
+    변경 이력을 후보에만 붙인 답이 자주 반려됐다(실제 모델 평가에서 가장 잦은 반려)"""
     items = items or []
     errors: list[str] = []
     if len(items) > MAX_SUGGESTIONS:
@@ -34,10 +36,10 @@ def validate_work_suggestions(items: list[dict] | None, cited: set[str]) -> list
             errors.append(f"업무 후보 「{label}」의 title · reason은 1~2000자입니다.")
         ids = list(item.get("evidenceIds") or [])
         if not ids:
-            errors.append(f"업무 후보 「{label}」에 근거 ID가 없습니다. 답이 인용한 evidenceId를 붙이세요.")
-        elif set(ids) - cited:
-            errors.append(f"업무 후보 「{label}」의 근거 {sorted(set(ids) - cited)}는 답이 인용하지 않았습니다. "
-                          "답(관측 사실 · 원인 후보)에 넣거나 후보에서 빼세요.")
+            errors.append(f"업무 후보 「{label}」에 근거 ID가 없습니다. 이번 조사에서 조회한 evidenceId를 붙이세요.")
+        elif set(ids) - known:
+            errors.append(f"업무 후보 「{label}」의 근거 {sorted(set(ids) - known)}는 이번 조사에서 조회하지 않았습니다. "
+                          "도구 결과의 evidenceId만 붙이세요.")
         if _PRESCRIBE.search(f"{title} {reason}"):
             errors.append(f"업무 후보 「{label}」가 장비 설정값 변경을 처방합니다. 확인 · 점검할 항목만 적으세요.")
         if _PROB.search(f"{title} {reason}"):

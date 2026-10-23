@@ -349,6 +349,21 @@ def test_guard_rejects_brief_with_unseen_numbers_or_evidence():
                                                    {"E-CHG-ETCH-PM2"}, tool_text))
 
 
+def test_brief_may_state_the_gap_between_two_looked_up_values():
+    """「기준 대비 약 250 Å 적음」(4999.43 − 4749.0) · 「5.3% 낮고」(-5.28%) — 조회한 값에서 바로 나온 숫자다(평가셋 AE01 실제 모델 실행)"""
+    from fab.agent.harness.guard import validate_brief
+
+    run = '{"data":{"removalAmount":4749.0,"pmMean":4999.43}}'
+    features = '{"data":{"items":[{"sensorId":"head_pressure","mean":2.84,"setpoint":3.0,"deviationPct":-5.28}]}}'
+    tool_text = run + "\n" + features
+    brief = {"reason": "CMP-PM3 제거량이 기준 대비 약 250 Å 적고 헤드 압력이 5.3% 낮습니다.", "askFor": ["압력 계통 점검"],
+             "suspectedCauses": [{"causeId": "CMP_PRESSURE", "confirmed": False}], "relatedRecords": []}
+    assert validate_brief(brief, set(), tool_text) == []
+    # 다른 도구 결과의 값끼리 뺀 숫자(4999.43 − 2.84 ≈ 4997)는 받지 않는다 — 지어낸 숫자를 막는 검사가 헐거워지지 않게
+    assert any("4997" in e for e in validate_brief(brief | {"reason": "기준 대비 4997 Å 차이"}, set(), tool_text))
+    assert any("300" in e for e in validate_brief(brief | {"reason": "기준 대비 약 300 Å 적습니다"}, set(), tool_text))
+
+
 async def test_action_hash_covers_brief(spring_url, kb):
     u, a = await _first_proposal(spring_url, kb, "EV-1009", "앞 공정 확인해줘")
     payload = dict(a["payload"]) | {"brief": a["payload"]["brief"] | {"reason": "받는 사람에게 다른 이유를 보여 준다"}}
@@ -490,12 +505,13 @@ def _turn(state: dict):
     return _Turn(base | state, {"configurable": {"runtime": _Runtime()}})
 
 
-def test_proposal_before_answer_is_rejected():
+def test_proposal_before_answer_is_not_a_rejection_reason():
+    """답보다 먼저 온 요청서는 반려하지 않고 보관한다(내용 검사는 그대로) — 승인 요청은 답이 접수된 뒤에 만든다"""
     from fab.agent.graph.nodes.tools import _proposal_rejection
 
     reason = _proposal_rejection(_turn({}), "propose_maintenance_request", {"processCode": "CMP", "evidenceIds": ["E-1"]},
                                  "c1", "CREATE_MAINTENANCE_REQUEST", {"brief": {}})
-    assert reason and "먼저 submit_result" in reason
+    assert reason and "submit_result" not in reason and "조회하지 않아" in reason  # 내용(근거 run 미조회)으로만 반려
 
 
 def test_current_check_without_proposal_is_accepted():
@@ -670,6 +686,94 @@ class FixProposalOnceModel:
         return r
 
 
+class ProposalBeforeAnswerModel:
+    """실제 모델에서 본 순서 — 요청서만 먼저 내고(「답 먼저」로 반려), 다음엔 답만 내고, 다시 내라는 말을 들어야 요청서를 낸다"""
+
+    def __init__(self):
+        from fab.agent.models.rule import RuleModel
+
+        self.rule, self.name, self.steps, self.calls = RuleModel(), "proposal-first", [], None
+
+    async def ainvoke(self, messages, tools):
+        last = str(messages[-1].content) if messages else ""
+        if self.calls is None:
+            r = await self.rule.ainvoke(messages, tools)
+            proposal = next((c for c in r.tool_calls if c["name"].startswith("propose_")), None)
+            submit = next((c for c in r.tool_calls if c["name"] == "submit_result"), None)
+            if not (proposal and submit):  # 조사 중이거나 기본 분석 — 규칙 모델 그대로
+                return r
+            self.calls = (proposal, submit)
+            self.steps.append("propose-only")
+            return AIMessage(content="", tool_calls=[proposal])
+        proposal, submit = self.calls
+        self.steps.append("submit-only")
+        return AIMessage(content="", tool_calls=[{**submit, "id": f"c-submit-{len(self.steps)}"}])
+
+
+async def test_proposal_before_the_answer_is_held_until_the_answer_is_accepted(spring_url, kb):
+    """요청서가 답보다 먼저 오면 보관했다가 답이 접수되는 그 묶음에서 승인 요청으로 넘긴다 — 모델이 다시 낼 필요가 없다.
+    예전에는 반려 → 답 → 재제안으로 질문 작업의 모델 호출이 평균 3.1회에서 6.0회로 늘었다(평가셋 v1.2 실제 모델 실행)"""
+    model = ProposalBeforeAnswerModel()
+    runner, backend = make_runner(kb, models=(model, None), base=spring_url)
+    display = await fresh_incident("EV-1009", spring_url)
+    await poll_once(runner, backend)
+    await _ask(spring_url, display, "앞 공정 확인이 필요해?")
+    out = (await poll_once(runner, backend))[-1]
+    assert model.steps == ["propose-only", "submit-only"], model.steps
+    assert out["status"] == "WAITING_APPROVAL", out
+
+
+class WrongTypeFirstModel(ProposalBeforeAnswerModel):
+    """앞 공정만 정상 변동 밖인 사건에서 — 현재 공정 정비 요청(근거 없음으로 반려) → 안내대로 앞 공정 확인(보관) → 답"""
+
+    async def ainvoke(self, messages, tools):
+        last = str(messages[-1].content) if messages else ""
+        if self.calls is None:
+            r = await self.rule.ainvoke(messages, tools)
+            proposal = next((c for c in r.tool_calls if c["name"].startswith("propose_")), None)
+            submit = next((c for c in r.tool_calls if c["name"] == "submit_result"), None)
+            if not (proposal and submit):
+                return r
+            self.calls = (proposal, submit)
+            self.steps.append("wrong-type")
+            wrong = {"processCode": "CMP", "equipmentId": "CMP-PM3", "ownerUserId": "USR-MNT-01", "causeIds": ["CMP_PRESSURE"],
+                     "reason": "CMP 두께가 관리한계 위입니다.", "question": "CMP-PM3 헤드 압력 계통 점검 부탁드립니다.",
+                     "evidenceIds": proposal["args"].get("evidenceIds", []), "rationale": "현재 공정 확인"}
+            return AIMessage(content="", tool_calls=[{"id": "c-wrong", "name": "propose_maintenance_request", "args": wrong}])
+        proposal, submit = self.calls
+        if "propose_cross_process_check(processCode=" in last:
+            self.steps.append("follow-hint")
+            return AIMessage(content="", tool_calls=[{**proposal, "id": "c-hint"}])
+        self.steps.append("submit-only")
+        return AIMessage(content="", tool_calls=[{**submit, "id": f"c-submit-{len(self.steps)}"}])
+
+
+async def test_wrong_request_type_is_rejected_with_a_hint_then_the_right_one_is_held(spring_url, kb):
+    """근거 없는 정비 요청은 내용 검사로 바로 반려하며 앞 공정 확인 요청을 집어 준다 — 고친 요청서는 보관됐다가 답과 함께 승인 요청이 된다
+    (평가셋 AE03 실제 모델 실행)"""
+    model = WrongTypeFirstModel()
+    runner, backend = make_runner(kb, models=(model, None), base=spring_url)
+    display = await fresh_incident("EV-1009", spring_url)
+    await poll_once(runner, backend)
+    await _ask(spring_url, display, "앞 공정 확인이 필요해?")
+    out = (await poll_once(runner, backend))[-1]
+    assert model.steps == ["wrong-type", "follow-hint", "submit-only"], model.steps
+    assert out["status"] == "WAITING_APPROVAL", out
+
+
+def test_baseless_maintenance_request_points_to_the_upstream_process():
+    from fab.agent.harness.guard import validate_proposal
+
+    def seen(etch_normal):
+        runs = [{"data": {"runId": f"R-{p}", "processCode": p, "equipmentId": f"{p}-PM2", "available": True,
+                          "amountWithinNormalVariation": p != "ETCH" or etch_normal}} for p in ("CVD", "ETCH", "CMP")]
+        return {"get_run_and_metrology": runs, "get_run_features": [{"data": {"runId": "R-CMP", "items": []}}]}
+    errors = validate_proposal("CREATE_MAINTENANCE_REQUEST", {"processCode": "CMP"}, seen(False), "CMP")
+    assert any("propose_cross_process_check(processCode=ETCH)" in e for e in errors), errors
+    errors = validate_proposal("CREATE_MAINTENANCE_REQUEST", {"processCode": "CMP"}, seen(True), "CMP")
+    assert errors and not any("propose_cross_process_check" in e for e in errors)
+
+
 async def test_fixable_proposal_rejection_gets_one_retry(spring_url, kb):
     """답은 접수됐는데 요청서가 고칠 수 있는 이유로 반려되면, 끝내지 않고 한 번 다시 낼 기회를 준다"""
     runner, backend = make_runner(kb, models=(FixProposalOnceModel(), None), base=spring_url)
@@ -678,3 +782,35 @@ async def test_fixable_proposal_rejection_gets_one_retry(spring_url, kb):
     await _ask(spring_url, display, "앞 공정 확인이 필요해?")
     out = (await poll_once(runner, backend))[-1]
     assert out["status"] == "WAITING_APPROVAL", out
+
+
+class LookupForeverModel:
+    """조회만 거듭하는 모델 — 마지막 호출에서 제출 도구만 받으면 지금 근거로 제출한다"""
+    name = "lookup-forever"
+
+    def __init__(self):
+        self.last_tools: list[str] = []
+
+    async def ainvoke(self, messages, tools):
+        from fab.agent.evidence import runs_by_process, tool_results
+
+        names = [tool["function"]["name"] for tool in tools]
+        if names == ["submit_result"]:
+            self.last_tools = names
+            run = runs_by_process(tool_results(messages))["CMP"]
+            return AIMessage(content="", tool_calls=[{"id": "c-last", "name": "submit_result", "args": {
+                "nextStep": "INSUFFICIENT_EVIDENCE", "observedFacts": [{"text": "CMP run 확인", "evidenceIds": [run["_ev"]]}],
+                "candidateCauses": [], "limitations": ["조회를 끝내지 못했습니다"], "answer": f"지금 근거로는 판단이 어렵습니다({run['_ev']})."}}])
+        return AIMessage(content="", tool_calls=[{"id": f"c{len(messages)}", "name": "get_frozen_limits", "args": {}}])
+
+
+async def test_last_model_call_offers_only_submit_so_the_job_ends_with_an_answer(spring_url, kb):
+    """판단 한도 직전 호출에서는 제출 도구만 주고 마지막이라고 알린다 — 조회만 하다 빈 결과로 멈추지 않게"""
+    model = LookupForeverModel()
+    runner, backend = make_runner(kb, models=(model, None), base=spring_url)
+    display = await fresh_incident("EV-1006", spring_url)
+    await poll_once(runner, backend)
+    await _ask(spring_url, display, "추가로 볼 게 있어?")
+    out = (await poll_once(runner, backend))[-1]
+    assert model.last_tools == ["submit_result"], model.last_tools
+    assert out["status"] == "DONE" and out["result"]["answer"].startswith("지금 근거로는"), out

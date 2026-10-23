@@ -71,7 +71,8 @@ def _answer(**over) -> dict:
     return {"nextStep": "CURRENT_CHECK", "observedFacts": [{"text": "헤드 압력 낮음", "evidenceIds": ["E-1"]}],
             "limitations": [], "candidateCauses": [{"priority": 1, "hypothesis": "CMP 헤드 압력 공급 저하",
                                                     "causeIds": ["CMP_PRESSURE"], "supportingEvidenceIds": ["E-1"],
-                                                    "missingData": [], "nextCheck": "헤드 압력 공급 계통 확인"}]} | over
+                                                    "missingData": [], "nextCheck": "헤드 압력 공급 계통 확인"}],
+            "answer": "헤드 압력 공급 저하가 1순위입니다(E-1)."} | over
 
 
 def test_submit_with_suggestions_is_accepted():
@@ -84,13 +85,32 @@ def test_submit_with_suggestions_is_accepted():
 
 
 def test_submit_with_bad_suggestion_is_rejected_with_reason():
-    """조회는 했지만 답이 인용하지 않은 근거(E-2) — 답에 그 근거를 넣거나 후보에서 빼야 한다"""
+    """조회하지 않은 근거(E-9) — 후보에서 빼야 한다"""
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    turn = _turn()
+    handle_submit(turn, "submit_result", _answer(workSuggestions=[_item(evidenceIds=["E-9"])]), "c1")
+    assert str(turn.out[-1].content).startswith("[REJECTED]") and "E-9" in str(turn.out[-1].content)
+    assert "result" not in turn.update
+
+
+async def test_looked_up_evidence_only_on_a_suggestion_is_accepted_and_listed():
+    """조회는 했지만 답이 인용하지 않은 근거(E-2, 예: 미리 조회한 점검 문서) — 받고, 결과 evidenceRefs에 함께 싣는다
+    (backend는 evidenceRefs 밖의 근거를 가진 후보를 막는다). 예전에는 반려해 실제 모델 평가에서 가장 잦은 반려였다"""
+    from fab.agent.graph.nodes.finalize import finalize
     from fab.agent.graph.nodes.tools import handle_submit
 
     turn = _turn()
     handle_submit(turn, "submit_result", _answer(workSuggestions=[_item(evidenceIds=["E-2"])]), "c1")
-    assert str(turn.out[-1].content).startswith("[REJECTED]") and "E-2" in str(turn.out[-1].content)
-    assert "result" not in turn.update
+    assert str(turn.out[-1].content).startswith("[ACCEPTED]"), turn.out[-1].content
+
+    class _Runtime:
+        job_id = "JOB-1"
+    out = await finalize({"mode": "DEEP", "incidentId": "INC-1", "jobId": "JOB-1", "proposals": [],
+                          "evidence": {"E-1": {"evidenceId": "E-1"}, "E-2": {"evidenceId": "E-2"}},
+                          "result": turn.update["result"]}, {"configurable": {"runtime": _Runtime()}})
+    assert "E-2" in {ref["evidenceId"] for ref in out["result"]["evidenceRefs"]}
+    assert out["workSuggestions"] and out["workSuggestions"][0]["evidenceIds"] == ["E-2"]
 
 
 def test_submit_result_schema_offers_only_agent_operations():
@@ -159,3 +179,27 @@ async def test_without_proposals_team_requests_stay():
     out = await _finalized([], [_item(operationCode="EQUIPMENT_INSPECTION", title="CMP-PM3 점검 요청")])
     assert [s["operationCode"] for s in out["workSuggestions"]] == ["EQUIPMENT_INSPECTION"]
     assert out["analysis"]["droppedWorkSuggestions"] == []
+
+
+def test_last_submission_drops_failing_items_instead_of_rejecting():
+    """판단 한도의 마지막 제출 — 반려하면 다시 낼 기회가 없어 빈 결과가 된다. 넘지 못한 항목(업무 후보 · 근거 없는 사실)만 빼고 받는다"""
+    from fab.agent.graph.nodes.tools import handle_submit
+    from fab.agent.harness import limits
+
+    turn = _turn()
+    turn.counters["modelCalls"] = limits.LIMITS.max_model_calls
+    bad = _answer(workSuggestions=[_item(operationCode="CHANGE_SETPOINT")],
+                  observedFacts=[{"text": "헤드 압력 낮음", "evidenceIds": ["E-1"]}, {"text": "지어낸 사실", "evidenceIds": ["E-9"]}])
+    handle_submit(turn, "submit_result", bad, "c1")
+    assert str(turn.out[-1].content).startswith("[ACCEPTED]"), turn.out[-1].content
+    result = turn.update["result"]
+    assert result["workSuggestions"] == [] and [f["text"] for f in result["observedFacts"]] == ["헤드 압력 낮음"]
+    assert any("마지막 제출" in item for item in result["limitations"])
+
+
+def test_earlier_submission_is_still_rejected():
+    from fab.agent.graph.nodes.tools import handle_submit
+
+    turn = _turn()
+    handle_submit(turn, "submit_result", _answer(workSuggestions=[_item(operationCode="CHANGE_SETPOINT")]), "c1")
+    assert str(turn.out[-1].content).startswith("[REJECTED]")
