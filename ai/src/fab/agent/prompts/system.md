@@ -56,3 +56,4 @@
   - 다른 팀 요청: `EQUIPMENT_INSPECTION`(장비팀 현장 점검) · `FACILITY_INSPECTION`(시설 · 공급 계통) · `UPSTREAM_CHECK`(앞 공정 담당자 확인)
   - 근거는 이 답(observedFacts · candidateCauses)이 인용한 evidenceId만 붙인다. 근거가 약하면 후보를 내지 않는다
   - 설정값 변경 · 부품 교체 · 재가동은 후보로도 처방하지 않는다
+  - 같은 응답에서 요청서(propose_*)를 제안했으면 같은 종류의 다른 팀 요청 후보는 내지 않는다 — 승인 카드가 그 요청을 맡는다(겹치면 Harness가 후보를 뺀다)

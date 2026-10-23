@@ -37,6 +37,7 @@ class AgentState(TypedDict, total=False):
     analysis: dict | None  # 계약 밖 정보(nextStep 등) — 계약 개정 전까지 따로 둔다
     workSuggestions: list | None  # 답과 함께 내는 업무 후보(fab.agent.work) — RESULT_READY.payload.workSuggestions
     report: dict | None
+    lockedSections: list | None  # 보고서 작업 — 사람이 고친 칸(fab.agent.report). Agent가 쓰지 않는다
     stopReason: str | None
     promptVersion: str
     briefs: dict | None  # tool_call_id → {"brief"} 또는 {"errors"} — request_brief가 만들고 tools가 제안에 붙인다

@@ -79,8 +79,36 @@
     },
     "input": {
       "type": "object",
-      "description": "선택. 작업 종류별 입력 — 이 계약에 정의한 필드만 싣는다(DB의 job.input을 통째로 내보내지 않는다, 내부 제어값 · 비밀값 없음). SUMMARY는 summaryRef 필수",
+      "description": "선택. 작업 종류별 입력 — 이 계약에 정의한 필드만 싣는다(DB의 job.input을 통째로 내보내지 않는다, 내부 제어값 · 비밀값 없음). SUMMARY는 summaryRef 필수, REPORT는 이전 판을 바탕으로 다시 만들 때 report",
       "properties": {
+        "report": {
+          "type": "object",
+          "description": "REPORT 작업 — 이전 판을 바탕으로 다시 만들 때. lockedSections는 사람이 고친 칸(보고서 칸별 editedBy). Agent는 그 칸에 「[사람이 고친 칸 — 이전 판 유지]」를 넣어 보내고 backend가 baseReportVersion의 원문으로 옮긴다",
+          "properties": {
+            "baseReportVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "lockedSections": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "overview",
+                  "investigation",
+                  "requestsAndReplies",
+                  "actionsAndVerification",
+                  "unresolved"
+                ]
+              }
+            }
+          },
+          "required": [
+            "baseReportVersion"
+          ],
+          "additionalProperties": false
+        },
         "summaryRef": {
           "type": "object",
           "description": "요약할 확정 보고서 — 서버가 확정 스냅샷에서 만든다(현재 조사 데이터로 대체하지 않는다)",

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from fab.agent.graph.state import AgentState, current_job, runtime
 from fab.agent.tools import REPORT_SECTIONS
+from fab.agent.readiness import investigation_ready
+from fab.agent.report import LOCKED_MARK
 from fab.agent.stance import cause_stance
-from fab.agent.work import contract_suggestions
+from fab.agent.work import contract_suggestions, without_proposed
 
 
 def as_list(value) -> list[str]:
@@ -45,6 +47,8 @@ async def _finalize_report(state: AgentState, job_runtime) -> dict:
     sections = {key: str((report.get("sections") or {}).get(key) or "기록 없음") for key in REPORT_SECTIONS}
     if not state.get("report"):
         sections["unresolved"] = f"초안 생성이 끝나기 전에 멈췄습니다: {state.get('stopReason')}"
+    for key in state.get("lockedSections") or []:  # 사람이 고친 칸 — 모델이 썼어도 덮어쓴다. backend가 이전 판 원문으로 옮긴다
+        sections[key] = LOCKED_MARK
     known = set(state.get("evidence", {}))
     evidence_ids = [evidence_id for evidence_id in report.get("evidenceIds", []) if evidence_id in known]
     saved = await job_runtime.backend.save_report_draft(state["incidentId"], sections, evidence_ids)
@@ -102,7 +106,10 @@ async def finalize(state: AgentState, config) -> dict:
                 "promptVersion": state.get("promptVersion"), "conclusion": state.get("conclusion"),
                 "causeIds": [[str(cause_id) for cause_id in cause.get("causeIds") or []]
                              for cause in submitted.get("candidateCauses", [])],
-                "causeStances": [cause_stance(cause) for cause in causes]}
+                "causeStances": [cause_stance(cause) for cause in causes],
+                "investigationReady": investigation_ready(submitted, state.get("stopReason"))}
     # 업무 후보는 계약 AnalysisResult 밖 — 이벤트 payload의 workSuggestions로 따로 싣는다(근거는 evidenceRefs 안의 것만)
     suggestions = contract_suggestions(submitted.get("workSuggestions"), {ref["evidenceId"] for ref in result["evidenceRefs"]})
+    suggestions, dropped = without_proposed(suggestions, state.get("proposals") or [])
+    analysis["droppedWorkSuggestions"] = dropped
     return {"result": result, "analysis": analysis, "workSuggestions": suggestions}

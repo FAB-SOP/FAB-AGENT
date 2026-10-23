@@ -113,3 +113,49 @@ async def test_finalize_carries_suggestions_with_cited_evidence_only():
     assert out["workSuggestions"] == [_item(evidenceIds=["E-1"])]
     assert {ref["evidenceId"] for ref in out["result"]["evidenceRefs"]} == {"E-1"}
     assert "workSuggestions" not in out["result"]  # 계약 AnalysisResult에는 없는 칸 — 이벤트 payload 옆자리에 싣는다
+
+
+# ---- 같은 답의 HITL 요청서와 겹치는 다른 팀 요청 후보 — 두 경로로 같은 요청이 두 번 생기지 않게
+
+def test_request_kind_of_operations():
+    from fab.agent.work import request_kind
+
+    assert request_kind("UPSTREAM_CHECK") == "CROSS_PROCESS"
+    assert request_kind("EQUIPMENT_INSPECTION") == request_kind("FACILITY_INSPECTION") == "MAINTENANCE"
+    assert request_kind("REVIEW_SENSOR_DATA") is None and request_kind("REVIEW_REQUIRED") is None
+
+
+async def _finalized(proposals: list[dict], suggestions: list[dict]) -> dict:
+    from fab.agent.graph.nodes.finalize import finalize
+
+    class _Runtime:
+        job_id = "JOB-1"
+    state = {"mode": "DEEP", "incidentId": "INC-1", "jobId": "JOB-1", "evidence": {"E-1": {"evidenceId": "E-1"}},
+             "proposals": proposals, "result": _answer(workSuggestions=suggestions)}
+    return await finalize(state, {"configurable": {"runtime": _Runtime()}})
+
+
+async def test_team_request_overlapping_a_proposal_in_this_run_is_dropped():
+    """정비 요청서를 제안했으면(승인 카드) 장비 · 시설 점검 후보는 뺀다. 내 할 일 · 앞 공정 확인 후보는 남긴다"""
+    suggestions = [_item(), _item(operationCode="EQUIPMENT_INSPECTION", title="CMP-PM3 헤드 압력 공급 계통 점검 요청"),
+                   _item(operationCode="FACILITY_INSPECTION", title="CDA 공급 압력 확인 요청"),
+                   _item(operationCode="UPSTREAM_CHECK", title="ETCH 담당자에게 run 확인 요청")]
+    out = await _finalized([{"approvalId": "apr_1", "actionType": "CREATE_MAINTENANCE_REQUEST", "ownerUserId": "USR-MNT-01",
+                             "targetProcessCode": "CMP"}], suggestions)
+    assert [s["operationCode"] for s in out["workSuggestions"]] == ["REVIEW_SENSOR_DATA", "UPSTREAM_CHECK"]
+    assert out["analysis"]["droppedWorkSuggestions"] == ["EQUIPMENT_INSPECTION", "FACILITY_INSPECTION"]
+
+
+async def test_cross_process_proposal_drops_only_upstream_check():
+    suggestions = [_item(operationCode="UPSTREAM_CHECK", title="ETCH 담당자에게 run 확인 요청"),
+                   _item(operationCode="EQUIPMENT_INSPECTION", title="CMP-PM3 점검 요청")]
+    out = await _finalized([{"approvalId": "apr_1", "actionType": "CREATE_CHECK_REQUEST", "ownerUserId": "USR-ETCH-01",
+                             "targetProcessCode": "ETCH"}], suggestions)
+    assert [s["operationCode"] for s in out["workSuggestions"]] == ["EQUIPMENT_INSPECTION"]
+
+
+async def test_without_proposals_team_requests_stay():
+    """요청서 제안이 없거나 Guard에 걸려 만들어지지 않았으면 다른 팀 요청 후보가 그 자리를 맡는다"""
+    out = await _finalized([], [_item(operationCode="EQUIPMENT_INSPECTION", title="CMP-PM3 점검 요청")])
+    assert [s["operationCode"] for s in out["workSuggestions"]] == ["EQUIPMENT_INSPECTION"]
+    assert out["analysis"]["droppedWorkSuggestions"] == []

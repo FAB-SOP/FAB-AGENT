@@ -219,6 +219,25 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "investigationReady": {
+                "type": "object",
+                "description": "조사 정리 완료 신호 — Agent가 「결론이 섰다」만 알린다(사건 종료 명령이 아니다). ready=true: 모든 공정이 정상 변동이거나, 1순위 원인이 지지이고 확인 결과(회신 E-REQ-* · 내 작업 결과 E-ACT-*)를 인용. 승인 대기 · 미회신 요청 · 실행 중 작업 확인과 자동 초안 생성은 backend가 한다",
+                "properties": {
+                  "ready": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  }
+                },
+                "required": [
+                  "ready",
+                  "reason"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
