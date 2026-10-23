@@ -89,3 +89,5 @@ textarea:disabled{background:#f1f4f5;color:#7c8d95;cursor:not-allowed;border-col
 .incident-row{cursor:pointer}.incident-row:hover td,.incident-row:focus-visible td{background:#edf6f4}.incident-row:focus-visible{outline:2px solid #187d72;outline-offset:-2px}.team-reply{margin:16px 0;padding:16px;background:#f1f7f5;border-left:3px solid #3d8d7f;border-radius:6px}.team-reply p{white-space:pre-wrap;overflow-wrap:anywhere}.team-result .work-card-header{flex-wrap:wrap}
 
 .demo-persona-select label{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}.demo-persona-select select{min-width:190px;font-size:15px}.demo-persona-select [role=alert]{font-size:14px;color:#a43e34}@media(max-width:900px){.demo-persona-select{grid-column:1/-1}.demo-persona-select label{justify-content:flex-end}.demo-persona-select select{min-width:0;max-width:240px}}
+/* 조사 보고서 목록 필터 — 칸이 많아 넘치지 않도록 줄바꿈하고, 공통 .filter-row input(400px) 대신 칸 너비에 맞춘다 */
+.report-filters{flex-wrap:wrap;align-items:flex-end}.report-filters .field{flex:1 1 170px;min-width:0;margin:0}.report-filters .field:first-child{flex:2 1 260px}.report-filters input,.report-filters select{width:100%}

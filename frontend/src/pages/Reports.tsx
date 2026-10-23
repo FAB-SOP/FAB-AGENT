@@ -1,9 +1,10 @@
 import {useEffect,useState,type ReactNode} from 'react';
 import {Link,useParams} from 'react-router-dom';
-import {useQueries,useQuery} from '@tanstack/react-query';
+import {keepPreviousData,useInfiniteQuery,useQuery} from '@tanstack/react-query';
 import {ArrowUpRight,FileText,ChevronLeft,Download} from 'lucide-react';
 import {api,downloadReport,write} from '../api/client';
-import {when,type Incident,type Obj,type Page} from '../api/types';
+import {searchReports,type ReportSlice} from '../api/reports';
+import {when,type Incident,type Obj} from '../api/types';
 import {useAuth} from '../auth';
 import {Badge,Empty,ErrorMessage,Field,Notice,PageHeading,Panel} from '../components/ui';
 import {CauseClassificationSelect,useEquipmentOptions} from '../components/CauseClassificationSelect';
@@ -11,16 +12,33 @@ import {
  causeCategories,causeCategoryLabels,describeClassification,emptyClassificationDraft,isClassificationComplete,
  toClassificationRequest,type ClassificationDraft,
 } from '../domain/causeClassification';
-import {
- emptyReportFilter,filterReports,isValidDetectedRange,type ReportFilter,type ReportRow,
-} from '../domain/reportFilters';
+import {emptyReportFilter,isValidDetectedRange,type ReportFilter} from '../domain/reportFilters';
+import {toSearchParams} from '../domain/reportSearch';
+import {useDebouncedValue} from '../hooks/useDebouncedValue';
 import {canManageInvestigation} from '../domain/permissions';
 import {useCommand} from './workflowShared';
-/** 분류 · 장비 파라미터 · 이상 발생 기간 필터 — 설비 엔지니어와 공정 관리자가 각자 볼 보고서를 고른다 */
-function ReportFilters({process,filter,onChange}:{process:string;filter:ReportFilter;onChange:(filter:ReportFilter)=>void}){
+/** 제목 검색 · 분류 · 장비 파라미터 · 이상 발생 기간 필터 — 설비 엔지니어와 공정 관리자가 각자 볼 보고서를 고른다 */
+function ReportFilters({process,keyword,filter,onKeywordChange,onKeywordSubmit,onChange}:{
+ process:string;
+ keyword:string;
+ filter:ReportFilter;
+ onKeywordChange:(keyword:string)=>void;
+ onKeywordSubmit:()=>void;
+ onChange:(filter:ReportFilter)=>void;
+}){
  const equipment=useEquipmentOptions(filter.category==='MACHINE'?process:'');
  return <>
-  <div className="filter-row">
+  <div className="filter-row report-filters">
+   <Field label="제목 검색">
+    <input
+     type="search"
+     value={keyword}
+     maxLength={REPORT_KEYWORD_MAX_LENGTH}
+     placeholder="사건 번호 · 설비 · 현상"
+     onChange={event=>onKeywordChange(event.target.value)}
+     onKeyDown={event=>{if(event.key==='Enter')onKeywordSubmit();}}
+    />
+   </Field>
    <Field label="원인 분류">
     <select value={filter.category} onChange={event=>onChange({
      ...filter,category:event.target.value as ReportFilter['category'],equipmentParameter:'',
@@ -46,39 +64,56 @@ function ReportFilters({process,filter,onChange}:{process:string;filter:ReportFi
   {!isValidDetectedRange(filter)&&<p className="warning-text">시작일이 종료일보다 늦어 기간 필터를 적용하지 않았습니다.</p>}
  </>;
 }
+const REPORT_KEYWORD_MAX_LENGTH=100;
+/** 보고서 목록 — 서버가 공정 · 검색어 · 필터를 한 번에 조회하고, 「더 보기」로 다음 페이지를 이어 붙인다 */
 export function ReportList({process}:{process:string}){
  const [filter,setFilter]=useState<ReportFilter>(emptyReportFilter);
- const incidents=useQuery({
-  queryKey:['incidents',process],
-  queryFn:()=>api<Page<Incident>>('/api/incidents?processCode='+process+'&size=100'),
+ const [keyword,setKeyword]=useState('');
+ const searchKeyword=useDebouncedValue(keyword);
+ const params=toSearchParams(process,searchKeyword.debounced,filter);
+ const reports=useInfiniteQuery({
+  queryKey:['reports',params],
+  queryFn:({pageParam})=>searchReports(params,pageParam),
+  initialPageParam:0,
+  getNextPageParam:(lastPage:ReportSlice)=>lastPage.hasNext?lastPage.page+1:undefined,
+  placeholderData:keepPreviousData,
  });
- const incidentItems=incidents.data?.items||[];
- const reportQueries=useQueries({queries:incidentItems.map(incident=>({
-  queryKey:['reports',incident.incidentId],
-  queryFn:()=>api<Obj>(`/api/incidents/${incident.incidentId}/reports`),
- }))});
- const rows:ReportRow[]=reportQueries.flatMap((query,index)=>(query.data?.items||[]).map((report:Obj)=>({
-  report,
-  detectedAt:incidentItems[index]?.detectedAt,
- })));
- const visibleRows=filterReports(rows,filter);
+ const rows=reports.data?.pages.flatMap(page=>page.items)||[];
+ const searching=!!params.q||Object.keys(params).length>1;
  return <>
   <PageHeading kicker="REPORTS & RECORDS" title="조사 보고서" description="사건별 초안을 검토·수정하고, 확정된 버전을 보존합니다."/>
   <Panel>
-   <ReportFilters process={process} filter={filter} onChange={setFilter}/>
-   {visibleRows.length?visibleRows.map(({report,detectedAt})=><Link className="report-row" to={'/reports/'+report.reportId} key={report.reportId}>
+   <ReportFilters
+    process={process}
+    keyword={keyword}
+    filter={filter}
+    onKeywordChange={setKeyword}
+    onKeywordSubmit={searchKeyword.flush}
+    onChange={setFilter}
+   />
+   {reports.isError&&<ErrorMessage error={reports.error} retry={()=>reports.refetch()}/>}
+   {rows.length?rows.map(report=><Link className="report-row" to={'/reports/'+report.reportId} key={report.reportId}>
     <FileText/>
     <div>
      <strong>{report.title}</strong>
      <span className="table-sub">
-      v{report.version} · {when(report.createdAt)} · 이상 발생 {when(detectedAt)} · {describeClassification(report.classification)}
+      v{report.version} · {when(report.createdAt)} · 이상 발생 {when(report.detectedAt)} · {describeClassification(report.classification)}
      </span>
     </div>
     <Badge value={report.status}/>
     <ArrowUpRight/>
-   </Link>):rows.length
-    ?<Empty>조건에 맞는 보고서가 없습니다. 필터를 바꿔 보세요.</Empty>
-    :<Empty>아직 보고서가 없습니다. 이상 조사 → 보고서에서 초안 생성을 요청해 주세요.</Empty>}
+   </Link>):reports.isPending
+    ?<Empty>보고서를 불러오는 중…</Empty>
+    :params.q
+     ?<Empty>검색 결과가 없습니다. 검색어나 필터를 바꿔 보세요.</Empty>
+     :searching
+      ?<Empty>조건에 맞는 보고서가 없습니다. 필터를 바꿔 보세요.</Empty>
+      :<Empty>아직 보고서가 없습니다. 이상 조사 → 보고서에서 초안 생성을 요청해 주세요.</Empty>}
+   {reports.hasNextPage&&<div className="form-actions">
+    <button className="button secondary" disabled={reports.isFetchingNextPage} onClick={()=>reports.fetchNextPage()}>
+     {reports.isFetchingNextPage?'불러오는 중…':'더 보기'}
+    </button>
+   </div>}
   </Panel>
  </>;
 }
