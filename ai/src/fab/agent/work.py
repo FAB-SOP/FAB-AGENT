@@ -13,6 +13,8 @@ from fab.agent.harness.guard import _PRESCRIBE, _PROB
 AGENT_OPERATIONS = ("REVIEW_SENSOR_DATA", "REVIEW_PROCESS_HISTORY", "COMPARE_METROLOGY", "REVIEW_REQUIRED",
                     "EQUIPMENT_INSPECTION", "FACILITY_INSPECTION", "UPSTREAM_CHECK")
 MAX_SUGGESTIONS = 5
+# 다른 팀 요청 후보의 요청 종류 — HITL 요청서(propose_*)와 같은 종류인지 볼 때 쓴다(backend: UPSTREAM_CHECK만 확인 요청)
+_REQUEST_KIND = {"UPSTREAM_CHECK": "CROSS_PROCESS", "EQUIPMENT_INSPECTION": "MAINTENANCE", "FACILITY_INSPECTION": "MAINTENANCE"}
 _FIELDS = ("operationCode", "title", "reason", "evidenceIds")
 
 
@@ -41,6 +43,20 @@ def validate_work_suggestions(items: list[dict] | None, cited: set[str]) -> list
         if _PROB.search(f"{title} {reason}"):
             errors.append(f"업무 후보 「{label}」에 원인 확률을 숫자로 적지 않습니다.")
     return errors
+
+
+def request_kind(operation_code: str | None) -> str | None:
+    """다른 팀 요청 후보의 요청 종류(MAINTENANCE · CROSS_PROCESS) — 내 할 일 · 상급자 검토는 None"""
+    return _REQUEST_KIND.get(operation_code or "")
+
+
+def without_proposed(items: list[dict], proposals: list[dict]) -> tuple[list[dict], list[str]]:
+    """이번 실행에서 HITL 요청서로 이미 제안한 종류의 다른 팀 요청 후보를 뺀다 — 같은 요청이 승인 카드와 업무 후보 두 경로로
+    두 번 생기지 않게. 후보에는 대상 공정이 없어(채택 때 정함) 요청 종류로만 맞춘다. (남은 후보, 뺀 operationCode)"""
+    proposed = {"MAINTENANCE" if "MAINTENANCE" in str(p.get("actionType")) else "CROSS_PROCESS"
+                for p in proposals if isinstance(p, dict) and p.get("actionType")}
+    kept = [item for item in items if request_kind(item.get("operationCode")) not in proposed]
+    return kept, [item["operationCode"] for item in items if item not in kept]
 
 
 def contract_suggestions(items: list[dict] | None, evidence_ids: set[str]) -> list[dict]:

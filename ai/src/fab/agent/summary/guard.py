@@ -12,10 +12,25 @@ CATEGORIES = ("MATERIAL", "MAN", "METHOD", "MACHINE")  # 4M — HOLD(보류)는 
 _CATEGORY = re.compile(r"\b(Material|Man|Method|Machine)\b", re.IGNORECASE)
 
 
+def display_id(snapshot: dict) -> str | None:
+    """사건 표시 ID — backend 스냅샷은 incidentDisplayId, 예전 모양은 displayId"""
+    return snapshot.get("incidentDisplayId") or snapshot.get("displayId")
+
+
+def section_texts(snapshot: dict) -> dict[str, str]:
+    """칸별 글 — 값이 글이든 {title, content} 같은 객체든 글로 읽는다(backend 칸 값 모양 확정 전)"""
+    out = {}
+    for key, value in (snapshot.get("sections") or {}).items():
+        if isinstance(value, dict):
+            value = value.get("content") or value.get("text") or value.get("body") or ""
+        out[key] = str(value or "")
+    return out
+
+
 def snapshot_text(snapshot: dict) -> str:
     """숫자 대조용 — 확정 스냅샷의 글 전부(섹션 · 원인 분류 · 표시 ID)"""
     classification = snapshot.get("classification") or {}
-    return json.dumps({"displayId": snapshot.get("displayId"), "sections": snapshot.get("sections") or {},
+    return json.dumps({"displayId": display_id(snapshot), "sections": section_texts(snapshot),
                        "classification": classification}, ensure_ascii=False)
 
 

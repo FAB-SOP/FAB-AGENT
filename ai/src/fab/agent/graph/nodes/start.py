@@ -21,10 +21,15 @@ async def start(state: AgentState, config) -> dict:
         "REPORT": "저장된 기록으로 보고서 초안을 만들어 주세요.",
     }.get(state["mode"], "추가 조사를 해 주세요.")
     messages.append(HumanMessage(content=f"[작업 {state['jobId']} · 모드 {state['mode']} · 사건 {state['incidentId']}]\n{question}"))
+    request = state.get("requestInput") or {}
+    if request:  # 사람이 연 요청서 작업 — 무엇을 만들지(재생성이면 대체할 승인)
+        messages.append(HumanMessage(content="[요청서 작업] " + ", ".join(
+            f"{label} {request[key]}" for key, label in (("targetProcessCode", "대상 공정"), ("causeIds", "원인 ID"),
+                                                        ("supersedesApprovalId", "대체할 승인")) if request.get(key))))
     selected = state.get("selectedInputs") or []
     if selected:  # 추가 분석 — 작업자가 고른 결과를 진술 근거로 넣는다(인용할 수 있게 근거로 등록)
         messages.append(HumanMessage(content=followup.note(selected)))
     runtime(config).tracer.event("node", node="start", mode=state["mode"], promptVersion=prompt_version)
-    return {"messages": messages, "counters": limits.new_window(), "result": None, "previousResult": None, "analysis": None, "report": None, "conclusion": None,
+    return {"messages": messages, "counters": limits.new_window(), "result": None, "previousResult": None, "requestSent": None, "analysis": None, "report": None, "conclusion": None,
             "stopReason": None, "promptVersion": prompt_version,
             **({"evidence": followup.evidence_of(selected, state.get("dataVersion"))} if selected else {})}

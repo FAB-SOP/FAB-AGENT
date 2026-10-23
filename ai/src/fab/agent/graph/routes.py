@@ -30,4 +30,7 @@ def route_tools(state: AgentState) -> str:
 
 
 def route_approval(state: AgentState) -> str:
-    return "reply_wait" if state.get("pending") else "agent"
+    """승인 뒤 — 회신 대기(WAIT 흐름), 요청 발송 뒤 정리(MANUAL 흐름: 답이 이미 있다), 거절이면 다시 정리"""
+    if state.get("pending"):
+        return "reply_wait"
+    return "finalize" if state.get("requestSent") and state.get("result") else "agent"
