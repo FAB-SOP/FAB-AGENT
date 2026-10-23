@@ -1,6 +1,7 @@
 package com.fabcontext.api.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -14,12 +15,30 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import com.fabcontext.api.common.ApiException;
+import com.fabcontext.api.common.Ids;
+import com.fabcontext.api.domain.incident.Incident;
+import com.fabcontext.api.domain.incident.IncidentRepository;
+import com.fabcontext.api.domain.job.Job;
+import com.fabcontext.api.domain.job.JobKind;
+import com.fabcontext.api.domain.job.JobRepository;
+import com.fabcontext.api.domain.report.ReportService;
 import com.fabcontext.api.support.ApiTestSupport;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 @DisplayName("003 보고서 확정 = 사건 종료 · 사건당 확정 1회 · 종료 사건 쓰기 거부")
 class ReportConfirmCloseApiTest extends ApiTestSupport {
+
+	@Autowired
+	JobRepository jobRepository;
+
+	@Autowired
+	IncidentRepository incidentRepository;
+
+	@Autowired
+	ReportService reportService;
 
 	private String draft(Session s, String incidentId, Integer base) throws Exception {
 		String body = "{\"expectedIncidentVersion\":" + incidentVersion(s, incidentId)
@@ -117,6 +136,31 @@ class ReportConfirmCloseApiTest extends ApiTestSupport {
 		getAs(engineer, "/api/incidents/{id}/reports", incidentId)
 			.andExpect(jsonPath("$.data.items[0].status").value("CONFIRMED"));
 		getAs(engineer, "/api/incidents/{id}", incidentId).andExpect(jsonPath("$.data.status").value("CLOSED"));
+	}
+
+	@Test
+	void runningReportDraftBlocksConfirmationAndLateDraftsAreNotSaved() throws Exception {
+		Session engineer = cmp();
+		String incidentId = newIncident(engineer, false).incidentId();
+		String reportId = draft(engineer, incidentId, null);
+		// 초안 작업이 아직 대기 중(작업 전달 전) — 시뮬레이터가 가져가지 않도록 직접 저장한다
+		Job pending = jobRepository.save(Job.builder().jobId(Ids.next("job")).incidentId(incidentId).kind(JobKind.REPORT)
+			.attempt(1).threadId(Ids.next("thr")).requestedBy("USR-CMP-01").createdAt(java.time.Instant.now()).build());
+		postAs(engineer, "/api/reports/{id}/confirmations", confirmBody(1), reportId)
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.error.details.blockers[0].kind").value("REPORT_IN_PROGRESS"))
+			.andExpect(jsonPath("$.error.details.blockers[0].id").value(pending.getJobId()));
+
+		jobRepository.delete(pending);
+		postAs(engineer, "/api/reports/{id}/confirmations", confirmBody(1), reportId).andExpect(status().isOk());
+		// 확정 뒤 늦게 도착한 초안 결과 — 종료된 사건에 새 판본을 만들지 않는다
+		Incident closed = incidentRepository.findById(incidentId).orElseThrow();
+		Job late = Job.builder().jobId(Ids.next("job")).incidentId(incidentId).kind(JobKind.REPORT).attempt(1)
+			.threadId(Ids.next("thr")).requestedBy("USR-CMP-01").createdAt(java.time.Instant.now()).build();
+		assertThatThrownBy(() -> reportService.createDraft(closed, late))
+			.isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo("INCIDENT_CLOSED"));
+		getAs(engineer, "/api/incidents/{id}/reports", incidentId)
+			.andExpect(jsonPath("$.data.items", org.hamcrest.Matchers.hasSize(1)));
 	}
 
 	@Test

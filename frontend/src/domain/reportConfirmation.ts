@@ -2,7 +2,7 @@ import {ApiError} from '../api/client';
 
 /** 보고서 확정을 막는 남은 일 — 서버 409 CONFIRMATION_BLOCKED의 details.blockers 한 칸 */
 export type ConfirmationBlockerKind=
- |'ANALYSIS_IN_PROGRESS'|'APPROVAL_PENDING'|'MANAGER_APPROVAL_PENDING'|'REQUEST_UNANSWERED'|'WORK_UNPERFORMED';
+ |'ANALYSIS_IN_PROGRESS'|'REPORT_IN_PROGRESS'|'APPROVAL_PENDING'|'MANAGER_APPROVAL_PENDING'|'REQUEST_UNANSWERED'|'WORK_UNPERFORMED';
 export type ConfirmationBlocker={kind:ConfirmationBlockerKind;id:string;label:string};
 
 export type SummaryStatus='PENDING'|'RUNNING'|'READY'|'FAILED';
@@ -17,6 +17,7 @@ export type ReportAiSummary={
 
 const blockerGuides:Record<ConfirmationBlockerKind,{title:string;howTo:string;target:'incident'|'approvals'|'check-requests'|'work-items'}>={
  ANALYSIS_IN_PROGRESS:{title:'진행 중인 조사 분석',howTo:'분석이 끝나거나 대기 중인 승인 · 회신을 처리해 주세요.',target:'incident'},
+ REPORT_IN_PROGRESS:{title:'진행 중인 보고서 초안 작업',howTo:'초안 작업이 끝나면 새 최신 판본을 검토해 확정해 주세요.',target:'incident'},
  APPROVAL_PENDING:{title:'승인 대기 중인 Agent 제안',howTo:'승인함에서 승인하거나 거절해 주세요.',target:'approvals'},
  MANAGER_APPROVAL_PENDING:{title:'관리자 승인 대기 업무',howTo:'관리자가 업무를 승인하거나 반려해야 합니다.',target:'work-items'},
  REQUEST_UNANSWERED:{title:'회신이 오지 않은 확인 요청',howTo:'회신을 기다리거나, 요청자가 사유를 적어 철회해 주세요.',target:'check-requests'},
