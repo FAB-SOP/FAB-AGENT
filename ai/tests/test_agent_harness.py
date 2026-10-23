@@ -352,9 +352,13 @@ def test_guard_rejects_brief_with_unseen_numbers_or_evidence():
 async def test_action_hash_covers_brief(spring_url, kb):
     u, a = await _first_proposal(spring_url, kb, "EV-1009", "앞 공정 확인해줘")
     payload = dict(a["payload"]) | {"brief": a["payload"]["brief"] | {"reason": "받는 사람에게 다른 이유를 보여 준다"}}
-    other = (await internal("POST", f"/internal/jobs/{a['jobId']}/proposals", spring_url, json={
+    # 한 사건에 Agent 승인 대기는 하나뿐이라 비교용 두 번째 제안은 사람의 수동 제안으로 만든다
+    _, inc = await u.get(f"/api/incidents/{a['incidentId']}")
+    st, created = await u.post(f"/api/incidents/{a['incidentId']}/proposals", {
         "actionType": a["actionType"], "payload": payload, "rationale": "r", "evidenceIds": [],
-        "idempotencyKey": "hash-test-other-brief"}))["data"]
+        "expectedIncidentVersion": inc["data"]["version"]})
+    assert st == 201, created
+    other = created["data"]
     assert other["actionHash"] != a["actionHash"], "브리프 문장 하나만 달라도 해시가 다르다"
     st, body = await u.post(f"/api/approvals/{a['approvalId']}/decisions",
                             {"decision": "APPROVE", "expectedVersion": a["version"], "actionHash": other["actionHash"]})
