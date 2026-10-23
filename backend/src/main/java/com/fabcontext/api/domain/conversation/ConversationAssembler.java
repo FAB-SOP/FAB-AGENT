@@ -66,7 +66,8 @@ final class ConversationAssembler {
     private Instant at(Instant value) { return value != null ? value : incident.getCreatedAt() != null ? incident.getCreatedAt() : Instant.EPOCH; }
     private Entry.EntryBuilder entry(String id, Kind kind, Instant time, String actorId, String text, Job job, Map<String, String> names) {
         return Entry.builder().entryId(id).type(kind).occurredAt(at(time)).actor(actor(actorId, kind == Kind.AI_ANSWER, names))
-                .text(text).job(job == null ? null : JobView.from(job)).currentJob(job == null ? null : JobView.from(tail(job))).links(links(job).build());
+                .text(text).job(job == null ? null : JobView.from(job)).currentJob(job == null ? null : JobView.from(tail(job)))
+                .links(links(job).build()).placement(placement(job, null));
     }
     private Links.LinksBuilder links(Job job) {
         if (job == null) return Links.builder().linkStatus("UNLINKED");
@@ -127,6 +128,63 @@ final class ConversationAssembler {
         if (job == null) job = jobById.get(request.getWaitingJobId());
         return job;
     }
+    private WorkItem approvalWork(Approval approval) {
+        return approval == null ? null : works.stream().filter(w -> approval.getApprovalId().equals(w.getRequestApprovalId())).findFirst().orElse(null);
+    }
+    private String source(String id) { return id != null && resultById.containsKey(id) ? id : null; }
+    private String requestSource(CheckRequest request, WorkItem work) {
+        if (work != null && source(work.getSourceResultId()) != null) return work.getSourceResultId();
+        Approval approval = approvalById.get(request.getApprovalId());
+        if (approval != null && source(approval.getSourceResultId()) != null) return approval.getSourceResultId();
+        Job job = requestJob(request);
+        return job != null && job.getInput().get("sourceResultId") instanceof String id ? source(id) : null;
+    }
+    private static String shortText(String value) {
+        if (value == null) return null;
+        String text = value.replaceAll("\\s+", " ").strip();
+        return text.codePointCount(0, text.length()) <= 200 ? text : text.substring(0, text.offsetByCodePoints(0, 199)) + "…";
+    }
+    /** 새 선택 결과 분석은 같은 checkpoint RESUME여도 독립 블록이다. 요청서 버튼은 기준 분석 블록에 붙인다. */
+    private Placement placement(Job job, String flowId) {
+        Set<String> seen = new HashSet<>();
+        while (job != null && seen.add(job.getJobId())) {
+            AnalysisRequest selected = followup(job);
+            if (selected != null) {
+                Job initial = jobById.get(selected.getInitialJobId());
+                String question = initial == null ? null : Objects.toString(initial.getInput().getOrDefault("followupQuestion", initial.getQuestion()), null);
+                return new Placement("followup:" + selected.getAnalysisRequestId(), "FOLLOWUP", at(selected.getCreatedAt()), shortText(question), flowId);
+            }
+            if (job.getParentJobId() != null) { job = jobById.get(job.getParentJobId()); continue; }
+            if ("REQUEST".equals(job.getInput().get("purpose")) && job.getInput().get("sourceResultId") instanceof String id) {
+                job = resultJob(id); continue;
+            }
+            return new Placement("job:" + job.getJobId() + ":requested", job.getKind() == JobKind.BASIC ? "BASIC" : "QUESTION",
+                    at(job.getCreatedAt()), job.getKind() == JobKind.BASIC ? "기본 분석" : shortText(job.getQuestion()), flowId);
+        }
+        return null; // 다른 사건/누락/순환 참조를 따라가거나 인접한 분석에 추측해서 붙이지 않는다.
+    }
+    private Placement resourcePlacement(Job job, String flowId, Instant createdAt, String title) {
+        Placement found = placement(job, flowId);
+        return found != null ? found : new Placement(flowId, "DIRECT", at(createdAt), shortText(title), flowId);
+    }
+    private Placement workPlacement(WorkItem work) {
+        return resourcePlacement(workJob(work), "work:" + work.getTaskId(), work.getCreatedAt(), work.getTitle());
+    }
+    private Placement approvalPlacement(Approval approval, WorkItem work) {
+        if (work != null) return workPlacement(work);
+        Job job = resultJob(approval.getSourceResultId());
+        return resourcePlacement(job == null ? approvalJob(approval) : job, "approval:" + approval.getApprovalId(), approval.getCreatedAt(), approval.getRationale());
+    }
+    private Placement requestPlacement(CheckRequest request, WorkItem work) {
+        if (work != null) return workPlacement(work);
+        Approval approval = approvalById.get(request.getApprovalId());
+        return approval != null ? approvalPlacement(approval, null)
+                : resourcePlacement(requestJob(request), "request:" + request.getRequestId(), request.getCreatedAt(), request.getQuestion());
+    }
+    private Links.LinksBuilder requestLinks(CheckRequest request, Job job, WorkItem work) {
+        return links(job).requestId(request.getRequestId()).approvalId(request.getApprovalId())
+                .taskId(work == null ? null : work.getTaskId()).sourceResultId(requestSource(request, work));
+    }
     boolean pendingCard(Approval approval) {
         if (approval.getStatus() != ApprovalStatus.PENDING) return false;
         if (!"AGENT".equals(approval.getSource())) return true;
@@ -184,61 +242,74 @@ final class ConversationAssembler {
             // 도구 호출이 요청서를 저장한 직후에는 아직 HITL/답 공개 전일 수 있다.
             if (approval.getStatus() == ApprovalStatus.PENDING && "AGENT".equals(approval.getSource()) && !pendingCard(approval)) continue;
             Job job = approvalJob(approval);
+            WorkItem work = approvalWork(approval);
+            String sourceId = source(approval.getSourceResultId());
+            if (sourceId == null && work != null) sourceId = source(work.getSourceResultId());
+            Placement display = approvalPlacement(approval, work);
             var data = Data.builder().approval(ApprovalDtos.ApprovalView.from(approval)).build();
             // 요청서 생성은 답변 공개보다 앞설 수 있다. 함께 공개된 답변 다음에 카드를 배치한다.
-            AnalysisResult basis = resultById.get(approval.getSourceResultId());
+            AnalysisResult basis = resultById.get(sourceId);
             Instant publishedAt = basis != null && at(basis.getCreatedAt()).isAfter(at(approval.getCreatedAt())) ? basis.getCreatedAt() : approval.getCreatedAt();
             out.add(entry("approval:" + approval.getApprovalId() + ":requested", Kind.APPROVAL_REQUESTED, publishedAt, approval.getCreatedBy(), approval.getRationale(), job, names)
-                    .links(links(job).approvalId(approval.getApprovalId()).sourceResultId(approval.getSourceResultId()).parentEntryId(
-                            resultById.containsKey(approval.getSourceResultId()) ? "result:" + approval.getSourceResultId() : jobEntry(job)).build()).data(data).build());
+                    .links(links(job).approvalId(approval.getApprovalId()).taskId(work == null ? null : work.getTaskId()).sourceResultId(sourceId).parentEntryId(
+                            work != null ? "work:" + work.getTaskId() + ":proposed" : sourceId != null ? "result:" + sourceId : jobEntry(job)).build())
+                    .placement(display).data(data).build());
             if (approval.getDecidedAt() != null)
                 out.add(entry("approval:" + approval.getApprovalId() + ":decided", Kind.APPROVAL_DECIDED, approval.getDecidedAt(), approval.getDecidedBy(), approval.getDecisionComment(), job, names)
-                        .links(links(job).approvalId(approval.getApprovalId()).parentEntryId("approval:" + approval.getApprovalId() + ":requested").build())
-                        .eventType(approval.getStatus().name()).data(data).build());
+                        .links(links(job).approvalId(approval.getApprovalId()).taskId(work == null ? null : work.getTaskId()).sourceResultId(sourceId)
+                                .parentEntryId("approval:" + approval.getApprovalId() + ":requested").build())
+                        .placement(display).eventType(approval.getStatus().name()).data(data).build());
         }
         for (CheckRequest request : requests) {
             Job job = requestJob(request); WorkItem work = requestWork(request.getRequestId());
-            String task = work == null ? null : work.getTaskId();
+            Placement display = requestPlacement(request, work);
             var data = Data.builder().request(requestView(request)).build();
-            String parent = approvalById.containsKey(request.getApprovalId()) ? "approval:" + request.getApprovalId() + ":decided" : jobEntry(job);
+            String parent = approvalById.containsKey(request.getApprovalId()) ? "approval:" + request.getApprovalId() + ":decided"
+                    : work != null ? "work:" + work.getTaskId() + ":proposed" : jobEntry(job);
             out.add(entry("request:" + request.getRequestId() + ":sent", Kind.REQUEST_SENT, request.getCreatedAt(), request.getRequesterUserId(), request.getQuestion(), job, names)
-                    .links(links(job).requestId(request.getRequestId()).approvalId(request.getApprovalId()).taskId(task).parentEntryId(parent).build()).data(data).build());
+                    .links(requestLinks(request, job, work).parentEntryId(parent).build()).placement(display).data(data).build());
             if (request.getDecisionAt() != null) {
                 boolean reject = request.getStatus() == CheckRequestStatus.REJECTED;
                 FollowupDtos.SourceRef ref = reject ? new FollowupDtos.SourceRef("REQUEST_DECISION", request.getRequestId()) : null;
                 out.add(entry("request:" + request.getRequestId() + ":decision", reject ? Kind.REQUEST_REJECTED : Kind.REQUEST_ACCEPTED,
                         request.getDecisionAt(), request.getOwnerUserId(), request.getDecisionComment(), job, names)
-                        .links(links(job).requestId(request.getRequestId()).taskId(task).parentEntryId("request:" + request.getRequestId() + ":sent").build())
+                        .links(requestLinks(request, job, work).parentEntryId("request:" + request.getRequestId() + ":sent").build()).placement(display)
                         .sourceRef(ref).analysisUse(ref == null ? null : usage(ref)).data(data).build());
             }
             if (request.getWithdrawnAt() != null)
                 out.add(entry("request:" + request.getRequestId() + ":withdrawn", Kind.REQUEST_WITHDRAWN, request.getWithdrawnAt(), request.getWithdrawnBy(), request.getWithdrawReason(), job, names)
-                        .links(links(job).requestId(request.getRequestId()).taskId(task).parentEntryId("request:" + request.getRequestId() + ":sent").build()).data(data).build());
+                        .links(requestLinks(request, job, work).parentEntryId("request:" + request.getRequestId() + ":sent").build()).placement(display).data(data).build());
         }
         for (Reply reply : replies) {
             CheckRequest request = requestById.get(reply.getRequestId()); Job job = request == null ? null : requestJob(request);
             WorkItem work = requestWork(reply.getRequestId()); var ref = new FollowupDtos.SourceRef("REPLY", reply.getReplyId());
             out.add(entry("reply:" + reply.getReplyId(), Kind.REPLY, reply.getCreatedAt(), reply.getAuthorUserId(), reply.getFindings(), job, names)
-                    .links(links(job).requestId(reply.getRequestId()).replyId(reply.getReplyId()).taskId(work == null ? null : work.getTaskId())
+                    .links((request == null ? links(job).requestId(reply.getRequestId()) : requestLinks(request, job, work)).replyId(reply.getReplyId())
                             .parentEntryId(request == null ? null : "request:" + reply.getRequestId() + ":sent").build())
+                    .placement(request == null ? null : requestPlacement(request, work))
+                    .requestSummary(request == null ? null : new RequestSummary(shortText(request.getQuestion()), request.getTargetProcessCode(), request.getEquipmentId()))
                     .data(Data.builder().reply(CheckRequestDtos.ReplyView.from(reply)).build()).sourceRef(ref).analysisUse(usage(ref)).build());
         }
         for (IncidentAction action : actions) {
             WorkItem work = works.stream().filter(w -> action.getActionId().equals(w.getActionId())).findFirst().orElse(null);
             if (work == null && action.getRelatedSource() != null) work = workById.get(action.getRelatedSource().get("refId"));
             Job job = work == null ? approvalJob(approvalById.get(action.getApprovalId())) : workJob(work);
+            Approval actionApproval = approvalById.get(action.getApprovalId());
+            Placement display = work != null ? workPlacement(work) : actionApproval != null ? approvalPlacement(actionApproval, null)
+                    : resourcePlacement(job, "action:" + action.getActionId(), action.getCreatedAt(), action.getDescription());
             var ref = new FollowupDtos.SourceRef("ACTION", action.getActionId());
             out.add(entry("action:" + action.getActionId(), Kind.ACTION_RESULT, action.getCreatedAt(), action.getPerformedBy(), action.getDescription(), job, names)
                     .links(links(job).actionId(action.getActionId()).taskId(work == null ? null : work.getTaskId()).approvalId(action.getApprovalId())
+                            .sourceResultId(work != null ? source(work.getSourceResultId()) : actionApproval == null ? null : source(actionApproval.getSourceResultId()))
                             .parentEntryId(work == null ? jobEntry(job) : "work:" + work.getTaskId() + ":proposed").build())
-                    .sourceRef(ref).analysisUse(usage(ref)).data(Data.builder().action(ActionDtos.ActionView.from(action)).build()).build());
+                    .placement(display).sourceRef(ref).analysisUse(usage(ref)).data(Data.builder().action(ActionDtos.ActionView.from(action)).build()).build());
         }
         for (WorkItem work : works) {
             Job job = workJob(work);
             out.add(entry("work:" + work.getTaskId() + ":proposed", Kind.WORK_PROPOSED, work.getCreatedAt(), work.getCreatedBy(), work.getTitle(), job, names)
                     .links(links(job).taskId(work.getTaskId()).sourceResultId(work.getSourceResultId()).parentEntryId(
                             resultById.containsKey(work.getSourceResultId()) ? "result:" + work.getSourceResultId() : null).build())
-                    .data(Data.builder().work(WorkDtos.View.from(work)).build()).build());
+                    .placement(workPlacement(work)).data(Data.builder().work(WorkDtos.View.from(work)).build()).build());
         }
         var timeline = incident.getTimeline();
         for (int i = 0; i < timeline.size(); i++) {
@@ -247,8 +318,9 @@ final class ConversationAssembler {
             WorkItem work = workById.get(event.getRefId()); if (work == null) continue;
             Job job = workJob(work);
             out.add(entry("timeline:" + incident.getIncidentId() + ":" + String.format("%010d", i), Kind.WORK_EVENT, event.getAt(), event.getActorId(), event.getMessage(), job, names)
-                    .eventType(event.getType()).links(links(job).taskId(work.getTaskId()).parentEntryId("work:" + work.getTaskId() + ":proposed").build())
-                    .data(Data.builder().work(WorkDtos.View.from(work)).build()).build());
+                    .eventType(event.getType()).links(links(job).taskId(work.getTaskId()).sourceResultId(source(work.getSourceResultId()))
+                            .parentEntryId("work:" + work.getTaskId() + ":proposed").build())
+                    .placement(workPlacement(work)).data(Data.builder().work(WorkDtos.View.from(work)).build()).build());
         }
         return out;
     }
