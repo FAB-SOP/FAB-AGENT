@@ -67,7 +67,7 @@
             }
           }
         },
-        "description": "최신 판본 초안을 확정하면 같은 처리 단위에서 사건이 종료(CLOSED)되고 확정본 요약이 PENDING으로 접수된다(사건당 확정 1회). 오류(기존 순서 유지): 422 REVIEW_CONFIRMATION_REQUIRED → 409 REPORT_CONFIRMED · REVISION_CONFLICT → 409 REPORT_ALREADY_CONFIRMED(details.reportId) · NOT_LATEST_DRAFT(details.latestReportId) → 409 INCIDENT_CLOSED → 409 CONFIRMATION_BLOCKED(details.blockers[{kind, id, label}], kind: ANALYSIS_IN_PROGRESS · APPROVAL_PENDING · MANAGER_APPROVAL_PENDING · REQUEST_UNANSWERED · WORK_UNPERFORMED) → 422 원인 분류 오류."
+        "description": "최신 판본 초안을 확정하면 같은 처리 단위에서 사건이 종료(CLOSED)되고 확정본 요약이 PENDING으로 접수된다(사건당 확정 1회). 오류(기존 순서 유지): 422 REVIEW_CONFIRMATION_REQUIRED → 409 REPORT_CONFIRMED · REVISION_CONFLICT → 409 REPORT_ALREADY_CONFIRMED(details.reportId) · NOT_LATEST_DRAFT(details.latestReportId) → 409 INCIDENT_CLOSED → 409 CONFIRMATION_BLOCKED(details.blockers[{kind, id, label}], kind: ANALYSIS_IN_PROGRESS · REPORT_IN_PROGRESS · APPROVAL_PENDING · MANAGER_APPROVAL_PENDING · REQUEST_UNANSWERED · WORK_UNPERFORMED) → 422 원인 분류 오류."
       }
     },
     "/api/incidents/{incidentId}/transitions": {
@@ -75,7 +75,7 @@
         "tags": [
           "incidents"
         ],
-        "summary": "보류된 사건의 조사 재개 (MANAGER)",
+        "summary": "사건 상태 전이 — 제거됨 (항상 409)",
         "operationId": "transitionIncident",
         "parameters": [
           {
@@ -117,7 +117,7 @@
             }
           }
         },
-        "description": "사건 종료는 보고서 확정으로만 일어난다. 허용: 현재 ON_HOLD → INVESTIGATING. targetStatus ON_HOLD · CLOSED는 409 TRANSITION_REMOVED, 그 밖의 전이는 409 INVALID_TRANSITION."
+        "description": "사건 종료는 보고서 확정으로만 일어나며 관리자의 수동 보류 · 보류 해제 · 종료는 없다. MANAGER · 버전 검사 뒤 모든 targetStatus를 409 TRANSITION_REMOVED로 거부한다(호환용 경로)."
       }
     },
     "/api/incidents/{incidentId}/report-jobs": {

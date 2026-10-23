@@ -91,6 +91,8 @@ public class ReportService {
 	@Transactional
 	public Report createAgentDraft(Incident incident, ReportSections sections, List<String> evidenceIds, String jobId,
 			String createdBy) {
+		// 확정으로 종료된 사건에는 늦게 도착한 초안을 새 판본으로 저장하지 않는다
+		incident.requireNotClosed();
 		sections = new ReportSections(sections.overview()+"\n- 보고서 작성 요청자: "+composer.person(jobId==null?createdBy:jobService.load(jobId).getRequestedBy()),sections.investigation(),
 			sections.requestsAndReplies()+"\n\n"+composer.audit(incident),sections.actionsAndVerification(),sections.unresolved());
 		int nextVersion = repository.findFirstByIncidentIdOrderByVersionDesc(incident.getIncidentId())
@@ -117,6 +119,7 @@ public class ReportService {
 	}
 
 	public Report createDraft(Incident incident, Job job) {
+		incident.requireNotClosed();
 		Integer baseVersion = job.getInput().get("baseReportVersion") == null ? null
 			: ((Number) job.getInput().get("baseReportVersion")).intValue();
 		Report base = baseVersion == null ? null

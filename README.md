@@ -98,7 +98,7 @@ Spring만 직접 띄우는 방법은 [backend/README](backend/README.md#실행),
 | `etch.lee` | ENGINEER · ETCH | EV-1009 앞 공정 확인 요청을 받고 회신 |
 | `mnt.jung` | 설비정비팀 · 전 공정 | 정비 요청(EV-1006 · EV-1007)을 받는다 |
 | `cvd.kim` | ENGINEER · CVD | — |
-| `manager.choi` | MANAGER · 전 공정 | 상급자 업무 승인 · 보류된 사건의 조사 재개(사건 종료는 보고서 확정으로만) |
+| `manager.choi` | MANAGER · 전 공정 | 상급자 업무 승인(사건 상태는 바꾸지 않음 — 사건 종료는 보고서 확정으로만) |
 
 ## 팀
 

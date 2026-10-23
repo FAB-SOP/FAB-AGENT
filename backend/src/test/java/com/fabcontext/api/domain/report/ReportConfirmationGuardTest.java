@@ -88,7 +88,7 @@ class ReportConfirmationGuardTest {
 	}
 
 	@Test
-	void activeAnalysisBlocksButReportAndSummaryJobsDoNot() {
+	void activeAnalysisAndReportDraftsBlockButSummaryJobsDoNot() {
 		var incidentJobs = List.of(
 			job("j1", JobKind.BASIC, JobStatus.QUEUED, null), job("j2", JobKind.DEEP, JobStatus.RUNNING, null),
 			job("j3", JobKind.RESUME, JobStatus.WAITING_APPROVAL, null), job("j4", JobKind.REPORT, JobStatus.RUNNING, null),
@@ -96,7 +96,11 @@ class ReportConfirmationGuardTest {
 			job("j7", JobKind.BASIC, JobStatus.FAILED, null));
 		when(jobs.findByIncidentIdOrderByCreatedAtDesc(INCIDENT)).thenReturn(incidentJobs);
 		assertThat(guard.findBlockers(incident, ConfirmationContext.direct("u1")))
-			.extracting(ConfirmationBlocker::id).containsExactly("j1", "j2", "j3");
+			.extracting(ConfirmationBlocker::id, ConfirmationBlocker::kind)
+			.containsExactly(org.assertj.core.groups.Tuple.tuple("j1", Kind.ANALYSIS_IN_PROGRESS),
+				org.assertj.core.groups.Tuple.tuple("j2", Kind.ANALYSIS_IN_PROGRESS),
+				org.assertj.core.groups.Tuple.tuple("j3", Kind.ANALYSIS_IN_PROGRESS),
+				org.assertj.core.groups.Tuple.tuple("j4", Kind.REPORT_IN_PROGRESS));
 	}
 
 	@Test

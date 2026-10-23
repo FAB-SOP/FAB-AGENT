@@ -21,6 +21,7 @@ describe('report confirmation blockers',()=>{
   expect(describeBlocker({kind:'REQUEST_UNANSWERED',id:'chk_1',label:'요청'},'inc_1'))
    .toMatchObject({path:'/check-requests',title:'회신이 오지 않은 확인 요청'});
   expect(describeBlocker({kind:'ANALYSIS_IN_PROGRESS',id:'job_1',label:'분석'},'inc_1').path).toBe('/incidents/inc_1');
+  expect(describeBlocker({kind:'REPORT_IN_PROGRESS',id:'job_2',label:'초안'},'inc_1')).toMatchObject({path:'/incidents/inc_1',title:'진행 중인 보고서 초안 작업'});
   expect(describeBlocker({kind:'APPROVAL_PENDING',id:'apr_1',label:'제안'},'inc_1').path).toBe('/approvals');
   expect(describeBlocker({kind:'WORK_UNPERFORMED',id:'wrk_1',label:'업무'},'inc_1').howTo).toContain('미수행으로 닫아');
  });

@@ -45,8 +45,8 @@ public class IncidentController {
 		return ApiResponse.of(incidentService.detail(incidentId, user));
 	}
 
-	@Operation(operationId = "transitionIncident", summary = "보류된 사건의 조사 재개 (MANAGER)",
-		description = "사건 종료는 보고서 확정으로만 일어난다. 허용: 현재 ON_HOLD → INVESTIGATING. targetStatus ON_HOLD · CLOSED는 409 TRANSITION_REMOVED, 그 밖의 전이는 409 INVALID_TRANSITION.")
+	@Operation(operationId = "transitionIncident", summary = "사건 상태 전이 — 제거됨 (항상 409)",
+		description = "사건 종료는 보고서 확정으로만 일어나며 관리자의 수동 보류 · 보류 해제 · 종료는 없다. MANAGER · 버전 검사 뒤 모든 targetStatus를 409 TRANSITION_REMOVED로 거부한다(호환용 경로).")
 	@PostMapping("/{incidentId}/transitions")
 	public ApiResponse<IncidentDetail> transitionIncident(@AuthenticationPrincipal AuthUser user,
 			@PathVariable String incidentId, @RequestHeader(SecurityConfig.CSRF_HEADER) String csrf,

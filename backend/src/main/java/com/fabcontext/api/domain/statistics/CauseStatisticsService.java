@@ -12,6 +12,7 @@ import java.util.stream.Stream;
 
 import com.fabcontext.api.auth.AccessPolicy;
 import com.fabcontext.api.auth.AuthUser;
+import com.fabcontext.api.auth.Role;
 import com.fabcontext.api.common.ApiException;
 import com.fabcontext.api.domain.report.ReportCauseCategory;
 import com.fabcontext.api.domain.statistics.CauseStatisticsDtos.CategoryCount;
@@ -64,7 +65,9 @@ public class CauseStatisticsService {
     }
 
     private List<String> scopes(AuthUser user, CauseStatisticsCondition c) {
-        access.requireManager(user);
+        if (!user.isManager() && !(user.role() == Role.ENGINEER && "설비정비팀".equals(user.team()))) {
+            throw ApiException.forbidden("CAUSE_STATISTICS_ACCESS_DENIED", "관리자 또는 설비정비팀만 원인 통계를 조회할 수 있습니다.");
+        }
         List<String> scopes = c.processCodes().isEmpty()
                 ? CauseStatisticsCondition.PROCESSES.stream().filter(user::hasScope).toList() : c.processCodes();
         if (scopes.isEmpty()) throw ApiException.forbidden("PROCESS_SCOPE_DENIED", "조회 가능한 공정이 없습니다.");
