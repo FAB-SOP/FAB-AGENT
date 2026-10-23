@@ -53,19 +53,11 @@ def proposal_block(action_type: str, target_process: str | None, requests: list[
     return None
 
 
-def request_scope_error(action_type: str, target_process: str | None, request_input: dict | None,
-                        superseded: dict | None) -> str | None:
-    """사람이 연 요청서 작업의 범위 — 지정한 대상 공정(input.request.targetProcessCode)과, 재생성이면 대체할 승인과 같은
-    팀 · 종류(정비 요청인지 다른 공정 확인인지 · 대상 공정). 어긋나면 모델에게 돌려줄 문장, 맞으면 None"""
+def request_scope_error(action_type: str, target_process: str | None, request_input: dict | None) -> str | None:
+    """사람이 연 요청서 작업의 범위 — 지정한 대상 공정(input.request.targetProcessCode)으로만. 어긋나면 모델에게 돌려줄 문장"""
     wanted = (request_input or {}).get("targetProcessCode")
     if wanted and target_process and wanted != target_process:
         return (f"[REJECTED] 이 요청서 작업의 대상 공정은 {wanted}입니다. {target_process}가 아니라 {wanted} 대상으로 요청서를 만드세요.")
-    if superseded:
-        replaced = (_kind(superseded.get("actionType")), (superseded.get("payload") or {}).get("targetProcessCode"))
-        if (_kind(action_type), target_process) != replaced:
-            kind = "정비 요청" if replaced[0] == "MAINTENANCE" else "다른 공정 확인 요청"
-            return (f"[REJECTED] 재생성은 대체할 승인 {superseded.get('approvalId')}와 같은 팀 · 종류({kind}, 대상 공정 {replaced[1]})의 "
-                    "요청서만 만들 수 있습니다. 같은 대상으로 내용을 고쳐 다시 제안하세요.")
     return None
 
 

@@ -5,19 +5,17 @@
   FOLLOWUP 추가 분석(작업자가 고른 결과 반영)   원인 분석 — 질문과 같이 제안 가능(승인 대기가 있으면 제안 안 함)
   QUESTION 사용자 질문                          질문 답 — 제안 가능. 단 사건에 승인 대기가 있으면 질문 전용
   REQUEST  「요청 만들기」                     질문 답 — 요청서를 만들러 온 작업
-  REGENERATE 「요청서 다시 만들기」              REQUEST와 같다 — 대체할 승인(input.request.supersedesApprovalId)이 있다
   REPORT   보고서 초안 · 수정
 """
 
 from __future__ import annotations
 
 BASIC, REPLY, QUESTION, REQUEST, REPORT, FOLLOWUP = "BASIC", "REPLY", "QUESTION", "REQUEST", "REPORT", "FOLLOWUP"
-REGENERATE = "REGENERATE"
-HUMAN_REQUESTED = (REQUEST, REGENERATE)  # 사람이 연 요청서 작업
+HUMAN_REQUESTED = (REQUEST,)  # 사람이 연 요청서 작업(재생성 · 대체는 이번 MVP에서 제외)
 
 # backend 작업의 트리거(job.input.trigger) — 이름은 D와 맞춘 뒤 여기만 고친다
 _REPLY_TRIGGERS = {"WORK_REPLY", "REPLY"}
-_REQUEST_TRIGGERS = {"REQUEST_BUTTON", "REGENERATE"}
+_REQUEST_TRIGGERS = {"REQUEST_BUTTON"}
 _FOLLOWUP_TRIGGERS = {"FOLLOWUP_REQUEST"}  # backend 추가 분석(작업 input.trigger) — 맥락에 실리기 전에는 질문 칸으로 알아본다
 
 

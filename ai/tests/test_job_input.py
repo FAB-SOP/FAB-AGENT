@@ -2,7 +2,7 @@
 질문 칸에 붙은 선택 결과)도 읽고, 둘이 함께 오면 input.purpose가 우선 — 서로 모순되면 INVALID_INPUT으로 실패한다.
 
   kind BASIC   → BASIC        kind REPORT → REPORT
-  kind DEEP    → QUESTION · FOLLOWUP(input.followup.selectedInputs 필수) · REQUEST · REGENERATE(input.request.supersedesApprovalId 필수)
+  kind DEEP    → QUESTION · FOLLOWUP(input.followup.selectedInputs 필수) · REQUEST(요청서 재생성 · 대체는 이번 MVP에서 제외)
 """
 
 from __future__ import annotations
@@ -44,11 +44,10 @@ def test_structured_followup_wins_over_the_same_legacy_text():
     assert out["question"] == "회신을 반영해 주세요" and out["selectedInputs"] == SELECTED
 
 
-def test_regenerate_needs_the_approval_to_replace_and_acts_as_request():
-    out = resolve(_job(purpose="REGENERATE", request={"supersedesApprovalId": "apr_1", "targetProcessCode": "ETCH"}), "", None)
-    assert out["purpose"] == purpose.REGENERATE and out["request"]["supersedesApprovalId"] == "apr_1"
-    assert purpose.can_propose(purpose.REGENERATE, False)
-    with pytest.raises(InvalidJobInput):
+def test_request_carries_the_named_scope_and_regenerate_is_not_offered():
+    out = resolve(_job(purpose="REQUEST", request={"targetProcessCode": "ETCH", "causeIds": ["ETCH_WALL"]}), "", None)
+    assert out["purpose"] == purpose.REQUEST and out["request"]["targetProcessCode"] == "ETCH"
+    with pytest.raises(InvalidJobInput):  # 요청서 재생성 · 대체는 이번 MVP에서 제외 — 승인 거절 뒤 새 요청서
         resolve(_job(purpose="REGENERATE", request={}), "", None)
 
 
@@ -73,33 +72,9 @@ def test_job_message_schema_accepts_the_structured_inputs(contract_validators):
             "createdAt": "2026-10-23T01:00:00Z", "traceId": "TRACE-job_1"}
     followup = base | {"input": {"purpose": "FOLLOWUP", "followup": {"analysisRequestId": "ar_1", "question": "반영",
                                                                       "selectedInputs": SELECTED}}}
-    regenerate = base | {"input": {"purpose": "REGENERATE", "request": {"supersedesApprovalId": "apr_1"}}}
-    assert not list(job_validator.iter_errors(followup)) and not list(job_validator.iter_errors(regenerate))
+    request = base | {"input": {"purpose": "REQUEST", "request": {"targetProcessCode": "ETCH"}}}
+    assert not list(job_validator.iter_errors(followup)) and not list(job_validator.iter_errors(request))
+    assert list(job_validator.iter_errors(base | {"input": {"purpose": "REGENERATE"}}))
     assert list(job_validator.iter_errors(base | {"input": {"purpose": "FOLLOWUP"}}))  # 선택 결과 없는 추가 분석
     assert list(job_validator.iter_errors(base | {"input": {"purpose": "NOPE"}}))
 
-
-async def test_regenerate_looks_up_the_replaced_approval_once():
-    """재생성 작업은 대체할 승인을 조회해 범위를 맞춘다 — 같은 묶음에서 제안이 여러 번이어도 조회는 한 번"""
-    from fab.agent.graph.nodes.tools import _request_scope
-
-    calls = []
-
-    class _Backend:
-        async def get_approval(self, approval_id):
-            calls.append(approval_id)
-            return {"approvalId": approval_id, "actionType": "CREATE_CHECK_REQUEST", "payload": {"targetProcessCode": "ETCH"}}
-
-    class _Tracer:
-        def event(self, *a, **k):
-            pass
-
-    class _Runtime:
-        backend, tracer = _Backend(), _Tracer()
-
-    class _TurnStub:
-        rt, state, cache = _Runtime(), {"purpose": "REGENERATE", "requestInput": {"supersedesApprovalId": "apr_1"}}, {}
-    turn = _TurnStub()
-    assert await _request_scope(turn, "CREATE_CHECK_REQUEST", "ETCH") is None
-    assert "apr_1" in await _request_scope(turn, "CREATE_MAINTENANCE_REQUEST", "CMP")
-    assert calls == ["apr_1"]
