@@ -889,7 +889,7 @@ enum 열의 DB 체크 제약(Hibernate 생성 · `ddl-auto: update`로는 갱신
 | P2 | `domain/report/Report.java` | `snapshot`(jsonb) · `@Embedded ReportSummary` 필드, 요약 상태 전이 메서드 | 확정본 · 요약은 그 보고서에 고정된다 | 기존 행은 null → 「요약 없음」 |
 | P3 | `domain/report/ReportDtos.java` | `ReportView` · `ReportSummary`(목록 요약 DTO)에 `summary` | 공개 응답 | 필드 추가만 |
 | P4 | `domain/report/ConfirmReportHandler.java` | 실행 중 승인 ID · 재개 작업 ID를 확정 서비스에 넘김(차단 검사 제외용) | 승인 경로 확정이 여기서만 실행 | payload 검증 그대로 |
-| P5 | `domain/incident/IncidentService.java` · `Incident.java` | 상태 전이에서 `ON_HOLD` · `CLOSED` 대상 제거(409 `TRANSITION_REMOVED`), `ON_HOLD → INVESTIGATING`만 유지. `closeByConfirmedReport(at, reportId)` 추가 | 관리자 수동 종료 제거 · 종료 경로 단일화 | **관리자 보류 · 종료 API가 409로 바뀜** |
+| P5 | `domain/incident/IncidentService.java` · `Incident.java` · `IncidentController.java` | 상태 전이 **모든 대상** 409 `TRANSITION_REMOVED`(개정 2026-10-23 — 보류 해제도 삭제). `closeByConfirmedReport` 추가, 전이 API 문서 문구 | 관리자 수동 보류 · 보류 해제 · 종료 제거 · 종료 경로 단일화(헌법 3.0.0) | **관리자 전이 API가 모두 409로 바뀜** |
 
 **백엔드 — 공통 작업 · 이벤트 · 알림 · 시뮬레이터 (아름 담당 파일, 선웅이 SUMMARY 부분만 넣고 아름 리뷰)**
 
@@ -914,16 +914,19 @@ enum 열의 DB 체크 제약(Hibernate 생성 · `ddl-auto: update`로는 갱신
 
 | # | 파일 | 바꾸는 것 | 왜 |
 |---|------|-----------|----|
-| P15 | `api/IncidentApiTest.java` | 관리자 전이 테스트: 보류 · 종료 → 409 `TRANSITION_REMOVED`, 기존 보류 해제 → 200 | **기대값 변경**(기능 변경) |
+| P15 | `api/IncidentApiTest.java` | 관리자 전이 테스트: 보류 · 보류 해제 · 종료 → 모두 409 `TRANSITION_REMOVED`, 기존 보류 사건은 보고서 확정으로 종료 | **기대값 변경**(기능 변경) |
 | P16 | `api/ReportApiTest.java` · `api/ReportClassificationApiTest.java` | 확정 뒤 새 판본 생성 → 409 `INCIDENT_CLOSED`로, 보류 확정 시 사건 상태 → `CLOSED`로 | **기대값 변경**(001 재분류 예외 삭제 · 확정 = 종료) |
 | P17 | `domain/SchemaTest.java` | jsonb 열 수(확정본 · 요약 줄 · 요약 근거 +3) | 새 jsonb 열 — **기대값 변경** |
 | P18 | `backend/scripts/smoke-test.sh` | 상태 전이 구간(188–193행)을 새 규칙으로, 확정 뒤 사건 종료 · 요약 확인 추가 | 스모크가 관리자 보류 · 종료를 쓴다 |
 | P19 | `data/backend-handoff-v2/combined.openapi.json` | 공개 계약 갱신(contracts/public-api.md) | 원칙 IV |
 | P20 | `README.md` · `backend/README.md` · 001 spec 블록 | 관리자 전이 설명 · 001 재분류 예외 삭제 | 헌법 2.0.0 후속(Sync Impact Report ⚠) |
 
+| P23 | `domain/report/ReportService.java`(`createDraft` · `createAgentDraft`) · `ReportConfirmationGuard` | 확정 차단에 진행 중 REPORT 작업(`REPORT_IN_PROGRESS`) 추가, 종료된 사건에는 초안을 저장하지 않음(409 `INCIDENT_CLOSED` → 작업 실패로 정리) | spec FR-005 · FR-023(개정) — 확정 뒤 늦은 초안 결과가 종료 사건에 새 판본을 만드는 빈틈 | 종료 전 초안 생성 그대로 |
+| P24 | `frontend/src/pages/IncidentDetail.tsx` · `domain/reportConfirmation.ts` | 「조사 재개」 버튼 제거, 차단 종류 `REPORT_IN_PROGRESS` 안내 | B · C 화면 반영 | — |
 | P21 | `frontend/src/pages/Reports.tsx` · `IncidentDetail.tsx` · `Requests.tsx` · 업무 화면 · `api/*` | 확정 차단 목록 · 요약 패널 · 재요청, 관리자 보류 · 종료 버튼 제거, 철회 · 미수행 닫기 버튼 | 화면 범위 「포함」 결정(2026-10-23) |
 
-**동의 기록 (2026-10-23, 사용자)**: P1–P20 전체 동의 · 공개 계약 변경 확인됨(반영) · 화면 포함(P21).
+**동의 기록 (2026-10-23, 사용자)**: P1–P20 전체 동의 · 공개 계약 변경 확인됨(반영) · 화면 포함(P21) · P22(AgentJobService SUMMARY input).
+**개정 동의 (2026-10-23, 팀 통합 정리 문서 반영)**: B 보류 해제 삭제(P5 · P15 개정, 헌법 3.0.0) · C 진행 중 초안 작업 차단 · 늦은 초안 저장 차단(P23) · 화면(P24). A 요청 철회는 유지(spec Assumptions).
 
 > 구현 중 목록 밖 수정이 나오면(예: 다른 테스트가 확정 뒤 종료 상태에 걸림) 멈추고 다시 확인받는다.
 
@@ -1024,6 +1027,7 @@ backend/src/test/java/com/fabcontext/api/
 |------|------|------|
 | `ANALYSIS_IN_PROGRESS` | 작업 상태 QUEUED · RUNNING · WAITING_APPROVAL · WAITING_REPLY, 종류 BASIC · DEEP · RESUME | 승인 경로: 그 승인으로 재개된 작업(`approval.resumeJobId`) · 그 승인을 기다리던 작업 |
 | `APPROVAL_PENDING` | 승인 상태 PENDING | 승인 경로: 실행 중인 그 승인 |
+| `REPORT_IN_PROGRESS` | 보고서 초안 작업 QUEUED · RUNNING (개정 2026-10-23) | — |
 | `MANAGER_APPROVAL_PENDING` | 업무 WAITING_MANAGER | — |
 | `REQUEST_UNANSWERED` | 확인 요청 OPEN · ACCEPTED | — |
 | `WORK_UNPERFORMED` | 업무 READY · APPROVED · REQUESTED | — |
@@ -1084,8 +1088,8 @@ backend/src/test/java/com/fabcontext/api/
 
 ## R9. 관리자 상태 전이 축소 · 시드
 
-- **Decision**: `IncidentService.transition` — 대상 `INVESTIGATING`(현재 `ON_HOLD`일 때)만 허용, `ON_HOLD` · `CLOSED`는 409 `TRANSITION_REMOVED`
-  (「보고서 확정으로만 종료할 수 있습니다」). 사건 종료는 `Incident.closeByConfirmedReport(at, reportId)`로만.
+- **Decision (개정 2026-10-23)**: `IncidentService.transition` — 모든 대상 409 `TRANSITION_REMOVED`(보류 해제 포함). 기존 보류 사건은 보고서 확정으로만 종료. (처음 결정: 대상 `INVESTIGATING`(현재 `ON_HOLD`일 때)만 허용, `ON_HOLD` · `CLOSED`는 409 `TRANSITION_REMOVED`).
+  사건 종료는 `Incident.closeByConfirmedReport(at, reportId)`로만.
   시드는 옛 상태(EV-1018 · 1019 · 1020 보고서 없이 종료, EV-1022 보류)를 **엔티티에 직접 설정**(이력 데이터)하고, EV-1021 등 보고서 확정 시드는 확정이 종료까지 하므로 `close()` 삭제.
 - **Rationale**: 헌법 2.0.0 원칙 VI. 옛 상태를 만드는 API는 없어야 하지만, 「옛 데이터 보존」을 시연하려면 시드에는 있어야 한다.
 
@@ -1132,7 +1136,7 @@ classification{category, equipmentParameters} · evidenceIds · confirmedBy · c
 ## Incident (기존, 수정)
 
 - `closeByConfirmedReport(at, reportId)` — 상태 `CLOSED` + 이력. 다른 종료 경로 없음
-- 관리자 전이: `ON_HOLD → INVESTIGATING`만
+- 관리자 전이: 없음(개정 2026-10-23 — 보류 해제도 삭제)
 
 ## CheckRequest (기존, 수정)
 
@@ -1190,9 +1194,9 @@ classification{category, equipmentParameters} · evidenceIds · confirmedBy · c
 
 - 본문 `{reason, expectedVersion}` → 상태 `CLOSED_UNPERFORMED`. 업무 응답에 `closedBy · closedAt · closeReason`, 상태 enum에 새 값
 
-## 6. `POST /api/incidents/{incidentId}/transitions` (transitionIncident) — 축소
+## 6. `POST /api/incidents/{incidentId}/transitions` (transitionIncident) — 제거(개정 2026-10-23)
 
-- 허용: `targetStatus = INVESTIGATING`(현재 `ON_HOLD`일 때)만. `ON_HOLD` · `CLOSED` → 409 `TRANSITION_REMOVED`
+- 모든 `targetStatus` → 409 `TRANSITION_REMOVED`. 경로는 남겨 두고(호환) 항상 거부한다. 처음 안의 「보류 해제만 허용」은 삭제
 
 ## 7. 종료 사건 쓰기 — 409 `INCIDENT_CLOSED`
 
@@ -1247,6 +1251,7 @@ backend/scripts/smoke-test.sh http://localhost:8096        # 새로 시드한 �
 3. **차단 · 정리**(US2): 미회신 요청이 있는 사건 확정 → 409 `CONFIRMATION_BLOCKED`(요청 ID) → 요청자 철회 → 확정 성공. 채택 업무 READY → 미수행 닫기 → 확정
 4. **승인 경로**: Agent 「보고서 확정」 제안 승인 → 자기 승인 · 재개 작업에 막히지 않고 확정 · 종료
 5. **요약**(US3): 확정 직후 `summary.status = PENDING` → 시뮬레이터에서 1분 안에 `READY`(rule) · 확정자 알림 / 실패 주입 → `FAILED` → 재요청 → `PENDING` / 옛 작업의 늦은 결과 → 무시
-6. **관리자**(US4): 열린 사건 보류 · 종료 → 409 `TRANSITION_REMOVED`, 시드 EV-1022(보류) 해제 → 200
+6. **관리자**(US4, 개정): 보류 · 보류 해제 · 종료 → 모두 409 `TRANSITION_REMOVED`, 시드 EV-1022(보류)는 보고서 확정으로 종료
+8. **늦은 초안**(FR-023): 초안 작업 진행 중 확정 → 409 `REPORT_IN_PROGRESS`, 종료 사건에 도착한 초안 결과 → 저장 안 됨 · 작업 실패
 7. **회귀**: 001 분류 · 002 목록 · 검색, 종료 전 초안 · 편집 그대로
 <!-- ARTIFACT:003-report-confirm-summary:quickstart.md END -->

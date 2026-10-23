@@ -429,4 +429,20 @@ speckit 명령이 만든 산출물이다. 블록은 `<!-- ARTIFACT:<기능>:<문
 - **아름(리뷰)**: `JobKind.affectsInvestigationState` · `JobService`(SUMMARY 격리, `finishWaitingOnIncidentClosed`) · `AgentEventService`(SUMMARY_READY · SUMMARY JOB_FAILED) · `AgentWorker`(규칙 요약 · 실패 시 이력 없음) · `NotificationEvents.reportSummaryFinished` · `AgentJobService.jobContext`(SUMMARY input)
 - **의진 · 계약 주인**: 공개 계약 변경 기록 초안(plan contracts/public-api.md 「변경 기록 초안」) — `ai/docs/contract-changes.md` 반영은 `ai/` 미수정 원칙에 따라 계약 주인에게 넘긴다. 내부 확정본 조회 `GET /internal/reports/{id}/snapshot` 필드는 합의안 그대로
 
+## 개정 반영 (2026-10-23, 팀 통합 정리 문서 — Phase 9)
+
+- 결정: **A 요청 철회 유지**(팀 문서는 MVP 제외 — spec Assumptions에 이유 기록, 공통 · Agent 담당에 알림 필요) · **B 보류 해제 삭제** · **C 늦은 초안 차단**
+- 헌법 2.0.0 → **3.0.0**(원칙 VI: 수동 보류 · 보류 해제 · 종료 모두 없음). spec US2 시나리오 1-1 · US4 · FR-005 · FR-010 · FR-023, plan P5 · P15 개정 · P23 · P24, research R3 · R9, 계약 6번 갱신
+- B: `IncidentService.transition`은 MANAGER · 버전 · 입력 검사 뒤 모든 대상 409 `TRANSITION_REMOVED`(경로는 호환용으로 유지). 사건 화면 「조사 재개」 버튼 삭제
+- C: 확정 차단에 `REPORT_IN_PROGRESS`(REPORT 작업 QUEUED · RUNNING), `ReportService.createDraft` · `createAgentDraft`가 종료 사건이면 409 `INCIDENT_CLOSED`(시뮬레이터는 작업 실패, 외부 Agent는 내부 API 409)
+- 이 사이 브랜치에 main 병합(`4984a01` — 이벤트 중복 · 이전 시도 차단, 원인 통계, 알림 화면 등)이 들어와 있었다. 병합 상태 그대로 검증
+
+| 항목 | 결과 |
+|------|------|
+| backend `./gradlew test --rerun-tasks` | **266 tests · 0 failed** (병합 + 개정 포함) |
+| frontend `npm test && npm run build` | **14 files · 63 passed**, build 성공 |
+| 스모크(임시 DB 새 시드) | **109 passed · 5 failed** — 기존 main 실패 5건과 같음 |
+| 시나리오 스크립트(EV-1023 차단 → 승인 → 차단 → 철회 → 확정 · 종료 · 요약, EV-1009 미수행 닫기) | **19 passed · 0 failed**(새로 시드한 서버에서 먼저 실행 — 스모크 뒤에 돌리면 EV-1009가 이미 종료돼 3건 실패, 순서 문제) |
+| `openapi_diff` | 전이 · 확정 오류 관련 새 차이 없음(서버 operation 66 — 늘어난 2개는 병합된 main 기능) |
+
 <!-- ARTIFACT:003-report-confirm-summary:implementation-notes.md END -->
