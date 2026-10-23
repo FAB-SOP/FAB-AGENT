@@ -1,5 +1,9 @@
 # 조사 우선순위 Backend 도구 — C 연결 명세
 
+> **2026-10-23 변경:** 사건 최초 우선순위는 Backend가 이 계산 서비스를 직접 실행·저장한다.
+> C의 필수 MCP 호출·저장 이벤트 연결은 더 이상 필요하지 않다. [최초 자동 평가 명세](priority-evaluation-backend.md)를 따른다.
+> 아래 도구 GET은 읽기 전용 진단·근거 조회로 유지한다. 초기 구현 범위와 C 체크 목록은 당시 기록이며 최신 실행 책임은 위 명세가 우선한다.
+
 ## 범위와 역할
 
 - 작업 브랜치: `feat/investigation-priority`, 기준 커밋: `312420f`.
@@ -54,7 +58,7 @@ HTTP 응답의 최상위 `data` 안에 기존 업무 도구 공통 envelope가 �
       "missingData": [],
       "policyVersion": "DEMO-1.2-DRAFT",
       "assessmentAsOf": "2026-10-20T02:59:00Z",
-      "mode": "DRAFT_PREVIEW"
+      "mode": "DEMO_ACTIVE"
     }
   },
   "evidenceRefs": [],
@@ -113,8 +117,8 @@ HTTP 응답의 최상위 `data` 안에 기존 업무 도구 공통 envelope가 �
 
 ## 정책·데이터 경계
 
-- PM ZIP의 `policy/priority-rules.json`을 그대로 Backend resources에 배치했다. `enabled:false`를 유지하며 명시적 GET 호출로 DRAFT_PREVIEW 계산을 제공한다.
-- 운영 정책 활성화·이벤트 자동 생성은 하지 않는다. 자동 판정 연결은 별도 작업이다.
+- PM ZIP 기준의 임계값·그룹은 유지한다. 사용자 승인에 따라 `enabled:true`로 시연 자동 평가를 활성화했으며 응답 mode는 DEMO_ACTIVE다. 문서 버전 DEMO-1.2-DRAFT와 실제 장비 미검증 표시는 유지한다.
+- 신규 사건 접수 시 자동 평가·저장하며 기존 사건 backfill·데이터 변경 재평가는 하지 않는다. 위 GET 자체는 저장하지 않는다.
 - 기존 2초 평활·5초 검출기를 변경하지 않고, 새 1초 평활·1초 유효 편차 계산을 분리했다.
 - L011/L012 추가 팩을 운영 데이터·DB에 적재하지 않았다. 서비스 DB에 아직 없다면 해당 run 조회는 404다.
 - 테스트에만 PM ZIP의 대상 센서 3개를 압축 보존했다. 운영/RAG에는 평가 정답을 제공하지 않는다.

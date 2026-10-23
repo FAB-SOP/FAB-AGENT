@@ -18,7 +18,8 @@ class PriorityEvidenceApiTest extends ApiTestSupport {
 			.andExpect(jsonPath("$.data.data.assessment.ruleIds",hasItem("P-HIGH-01")))
 			.andExpect(jsonPath("$.data.data.assessment.evidenceIds",not(empty())))
 			.andExpect(jsonPath("$.data.data.policy.gradeAssignedByTool").value(true))
-			.andExpect(jsonPath("$.data.data.policy.enabled").value(false))
+			.andExpect(jsonPath("$.data.data.policy.enabled").value(true))
+			.andExpect(jsonPath("$.data.data.assessment.mode").value("DEMO_ACTIVE"))
 			.andExpect(jsonPath("$.data.synthetic").value(true));
 	}
 	@Test void metrologyNotYetPublishedIsProvisionalMediumAndDoesNotLeakValues() throws Exception {
