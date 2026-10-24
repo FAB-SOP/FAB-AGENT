@@ -55,3 +55,21 @@ def test_submit_with_a_refuted_top_cause_is_accepted_after_reranking():
     accepted = turn.update["result"]
     assert _order(accepted) == ["CMP_SLURRY", "CMP_PRESSURE"]
     assert any("1순위" in item for item in accepted["limitations"])
+
+
+def test_rerank_picks_a_cause_that_fits_the_next_step():
+    """CURRENT_CHECK면 사건 공정 원인을 올린다 — 앞 공정 원인을 올리면 nextStep과 어긋나 다시 반려됐다(마지막 제출이면 빈 답)"""
+    result = {"nextStep": "CURRENT_CHECK",
+              "candidateCauses": [_cause(1, "CMP_PRESSURE", [], ["E-1"]), _cause(2, "ETCH_WALL", ["E-2"], []),
+                                  _cause(3, "CMP_SLURRY", ["E-3"], [])]}
+    out, changed = rank_by_stance(result, "CMP")
+    assert changed and _order(out) == ["CMP_SLURRY", "CMP_PRESSURE", "ETCH_WALL"]
+    upstream = {**result, "nextStep": "UPSTREAM_CHECK"}
+    assert _order(rank_by_stance(upstream, "CMP")[0]) == ["ETCH_WALL", "CMP_PRESSURE", "CMP_SLURRY"]
+
+
+def test_no_rerank_when_no_unrefuted_cause_fits_the_next_step():
+    result = {"nextStep": "CURRENT_CHECK",
+              "candidateCauses": [_cause(1, "CMP_PRESSURE", [], ["E-1"]), _cause(2, "ETCH_WALL", ["E-2"], [])]}
+    out, changed = rank_by_stance(result, "CMP")
+    assert not changed and out is result

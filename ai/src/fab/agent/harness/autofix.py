@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 
+from fab.agent.causes import CAUSES, PROCESS_ORDER
 from fab.agent.stance import REFUTED, cause_stance
 
 RERANKED = "1순위 후보가 반대 근거가 더 많아(반증) Harness가 반증이 아닌 후보를 1순위로 올렸습니다 — 나머지 순서는 그대로입니다."
@@ -41,13 +42,27 @@ def resolve_short_ids(result: dict, known: set[str]) -> tuple[dict, dict[str, st
     return {**result, "observedFacts": facts, "candidateCauses": causes}, fixed
 
 
-def rank_by_stance(result: dict) -> tuple[dict, bool]:
-    """1순위 후보가 반증(반대 근거가 더 많음)이면 반증이 아닌 후보 중 가장 앞의 것을 1순위로 올린다 — 나머지 순서는 그대로,
-    priority는 1..n으로 다시 매긴다. 순서만 틀린 답을 반려하면 실제 모델은 같은 순서로 다시 내 판단 한도에 닿곤 했다"""
+def _fits(cause: dict, next_step: str | None, incident_process: str | None) -> bool:
+    """이 후보를 1순위로 올려도 nextStep과 맞나 — CURRENT_CHECK는 사건 공정 원인, UPSTREAM_CHECK는 앞 공정 원인(공정 무관 원인은 둘 다)"""
+    if next_step not in ("CURRENT_CHECK", "UPSTREAM_CHECK") or incident_process not in PROCESS_ORDER:
+        return True
+    processes = {CAUSES[cause_id][0] for cause_id in cause.get("causeIds") or [] if cause_id in CAUSES}
+    if not processes or "ALL" in processes:
+        return True
+    if next_step == "CURRENT_CHECK":
+        return incident_process in processes
+    return any(PROCESS_ORDER.index(p) < PROCESS_ORDER.index(incident_process) for p in processes if p in PROCESS_ORDER)
+
+
+def rank_by_stance(result: dict, incident_process: str | None = None) -> tuple[dict, bool]:
+    """1순위 후보가 반증(반대 근거가 더 많음)이면 반증이 아니고 nextStep에 맞는 후보 중 가장 앞의 것을 1순위로 올린다 — 나머지 순서는
+    그대로, priority는 1..n으로 다시 매긴다. 순서만 틀린 답을 반려하면 실제 모델은 같은 순서로 다시 내 판단 한도에 닿곤 했다.
+    nextStep에 맞지 않는 후보(CURRENT_CHECK인데 앞 공정 원인)를 올리면 다른 이유로 다시 반려됐다 — 맞는 후보가 없으면 그대로 둔다"""
     causes = sorted(result.get("candidateCauses") or [], key=lambda cause: cause.get("priority") or 99)
     if not causes or cause_stance(causes[0]) != REFUTED:
         return result, False
-    first = next((cause for cause in causes if cause_stance(cause) != REFUTED), None)
+    first = next((cause for cause in causes if cause_stance(cause) != REFUTED
+                  and _fits(cause, result.get("nextStep"), incident_process)), None)
     if first is None:
         return result, False
     ordered = [first, *(cause for cause in causes if cause is not first)]

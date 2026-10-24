@@ -153,7 +153,7 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
     args, short_ids = autofix.resolve_short_ids(args, turn.known_ids())  # 줄여 쓴 근거 ID(문서 ID만 등) — 후보가 하나면 바로잡는다
     args, text_ids = autofix.move_text_ids(args, turn.known_ids())  # 사실 글에만 적은 조회한 근거 ID — 근거 칸으로
     args, not_found = autofix.not_found_facts_to_limitations(args)  # 근거 없는 「조회되지 않음」 사실 — 한계로
-    args, reranked = autofix.rank_by_stance(args)  # 순서만 틀린 원인 후보(반증된 1순위) — 반려하지 않고 바로잡는다
+    args, reranked = autofix.rank_by_stance(args, state.get("incidentProcess"))  # 순서만 틀린 원인 후보(반증된 1순위) — 반려하지 않고 바로잡는다
     if reranked:
         args = _with_limitation(args, autofix.RERANKED)
     if short_ids or reranked or text_ids or not_found:
