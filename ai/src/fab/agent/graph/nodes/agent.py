@@ -74,6 +74,9 @@ async def agent(state: AgentState, config) -> dict:
     counters["modelCalls"] += 1
     if not reply.tool_calls and state.get("result"):  # 답은 이미 접수됐다(요청서 알림에 말로 「필요 없다」고 답한 경우) — 그대로 끝낸다
         return {"messages": [reply], "counters": counters}
+    if not reply.tool_calls:  # 왜 도구 호출이 없나 — 마지막 호출(제출 강제) 뒤에도 제출 없이 끝나는 일이 있었다
+        job_runtime.tracer.event("no_tool_call", lastCall=tool_choice is not None, textChars=len(str(reply.content or "")),
+                                 invalidToolCalls=len(getattr(reply, "invalid_tool_calls", None) or []))
     if not reply.tool_calls:  # 제출 없이 말로 끝내려 하면 제출 도구를 쓰라고 되돌린다
         nudge = HumanMessage(content="[Harness] 결과는 반드시 submit_result(또는 submit_report)로 제출하세요.")
         return {"messages": [reply, nudge], "counters": counters}
