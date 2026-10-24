@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -162,7 +163,9 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
         args, id_error = _check_question_ids(turn, args)
         args, statement_error = _check_statements(turn, args)
         args, step_error = (args, None) if state.get("answerOnly") else _check_next_step(turn, args)  # 답만 하는 질문은 판단을 내지 않는다
-        errs = [e for e in (doc_error, id_error, statement_error, step_error) if e]
+        args, data_error = _check_data_claims(turn, args)
+        args, relation_error = _check_document_claims(turn, args)
+        errs = [e for e in (doc_error, id_error, statement_error, step_error, data_error, relation_error) if e]
     if not errs:
         args, note, change_error = _check_conclusion(turn, args)
         errs = [change_error] if change_error else []
@@ -256,6 +259,51 @@ def _check_next_step(turn: _Turn, args: dict) -> tuple[dict, str | None]:
         return args, (f"nextStep {step}이 조회한 데이터와 맞지 않습니다 — {why}이므로 {expected}입니다(근거가 모자라면 "
                       "INSUFFICIENT_EVIDENCE). 1순위 원인 후보와 nextStep을 데이터에 맞게 고치세요.")
     return _with_limitation(args, f"nextStep {step}은 조회 데이터({why})로 보면 {expected}에 해당합니다 — 검증되지 않은 판단입니다."), None
+
+
+def _check_data_claims(turn: _Turn, args: dict) -> tuple[dict, str | None]:
+    """조회 데이터와 반대인 단정(guard.contradicted_claims) — 한 번 반려하고, 두 번째는 그 문장을 빼고 한계에 남겨 받는다"""
+    seen = tool_results([*(turn.state.get("messages") or []), *turn.out])
+    found = guard.contradicted_claims(args, seen, turn.state.get("incidentProcess"))
+    if not found:
+        return args, None
+    if turn.counters.get("dataClaimRejects", 0) == 0:
+        turn.counters["dataClaimRejects"] = 1
+        return args, ("조회 데이터와 반대입니다: " + " / ".join(f"{why} — 「{sentence[:60]}」" for sentence, why in found)
+                      + ". 도구 결과대로 고치세요(모르면 확인할 수 없다고 답합니다).")
+    drop = {sentence for sentence, _ in found}
+    trim = lambda text: " ".join(m.group(0).strip() for m in re.finditer(r"((?:[^.。!?\n]|\.\d)+)([.。!?]?)", str(text or ""))  # noqa: E731
+                                 if m.group(1).strip() and m.group(1).strip() not in drop)
+    facts = [{**fact, "text": trim(fact.get("text"))} for fact in args.get("observedFacts") or []]
+    args = {**args, "answer": trim(args.get("answer")), "observedFacts": [fact for fact in facts if fact["text"]]}
+    turn.rt.tracer.event("data_claims_dropped", count=len(drop))
+    return _with_limitation(args, f"조회 데이터와 맞지 않는 문장 {len(drop)}개를 뺐습니다(도구 결과와 반대인 단정)."), None
+
+
+def _document_chunks(turn: _Turn) -> dict[str, str]:
+    """이번 작업에서 본 기술 문서 청크 글 — evidenceId → 글(검색 결과의 excerpt)"""
+    seen = tool_results([*(turn.state.get("messages") or []), *turn.out])
+    return {item["evidenceId"]: str(item.get("excerpt") or item.get("text") or "")
+            for result in seen.get("search_technical_documents", []) for item in (result.get("data") or {}).get("items") or []
+            if item.get("evidenceId")}
+
+
+def _check_document_claims(turn: _Turn, args: dict) -> tuple[dict, str | None]:
+    """원문에 없는 관계를 원문 근거로 쓴 문장(doc_citation.unsupported_relations) — 한 번 반려하고, 두 번째는 그 문장을 빼고 받는다"""
+    chunks = _document_chunks(turn)
+    found = doc_citation.unsupported_relations(args, chunks) if chunks else []
+    if not found:
+        return args, None
+    if turn.counters.get("documentClaimRejects", 0) == 0:
+        turn.counters["documentClaimRejects"] = 1
+        return args, doc_citation.DOC_CLAIM_REJECT.format(detail=" / ".join(f"「{sentence[:50]}」: {why}" for sentence, why in found))
+    drop = {sentence for sentence, _ in found}
+    answer = " ".join(m.group(0).strip() for m in doc_citation._SENTENCE.finditer(str(args.get("answer") or ""))
+                      if m.group(1).strip() and m.group(1).strip() not in drop)
+    facts = [fact for fact in args.get("observedFacts") or [] if str(fact.get("text")) not in drop]
+    turn.rt.tracer.event("document_claims_dropped", count=len(drop))
+    return _with_limitation({**args, "answer": answer, "observedFacts": facts},
+                            doc_citation.DOC_CLAIM_LIMITATION.format(count=len(drop))), None
 
 
 def _with_limitation(args: dict, text: str) -> dict:

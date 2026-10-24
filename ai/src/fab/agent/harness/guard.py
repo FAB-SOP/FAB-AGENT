@@ -299,6 +299,40 @@ def not_found_limitation(ids: list[str]) -> str:
     return f"질문의 {', '.join(ids)}는 이번 조회 결과에 없어 확인하지 않았습니다(조회되지 않음)."
 
 
+# 조회 데이터와 반대인 단정 — 실제 모델은 「정비 뒤에 해결된 거지?」 같은 질문에 맞춰, 도구 결과가 정상 변동 밖인 run을
+# 「정상 범위로 돌아왔다」고 하거나 규격 안 두께를 「규격을 벗어났다」고 답했다. 같은 문장이 부정 · 미확인으로 맺으면 단정이 아니다
+_DATA_SENTENCE = re.compile(r"(?:[^.。!?\n]|\.\d)+")
+_RECOVERED = re.compile(r"정상\s*(?:변동\s*)?(?:범위|안)(?:\s*내)?\s*(?:으로|로)\s*(?:돌아|회복|복귀|개선)|(?:회복|정상화|복귀)(?:됐|되었|된|되어|했)")
+_SPEC_OUT = re.compile(r"규격(?:[^.。!?\n]|\.\d){0,25}(?:벗어났|벗어남|벗어나 있|이탈했|이탈함|이탈입니다|밖으로|밖이며|밖입니다|밖임|초과했|초과함|넘었)")
+_NOT_ASSERTED = re.compile(r"볼\s*수\s*없|아니|않|없습니다|없어|없음|불확실|명확하지|단정할\s*수\s*없|확인할\s*수\s*없|는지")
+
+
+def _asserted(sentence: str, match) -> bool:
+    return not _NOT_ASSERTED.search(sentence[match.start():])
+
+
+def contradicted_claims(result: dict, seen: dict, incident_process: str | None) -> list[tuple[str, str]]:
+    """답 · 관측 사실 문장 가운데 조회 데이터와 반대인 것 — (문장, 이유). 정상 변동 밖 run의 「정상 범위로 돌아옴」과 규격 안 두께의
+    「규격 이탈」 두 가지만 본다"""
+    runs = runs_by_process(seen)
+    texts = [str(result.get("answer") or "")] + [str(fact.get("text") or "") for fact in result.get("observedFacts") or []]
+    found: list[tuple[str, str]] = []
+    for sentence in (s.strip() for text in texts for s in _DATA_SENTENCE.findall(text) if s.strip()):
+        recovered = _RECOVERED.search(sentence)
+        if recovered and _asserted(sentence, recovered):
+            out = [run for process, run in runs.items() if run.get("amountWithinNormalVariation") is False
+                   and (run.get("equipmentId") in sentence or run.get("runId") in sentence or f"{process} 공정" in sentence
+                        or f"{process} 제거량" in sentence or f"{process} 증착량" in sentence or f"{process} run" in sentence)]
+            if out:
+                found.append((sentence, f"{', '.join(run['equipmentId'] for run in out)} run은 조회 결과 정상 변동 밖입니다"))
+                continue
+        spec = _SPEC_OUT.search(sentence)
+        current = runs.get(incident_process or "")
+        if spec and _asserted(sentence, spec) and current and current.get("oos") is False:
+            found.append((sentence, f"사건 공정({incident_process}) 두께는 조회 결과 제품 규격 안입니다(oos=false)"))
+    return found
+
+
 def drop_unseen_sentences(text: str, seen_text: str) -> tuple[str, list[str]]:
     """조회하지 않은 로트 · 웨이퍼 · run을 말하는 문장을 뺀다(「조회되지 않음」을 밝힌 문장은 둔다) — (남은 글, 뺀 대상 ID)"""
     kept, ids = [], []
