@@ -6,6 +6,10 @@
 
 from __future__ import annotations
 
+from fab.agent.stance import REFUTED, cause_stance
+
+RERANKED = "1순위 후보가 반대 근거가 더 많아(반증) Harness가 반증이 아닌 후보를 1순위로 올렸습니다 — 나머지 순서는 그대로입니다."
+
 
 def longer_ids(evidence_id: str, known: set[str]) -> list[str]:
     """조회한 ID 가운데 이 ID로 시작하는 더 긴 ID — 줄여 쓴 ID의 후보"""
@@ -33,3 +37,16 @@ def resolve_short_ids(result: dict, known: set[str]) -> tuple[dict, dict[str, st
     if not fixed:
         return result, {}
     return {**result, "observedFacts": facts, "candidateCauses": causes}, fixed
+
+
+def rank_by_stance(result: dict) -> tuple[dict, bool]:
+    """1순위 후보가 반증(반대 근거가 더 많음)이면 반증이 아닌 후보 중 가장 앞의 것을 1순위로 올린다 — 나머지 순서는 그대로,
+    priority는 1..n으로 다시 매긴다. 순서만 틀린 답을 반려하면 실제 모델은 같은 순서로 다시 내 판단 한도에 닿곤 했다"""
+    causes = sorted(result.get("candidateCauses") or [], key=lambda cause: cause.get("priority") or 99)
+    if not causes or cause_stance(causes[0]) != REFUTED:
+        return result, False
+    first = next((cause for cause in causes if cause_stance(cause) != REFUTED), None)
+    if first is None:
+        return result, False
+    ordered = [first, *(cause for cause in causes if cause is not first)]
+    return {**result, "candidateCauses": [{**cause, "priority": i + 1} for i, cause in enumerate(ordered)]}, True

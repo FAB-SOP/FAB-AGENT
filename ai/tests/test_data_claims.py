@@ -85,3 +85,14 @@ def test_contradiction_is_sent_back_once_then_the_sentence_is_dropped():
     accepted = turn.update["result"]
     assert accepted["answer"] == "후속 run은 아직 볼 수 없습니다."  # 뺀 문장만 사라지고 나머지는 문장부호까지 그대로
     assert any("조회 데이터와 맞지 않는" in item for item in accepted["limitations"])
+
+
+def test_negation_of_a_later_clause_does_not_cancel_the_recovery_claim():
+    """「회복된 관측은 있으나 해결은 확정할 수 없습니다」 — 뒤 절의 부정은 앞 절의 단정을 지우지 않는다"""
+    answer = "정비 이후 ETCH-PM2 제거량이 정상 범위로 회복된 관측은 있으나 해결 여부는 확정할 수 없습니다."
+    assert len(contradicted_claims(_result(answer), SEEN, "CMP")) == 1
+
+
+def test_spec_claim_written_as_a_state_is_contradicted():
+    assert len(contradicted_claims(_result("이번 CMP 두께는 제품 규격 상한을 벗어난 상태입니다."), SEEN, "CMP")) == 1
+    assert contradicted_claims(_result("CMP 두께가 제품 규격을 벗어난 것은 아닙니다."), SEEN, "CMP") == []

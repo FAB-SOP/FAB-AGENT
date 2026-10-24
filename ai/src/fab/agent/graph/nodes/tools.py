@@ -151,8 +151,11 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
         turn.rt.tracer.event("work_suggestions_dropped", reason="no_causes", count=len(args["workSuggestions"]))
         args = {**args, "workSuggestions": []}
     args, short_ids = autofix.resolve_short_ids(args, turn.known_ids())  # 줄여 쓴 근거 ID(문서 ID만 등) — 후보가 하나면 바로잡는다
-    if short_ids:
-        turn.rt.tracer.event("auto_fix", shortIds=short_ids)
+    args, reranked = autofix.rank_by_stance(args)  # 순서만 틀린 원인 후보(반증된 1순위) — 반려하지 않고 바로잡는다
+    if reranked:
+        args = _with_limitation(args, autofix.RERANKED)
+    if short_ids or reranked:
+        turn.rt.tracer.event("auto_fix", shortIds=short_ids, reranked=reranked)
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
     errs += validate_work_suggestions(args.get("workSuggestions"), turn.known_ids())
     errs += _once(turn, "claimRejects", CLAIM_ERROR, validate_answer(args, state.get("purpose"), turn.known_ids()))

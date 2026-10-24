@@ -303,12 +303,13 @@ def not_found_limitation(ids: list[str]) -> str:
 # 「정상 범위로 돌아왔다」고 하거나 규격 안 두께를 「규격을 벗어났다」고 답했다. 같은 문장이 부정 · 미확인으로 맺으면 단정이 아니다
 _DATA_SENTENCE = re.compile(r"(?:[^.。!?\n]|\.\d)+")
 _RECOVERED = re.compile(r"정상\s*(?:변동\s*)?(?:범위|안)(?:\s*내)?\s*(?:으로|로)\s*(?:돌아|회복|복귀|개선)|(?:회복|정상화|복귀)(?:됐|되었|된|되어|했)")
-_SPEC_OUT = re.compile(r"규격(?:[^.。!?\n]|\.\d){0,25}(?:벗어났|벗어남|벗어나 있|이탈했|이탈함|이탈입니다|밖으로|밖이며|밖입니다|밖임|초과했|초과함|넘었)")
-_NOT_ASSERTED = re.compile(r"볼\s*수\s*없|아니|않|없습니다|없어|없음|불확실|명확하지|단정할\s*수\s*없|확인할\s*수\s*없|는지")
+_SPEC_OUT = re.compile(r"규격(?:[^.。!?\n]|\.\d){0,25}(?:벗어났|벗어남|벗어난|벗어나 있|이탈했|이탈함|이탈입니다|밖으로|밖이며|밖입니다|밖임|초과했|초과함|넘었)")
+_NOT_ASSERTED = re.compile(r"볼\s*수\s*없|아니|아닙|않|없습니다|없어|없음|불확실|명확하지|단정할\s*수\s*없|확인할\s*수\s*없|는지")
 
 
 def _asserted(sentence: str, match) -> bool:
-    return not _NOT_ASSERTED.search(sentence[match.start():])
+    """단정 바로 뒤(15자 안)에 부정 · 미확인이 붙지 않았나 — 뒤 절의 「확정할 수 없습니다」는 앞 절의 단정을 지우지 않는다"""
+    return not _NOT_ASSERTED.search(sentence[match.end():match.end() + 15])
 
 
 def contradicted_claims(result: dict, seen: dict, incident_process: str | None) -> list[tuple[str, str]]:
