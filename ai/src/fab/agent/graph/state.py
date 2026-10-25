@@ -36,6 +36,7 @@ class AgentState(TypedDict, total=False):
     result: dict | None
     previousResult: dict | None  # 승인 · 회신으로 재개하기 전에 접수된 답 — 다시 정리하기 전에 멈추면 이것을 쓴다
     retryProposal: bool  # 요청서가 고칠 수 있는 이유로 반려돼 모델에게 한 번 돌려보낼지
+    autoRequest: bool | None  # 원인 질문의 답에 요청서가 없어 Harness가 요청서 초안을 낼 차례(fab.agent.auto_request)
     analysis: dict | None  # 계약 밖 정보(nextStep 등) — 계약 개정 전까지 따로 둔다
     workSuggestions: list | None  # 답과 함께 내는 업무 후보(fab.agent.work) — RESULT_READY.payload.workSuggestions
     report: dict | None

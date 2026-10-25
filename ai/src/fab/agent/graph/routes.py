@@ -24,6 +24,8 @@ def route_agent(state: AgentState) -> str:
 def route_tools(state: AgentState) -> str:
     if state.get("pending") and state["pending"]["kind"] == "APPROVAL":
         return "approval_wait"
+    if state.get("autoRequest"):  # 답은 접수됐고 요청서가 없다 — Harness가 요청서 초안을 낸다(agent 노드, 모델 호출 없음)
+        return "agent"
     if state.get("retryProposal"):  # 답은 접수됐지만 요청서가 고칠 수 있는 이유로 반려됨 — 한 번은 다시 고칠 기회
         return "agent"
     if state.get("result") or state.get("report"):

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -12,9 +13,9 @@ from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 
 from fab.agent.evidence import looked_up_text, tool_results
 from fab.agent.graph.state import AgentState, current_job, record_evidence, runtime
-from fab.agent.harness import context, guard, incident_rules, limits
+from fab.agent.harness import autofix, context, guard, incident_rules, limits
 from fab.agent.harness.retry import TransientJobError
-from fab.agent import purpose
+from fab.agent import purpose, question_kind
 from fab.agent.purpose import may_propose
 from fab.agent.tools import HARNESS_NAMES, PROPOSALS, ToolCallError
 from fab.agent.answer import CLAIM_ERROR, missing_statements, validate_answer
@@ -96,7 +97,8 @@ def _final_turn(turn: _Turn) -> bool:
 
 def _salvaged(turn: _Turn, args: dict) -> tuple[dict, list[str]]:
     """마지막 제출이 검사를 못 넘으면 넘지 못한 항목만 빼고 받는다 — 반려하면 한도로 빈 결과가 된다(실제 모델 평가에서 본 일).
-    빼는 것: 업무 후보, 근거가 없거나 조회하지 않은 근거만 가진 관측 사실, 원인 후보의 조회하지 않은 근거 ID"""
+    빼는 것: 업무 후보, 근거가 없거나 조회하지 않은 근거만 가진 관측 사실, 원인 후보의 조회하지 않은 근거 ID,
+    조회하지 않은 대상(로트 · 웨이퍼 · run)을 말하는 문장"""
     known, dropped = turn.known_ids(), []
     out = dict(args)
     if out.get("workSuggestions"):
@@ -109,7 +111,28 @@ def _salvaged(turn: _Turn, args: dict) -> tuple[dict, list[str]]:
     out["candidateCauses"] = [{**cause, "supportingEvidenceIds": [e for e in cause.get("supportingEvidenceIds") or [] if e in known],
                                "conflictingEvidenceIds": [e for e in cause.get("conflictingEvidenceIds") or [] if e in known]}
                               for cause in out.get("candidateCauses") or []]
-    return out, dropped
+    return _without_unseen_targets(turn, out, dropped)
+
+
+def _without_unseen_targets(turn: _Turn, out: dict, dropped: list[str]) -> tuple[dict, list[str]]:
+    """조회하지 않은 대상을 말하는 문장 — 답 · 관측 사실 · 원인 가설에서 빼고, 답 앞에 「조회되지 않음」을 붙인다"""
+    seen, unseen, count = _seen_text(turn), [], 0
+
+    def keep(text):
+        nonlocal count
+        kept, ids = guard.drop_unseen_sentences(str(text or ""), seen)
+        unseen.extend(i for i in ids if i not in unseen)
+        count += bool(ids)
+        return kept
+
+    answer = keep(out.get("answer"))
+    facts = [{**fact, "text": keep(fact.get("text"))} for fact in out.get("observedFacts") or []]
+    causes = [{**cause, "hypothesis": keep(cause.get("hypothesis"))} for cause in out.get("candidateCauses") or []]
+    if not unseen:
+        return out, dropped
+    out = {**out, "answer": f"{', '.join(unseen)}는 조회되지 않아 확인할 수 없습니다. {answer}".strip(),
+           "observedFacts": [fact for fact in facts if fact["text"]], "candidateCauses": [cause for cause in causes if cause["hypothesis"]]}
+    return out, [*dropped, f"조회하지 않은 대상 문장 {count}개"]
 
 
 def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = True) -> None:
@@ -127,6 +150,14 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
     if not args.get("candidateCauses") and args.get("workSuggestions"):  # 원인 후보 없는 사실 답 — 할 일 후보도 붙이지 않는다
         turn.rt.tracer.event("work_suggestions_dropped", reason="no_causes", count=len(args["workSuggestions"]))
         args = {**args, "workSuggestions": []}
+    args, short_ids = autofix.resolve_short_ids(args, turn.known_ids())  # 줄여 쓴 근거 ID(문서 ID만 등) — 후보가 하나면 바로잡는다
+    args, text_ids = autofix.move_text_ids(args, turn.known_ids())  # 사실 글에만 적은 조회한 근거 ID — 근거 칸으로
+    args, not_found = autofix.not_found_facts_to_limitations(args)  # 근거 없는 「조회되지 않음」 사실 — 한계로
+    args, reranked = autofix.rank_by_stance(args, state.get("incidentProcess"))  # 순서만 틀린 원인 후보(반증된 1순위) — 반려하지 않고 바로잡는다
+    if reranked:
+        args = _with_limitation(args, autofix.RERANKED)
+    if short_ids or reranked or text_ids or not_found:
+        turn.rt.tracer.event("auto_fix", shortIds=short_ids, reranked=reranked, textIds=text_ids, notFoundFacts=not_found)
     errs = guard.validate_result(args, turn.known_ids(), state.get("incidentProcess"))
     errs += validate_work_suggestions(args.get("workSuggestions"), turn.known_ids())
     errs += _once(turn, "claimRejects", CLAIM_ERROR, validate_answer(args, state.get("purpose"), turn.known_ids()))
@@ -137,7 +168,9 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
         args, id_error = _check_question_ids(turn, args)
         args, statement_error = _check_statements(turn, args)
         args, step_error = (args, None) if state.get("answerOnly") else _check_next_step(turn, args)  # 답만 하는 질문은 판단을 내지 않는다
-        errs = [e for e in (doc_error, id_error, statement_error, step_error) if e]
+        args, data_error = _check_data_claims(turn, args)
+        args, relation_error = _check_document_claims(turn, args)
+        errs = [e for e in (doc_error, id_error, statement_error, step_error, data_error, relation_error) if e]
     if not errs:
         args, note, change_error = _check_conclusion(turn, args)
         errs = [change_error] if change_error else []
@@ -153,17 +186,19 @@ def handle_submit(turn: _Turn, name: str, args: dict, cid: str, salvage: bool = 
         turn.rt.tracer.event("guard_reject", tool=name, errors=errs)
         turn.say("[REJECTED] " + " / ".join(err.removeprefix("[REJECTED] ") for err in errs), cid, name)
     else:
-        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + _missing_proposal_note(turn, args), cid, name)
+        turn.say("[ACCEPTED] 결과를 접수했습니다." + note + _missing_request(turn, args), cid, name)
         turn.update["result"] = args
         turn.accepted_cid = cid
 
 
-def _missing_proposal_note(turn: _Turn, args: dict) -> str:
-    """질문 작업에서 원인 확인이 필요하다는 답(CURRENT_CHECK · UPSTREAM_CHECK)을 냈는데 요청서가 없으면 — 근거가 있는 요청을
-    낼지 한 번 알린다. 강제하지 않는다(필요 없다고 보면 그대로 끝난다). 실제 모델은 같은 질문에 요청서를 냈다 안 냈다 했다(평가셋 AE01)"""
+def _missing_request(turn: _Turn, args: dict) -> str:
+    """질문 작업에서 원인 확인이 필요하다는 답(CURRENT_CHECK · UPSTREAM_CHECK)을 냈는데 요청서가 없으면 — 근거가 있는 요청서
+    초안을 Harness가 낸다(fab.agent.auto_request). 알림만 주면 실제 모델은 같은 원인 질문에 요청서를 냈다 안 냈다 했다(평가셋 AE01).
+    초안은 승인 카드로만 나간다 — 보낼지는 사람이 정한다"""
     state = turn.state
     if (state.get("purpose") != purpose.QUESTION or args.get("nextStep") not in ("CURRENT_CHECK", "UPSTREAM_CHECK")
-            or not args.get("candidateCauses")  # 원인을 묻지 않은 사실 답에는 요청서를 권하지 않는다
+            or not args.get("candidateCauses")  # 원인을 묻지 않은 사실 답에는 요청서를 내지 않는다
+            or not question_kind.asks_cause(state.get("question"))  # 원인 · 고장 · 점검을 묻는 질문에만
             or not may_propose(state) or state.get("proposals") or turn.update.get("pending")
             or turn.counters.get("heldProposal") or turn.counters.get("proposalNudges", 0) >= 1):
         return ""
@@ -175,9 +210,8 @@ def _missing_proposal_note(turn: _Turn, args: dict) -> str:
     if suggestion is None:
         return ""
     turn.counters["proposalNudges"] = 1
-    turn.nudge_retry = True
-    return (f" 이 답은 {args['nextStep']}인데 요청서가 없습니다. 근거가 있는 요청을 낼지 정하세요 — {suggestion}. "
-            "필요 없다고 보면 그대로 두면 됩니다(다시 제출하지 않아도 이 답으로 끝납니다).")
+    turn.update["autoRequest"] = True
+    return f" 이 답은 {args['nextStep']}인데 요청서가 없어 Harness가 근거 있는 요청서 초안을 냅니다 — {suggestion}."
 
 
 def _check_documents(turn: _Turn, args: dict) -> tuple[dict, str | None]:
@@ -230,6 +264,51 @@ def _check_next_step(turn: _Turn, args: dict) -> tuple[dict, str | None]:
         return args, (f"nextStep {step}이 조회한 데이터와 맞지 않습니다 — {why}이므로 {expected}입니다(근거가 모자라면 "
                       "INSUFFICIENT_EVIDENCE). 1순위 원인 후보와 nextStep을 데이터에 맞게 고치세요.")
     return _with_limitation(args, f"nextStep {step}은 조회 데이터({why})로 보면 {expected}에 해당합니다 — 검증되지 않은 판단입니다."), None
+
+
+def _check_data_claims(turn: _Turn, args: dict) -> tuple[dict, str | None]:
+    """조회 데이터와 반대인 단정(guard.contradicted_claims) — 한 번 반려하고, 두 번째는 그 문장을 빼고 한계에 남겨 받는다"""
+    seen = tool_results([*(turn.state.get("messages") or []), *turn.out])
+    found = guard.contradicted_claims(args, seen, turn.state.get("incidentProcess"))
+    if not found:
+        return args, None
+    if turn.counters.get("dataClaimRejects", 0) == 0:
+        turn.counters["dataClaimRejects"] = 1
+        return args, ("조회 데이터와 반대입니다: " + " / ".join(f"{why} — 「{sentence[:60]}」" for sentence, why in found)
+                      + ". 도구 결과대로 고치세요(모르면 확인할 수 없다고 답합니다).")
+    drop = {sentence for sentence, _ in found}
+    trim = lambda text: " ".join(m.group(0).strip() for m in re.finditer(r"((?:[^.。!?\n]|\.\d)+)([.。!?]?)", str(text or ""))  # noqa: E731
+                                 if m.group(1).strip() and m.group(1).strip() not in drop)
+    facts = [{**fact, "text": trim(fact.get("text"))} for fact in args.get("observedFacts") or []]
+    args = {**args, "answer": trim(args.get("answer")), "observedFacts": [fact for fact in facts if fact["text"]]}
+    turn.rt.tracer.event("data_claims_dropped", count=len(drop))
+    return _with_limitation(args, f"조회 데이터와 맞지 않는 문장 {len(drop)}개를 뺐습니다(도구 결과와 반대인 단정)."), None
+
+
+def _document_chunks(turn: _Turn) -> dict[str, str]:
+    """이번 작업에서 본 기술 문서 청크 글 — evidenceId → 글(검색 결과의 excerpt)"""
+    seen = tool_results([*(turn.state.get("messages") or []), *turn.out])
+    return {item["evidenceId"]: str(item.get("excerpt") or item.get("text") or "")
+            for result in seen.get("search_technical_documents", []) for item in (result.get("data") or {}).get("items") or []
+            if item.get("evidenceId")}
+
+
+def _check_document_claims(turn: _Turn, args: dict) -> tuple[dict, str | None]:
+    """원문에 없는 관계를 원문 근거로 쓴 문장(doc_citation.unsupported_relations) — 한 번 반려하고, 두 번째는 그 문장을 빼고 받는다"""
+    chunks = _document_chunks(turn)
+    found = doc_citation.unsupported_relations(args, chunks) if chunks else []
+    if not found:
+        return args, None
+    if turn.counters.get("documentClaimRejects", 0) == 0:
+        turn.counters["documentClaimRejects"] = 1
+        return args, doc_citation.DOC_CLAIM_REJECT.format(detail=" / ".join(f"「{sentence[:50]}」: {why}" for sentence, why in found))
+    drop = {sentence for sentence, _ in found}
+    answer = " ".join(m.group(0).strip() for m in doc_citation._SENTENCE.finditer(str(args.get("answer") or ""))
+                      if m.group(1).strip() and m.group(1).strip() not in drop)
+    facts = [fact for fact in args.get("observedFacts") or [] if str(fact.get("text")) not in drop]
+    turn.rt.tracer.event("document_claims_dropped", count=len(drop))
+    return _with_limitation({**args, "answer": answer, "observedFacts": facts},
+                            doc_citation.DOC_CLAIM_LIMITATION.format(count=len(drop))), None
 
 
 def _with_limitation(args: dict, text: str) -> dict:

@@ -10,6 +10,7 @@ import re
 
 from fab.agent.causes import CAUSES, PROCESS_ORDER
 from fab.agent.evidence import data, features_of, runs_by_id, runs_by_process
+from fab.agent.harness.autofix import longer_ids
 from fab.agent.stance import REFUTED, cause_stance
 
 NEXT_STEPS = {"CURRENT_CHECK", "UPSTREAM_CHECK", "OBSERVE", "INSUFFICIENT_EVIDENCE", "NEEDS_DEEP_ANALYSIS"}
@@ -46,7 +47,10 @@ def validate_result(result: dict, known_evidence: set[str], incident_process: st
         cited |= set(cause.get("supportingEvidenceIds") or []) | set(cause.get("conflictingEvidenceIds") or [])
     unknown = cited - known_evidence
     if unknown:
-        errors.append(f"조회하지 않은 근거 ID를 인용했습니다: {sorted(unknown)}. 도구 결과의 evidenceId만 쓰세요.")
+        hints = [f"{evidence_id} → {', '.join(longer_ids(evidence_id, known_evidence))}" for evidence_id in sorted(unknown)
+                 if longer_ids(evidence_id, known_evidence)]
+        errors.append(f"조회하지 않은 근거 ID를 인용했습니다: {sorted(unknown)}. 도구 결과의 evidenceId만 쓰세요."
+                      + (f" 줄여 쓴 ID라면 조회한 ID 중에서 고르세요: {'; '.join(hints)}" if hints else ""))
     text = " ".join([fact.get("text", "") for fact in facts] +
                     [cause.get("hypothesis", "") for cause in result.get("candidateCauses") or []])
     if _PROB.search(text):
@@ -293,6 +297,53 @@ def unanswered_question_ids(question: str | None, result: dict, seen_text: str) 
 
 def not_found_limitation(ids: list[str]) -> str:
     return f"질문의 {', '.join(ids)}는 이번 조회 결과에 없어 확인하지 않았습니다(조회되지 않음)."
+
+
+# 조회 데이터와 반대인 단정 — 실제 모델은 「정비 뒤에 해결된 거지?」 같은 질문에 맞춰, 도구 결과가 정상 변동 밖인 run을
+# 「정상 범위로 돌아왔다」고 하거나 규격 안 두께를 「규격을 벗어났다」고 답했다. 같은 문장이 부정 · 미확인으로 맺으면 단정이 아니다
+_DATA_SENTENCE = re.compile(r"(?:[^.。!?\n]|\.\d)+")
+_RECOVERED = re.compile(r"정상\s*(?:변동\s*)?(?:범위|안)(?:\s*내)?\s*(?:으로|로)\s*(?:돌아|회복|복귀|개선)|(?:회복|정상화|복귀)(?:됐|되었|된|되어|했)")
+_SPEC_OUT = re.compile(r"규격(?:[^.。!?\n]|\.\d){0,25}(?:벗어났|벗어남|벗어난|벗어나 있|이탈했|이탈함|이탈입니다|밖으로|밖이며|밖입니다|밖임|초과했|초과함|넘었)")
+_NOT_ASSERTED = re.compile(r"볼\s*수\s*없|아니|아닙|않|없습니다|없어|없음|불확실|명확하지|단정할\s*수\s*없|확인할\s*수\s*없|는지")
+
+
+def _asserted(sentence: str, match) -> bool:
+    """단정 바로 뒤(15자 안)에 부정 · 미확인이 붙지 않았나 — 뒤 절의 「확정할 수 없습니다」는 앞 절의 단정을 지우지 않는다"""
+    return not _NOT_ASSERTED.search(sentence[match.end():match.end() + 15])
+
+
+def contradicted_claims(result: dict, seen: dict, incident_process: str | None) -> list[tuple[str, str]]:
+    """답 · 관측 사실 문장 가운데 조회 데이터와 반대인 것 — (문장, 이유). 정상 변동 밖 run의 「정상 범위로 돌아옴」과 규격 안 두께의
+    「규격 이탈」 두 가지만 본다"""
+    runs = runs_by_process(seen)
+    texts = [str(result.get("answer") or "")] + [str(fact.get("text") or "") for fact in result.get("observedFacts") or []]
+    found: list[tuple[str, str]] = []
+    for sentence in (s.strip() for text in texts for s in _DATA_SENTENCE.findall(text) if s.strip()):
+        recovered = _RECOVERED.search(sentence)
+        if recovered and _asserted(sentence, recovered):
+            out = [run for process, run in runs.items() if run.get("amountWithinNormalVariation") is False
+                   and (run.get("equipmentId") in sentence or run.get("runId") in sentence or f"{process} 공정" in sentence
+                        or f"{process} 제거량" in sentence or f"{process} 증착량" in sentence or f"{process} run" in sentence)]
+            if out:
+                found.append((sentence, f"{', '.join(run['equipmentId'] for run in out)} run은 조회 결과 정상 변동 밖입니다"))
+                continue
+        spec = _SPEC_OUT.search(sentence)
+        current = runs.get(incident_process or "")
+        if spec and _asserted(sentence, spec) and current and current.get("oos") is False:
+            found.append((sentence, f"사건 공정({incident_process}) 두께는 조회 결과 제품 규격 안입니다(oos=false)"))
+    return found
+
+
+def drop_unseen_sentences(text: str, seen_text: str) -> tuple[str, list[str]]:
+    """조회하지 않은 로트 · 웨이퍼 · run을 말하는 문장을 뺀다(「조회되지 않음」을 밝힌 문장은 둔다) — (남은 글, 뺀 대상 ID)"""
+    kept, ids = [], []
+    for sentence in re.findall(r"[^.。!?\n]+[.。!?]?\s*", text or ""):
+        unseen = [i for i in _TARGET_ID.findall(sentence) if i not in seen_text]
+        if unseen and not _NOT_FOUND.search(sentence):
+            ids += [i for i in unseen if i not in ids]
+            continue
+        kept.append(sentence)
+    return "".join(kept).strip(), ids
 
 
 def validate_seen_ids(result: dict, seen_text: str) -> list[str]:

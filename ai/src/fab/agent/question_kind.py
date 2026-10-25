@@ -19,5 +19,16 @@ def answer_only(question: str | None) -> bool:
     return bool(_ASKS_FACT.search(text)) and not _ASKS_JUDGEMENT.search(text)
 
 
+
+# 요청서 초안(fab.agent.auto_request)을 낼 질문 — 원인 · 고장 · 점검을 묻는다. 확정 · 보고서를 해 달라는 질문은 빼고(「원인이라고
+# 확정해 줘」), 설명 · 사실 질문에는 붙이지 않는다 — 붙이면 거절 뒤 다시 정리한 답이 질문의 답을 잃었다(실제 모델 평가)
+_ASKS_CAUSE = re.compile(r"원인(을|은|는|이\s*뭐|가\s*뭐|이야|일까|\s*분석)|왜|이유가|고장|점검|조치|무엇을\s*확인|뭘\s*확인")
+_ASKS_CONFIRMATION = re.compile(r"확정|보고서")
+
+
+def asks_cause(question: str | None) -> bool:
+    text = question or ""
+    return bool(_ASKS_CAUSE.search(text)) and not _ASKS_CONFIRMATION.search(text)
+
 NOTE = ("[답만 하는 질문] 이 질문은 수치 · 사실을 묻는다. `answer`에 물은 값 · 사실을 근거 ID와 함께 쓰고, `observedFacts`에는 그 근거만 "
         "넣는다. 원인 후보 · 할 일 후보 · 요청서는 이번 답에 없다 — 묻지 않은 공정 · 원인 이야기를 덧붙이지 않는다.")

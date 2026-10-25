@@ -17,5 +17,7 @@ class OpenAIModel:
         else:
             self._llm = ChatOpenAI(model=model, temperature=0, max_retries=0)
 
-    async def ainvoke(self, messages, tools):
-        return await self._llm.bind_tools(tools).ainvoke(messages)
+    async def ainvoke(self, messages, tools, tool_choice: str | None = None):
+        """tool_choice — 이 도구를 반드시 부르게 한다(판단 한도의 마지막 호출). None이면 모델이 고른다"""
+        bound = self._llm.bind_tools(tools, **({"tool_choice": tool_choice} if tool_choice else {}))
+        return await bound.ainvoke(messages)

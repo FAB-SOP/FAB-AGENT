@@ -119,3 +119,36 @@ def test_followup_run_results_are_not_observations_unless_looked_up():
     for answer in ("후속 확인 run 결과는 분석 시점 이후 자료라 볼 수 없습니다.", "해결 여부는 후속 확인 run 결과가 필요합니다."):
         assert validate_seen_ids(_result(answer), SEEN) == [], answer
     assert validate_seen_ids(_result(claim), SEEN + '{"runId":"RUN-W-FOLLOWUP-001-1-ETCH"}') == []  # 조회했으면 쓸 수 있다
+
+
+def test_drop_unseen_sentences_keeps_not_found_and_seen_sentences():
+    from fab.agent.harness.guard import drop_unseen_sentences
+
+    text = "CURRENT-L088는 조회되지 않습니다. 이번 사건 CURRENT-L006은 CMP 원인입니다. CURRENT-L088도 ETCH 때문에 두꺼워졌습니다."
+    kept, ids = drop_unseen_sentences(text, SEEN)
+    assert ids == ["CURRENT-L088"] and "ETCH 때문에" not in kept
+    assert "조회되지 않습니다" in kept and "CURRENT-L006은 CMP 원인입니다" in kept
+
+
+def test_final_submit_with_an_unseen_lot_claim_is_salvaged():
+    """판단 한도의 마지막 제출이 조회하지 않은 로트를 단정하면 — 반려하면 빈 결과가 되므로 그 문장을 빼고 「조회되지 않음」을 앞에 붙여 받는다"""
+    from fab.agent.graph.nodes.tools import _Turn, handle_submit
+    from fab.agent.harness import limits
+
+    class _Runtime:
+        class tracer:
+            @staticmethod
+            def event(*args, **kwargs):
+                pass
+
+    counters = {**limits.new_window(), "modelCalls": limits.LIMITS.max_model_calls}
+    messages = [AIMessage(content="", tool_calls=[{"id": "t1", "name": "get_wafer_lineage", "args": {}}]),
+                ToolMessage(content=SEEN, tool_call_id="t1", name="get_wafer_lineage")]
+    state = {"mode": "DEEP", "messages": messages, "counters": counters, "evidence": {"E-1": {}}, "proposals": [],
+             "result": None, "incidentProcess": "CMP"}
+    turn = _Turn(state, {"configurable": {"runtime": _Runtime()}})
+    result = {**_result("CURRENT-L088도 ETCH 때문에 두꺼워졌습니다. 이번 사건은 CMP 원인이 1순위입니다(E-1)."), "nextStep": "OBSERVE"}
+    handle_submit(turn, "submit_result", result, "c1")
+    assert str(turn.out[-1].content).startswith("[ACCEPTED]"), turn.out[-1].content
+    answer = turn.update["result"]["answer"]
+    assert answer.startswith("CURRENT-L088는 조회되지 않아 확인할 수 없습니다.") and "ETCH 때문에" not in answer
