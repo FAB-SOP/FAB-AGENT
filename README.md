@@ -8,7 +8,7 @@ Phase 2에서는 **질문에 맞는 답변, 분석·업무·회신의 연결, �
 | --- | --- |
 | Phase 2 개발 기간 | 2026.10.22~2026.10.26 |
 | Phase 1 기준 | [`phase1-end`](https://github.com/FAB-SOP/FAB-AGENT/tree/phase1-end) · `edd218af65c86cd59a3a4390226d78c0a1ef468e` |
-| 최종 제출 커밋 |  |
+| 최종 제출 커밋 | 915c8b8 |
 
 ## 목차
 
