@@ -51,7 +51,9 @@ export function AnalysisResultBody({result}:{result:Obj}){
    <div>
     <h3>{cause.cause||cause.hypothesis||'원인 후보'} <StanceBadge stance={cause.stance}/></h3>
     <EvidenceList ids={cause.supportingEvidence||cause.supportingEvidenceIds||[]} refs={evidenceRefs} label="지지 근거"/>
-    <EvidenceList ids={counterIds(cause)} refs={evidenceRefs} label="반대·추가 확인 근거"/>
+    {/* 반대 근거를 찾지 못한 것도 판단 정보다 — 숨기지 않고 밝힌다 */}
+    {counterIds(cause).length>0?<EvidenceList ids={counterIds(cause)} refs={evidenceRefs} label="반대·추가 확인 근거"/>
+     :<p className="small muted">반대 근거 · 확보되지 않음</p>}
     {cause.missingData?.length>0&&<p className="small muted">부족한 자료 · {cause.missingData.join(' / ')}</p>}
     {nextCheck(cause)&&<p>확인 항목 · {nextCheck(cause)}</p>}
     {cause.action&&<p>조치 제안 · {cause.action}</p>}
