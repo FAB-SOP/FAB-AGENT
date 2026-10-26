@@ -184,6 +184,6 @@ from backend.job where metrics is not null order by created_at desc;
 
 Agent는 `e98df45` 직전의 요청 흐름을 사용한다. 심층 조사에서 `propose_cross_process_check` 또는 `propose_maintenance_request`로 요청을 제안하고, `approval_wait`에서 사람의 결정을 기다린다. 승인되면 Harness가 승인 ID로 업무 MCP의 변경 도구를 호출하고, `reply_wait`에서 회신을 기다린 뒤 같은 사건의 조사를 재개한다. 거절도 같은 thread에서 사유를 반영한다.
 
-`submit_result.workSuggestions` 자동 업무 카드는 생성하지 않는다. Frontend·Backend의 기존 업무 목록·관리자 변경 승인·담당자 선택·회신·보고서 이력 기능은 유지되며, 사용자는 화면의 「분석에서 업무 제안」으로 업무를 직접 만들 수 있다. 업무 MCP 도구 목록도 이전 목록으로 복구했다. `FAB_LEGACY_REQUEST_PROPOSALS`는 더 이상 필요하지 않으며 동작을 바꾸지 않는다.
+`submit_result.workSuggestions`(최대 5개)는 `RESULT_READY.payload.workSuggestions`로 보내고, backend가 「채택 대기」 업무 카드로 만든다 — 채택 · 발송이 아니라 후보다. 원인 후보가 없는 수치 · 사실 질문의 답에는 붙이지 않는다. Frontend·Backend의 기존 업무 목록·관리자 변경 승인·담당자 선택·회신·보고서 이력 기능은 유지되며, 사용자는 화면의 「분석에서 업무 제안」으로 업무를 직접 만들 수도 있다. 업무 MCP 도구 목록도 이전 목록으로 복구했다. `FAB_LEGACY_REQUEST_PROPOSALS`는 더 이상 필요하지 않으며 동작을 바꾸지 않는다.
 
 이후 추가된 Docker 구조화 로그와 작업별 metrics는 유지한다. 기존 DB와 체크포인트는 자동 삭제·변경하지 않는다. 새 동작 검증에는 새 사건을 사용하고, 변경 기간에 만들어진 기존 thread는 저장된 지시문·제안·대기 상태를 확인한 뒤 사용한다.
