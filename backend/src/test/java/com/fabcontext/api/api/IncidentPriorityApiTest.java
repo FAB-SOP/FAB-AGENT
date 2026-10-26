@@ -28,13 +28,13 @@ class IncidentPriorityApiTest extends ApiTestSupport {
 	@Test
 	void legacyNullColumnsReturnUnevaluatedWithoutWritingOrInferringFromSeverity() throws Exception {
 		Session user = cmp();
-		String id = seededIncident(user, "EV-1009");
+		String id = seededIncident(user, "EV-1022");
 		long version = incidentVersion(user, id);
 		Map<String, Object> priority = json(getAs(user, "/api/incidents/{id}", id).andExpect(status().isOk()),
 			"$.data.investigationPriority");
 		assertThat(priority).containsEntry("status", "NOT_EVALUATED").containsEntry("level", null)
 			.containsEntry("provisional", false).containsEntry("reason", null);
-		getAs(user, "/api/incidents?q=EV-1009")
+		getAs(user, "/api/incidents?q=EV-1022")
 			.andExpect(jsonPath("$.data.items[0].investigationPriority.status").value("NOT_EVALUATED"));
 		assertThat(incidentVersion(user, id)).isEqualTo(version);
 		assertThat(jdbc.queryForObject("select investigation_priority_status from incident where incident_id=?", String.class, id)).isNull();

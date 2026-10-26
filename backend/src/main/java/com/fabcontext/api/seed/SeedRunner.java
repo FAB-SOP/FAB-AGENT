@@ -33,6 +33,8 @@ import com.fabcontext.api.domain.processdata.DataVersion;
 import com.fabcontext.api.domain.processdata.PackStore;
 import com.fabcontext.api.domain.processdata.ProcessEvidenceService;
 import com.fabcontext.api.domain.processdata.RouteRun;
+import com.fabcontext.api.domain.notification.NotificationEvents;
+import com.fabcontext.api.domain.priority.PriorityEvaluationService;
 import com.fabcontext.api.domain.report.CauseClassificationInput;
 import com.fabcontext.api.domain.report.Report;
 import com.fabcontext.api.domain.report.ReportDtos.ReportConfirm;
@@ -47,8 +49,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 시연 시나리오 시드. 과거 이력은 MutableClock을 잠시 과거로 옮겨 실제 서비스 로직으로 만든다.
- * 데이터 팩의 현재 로트 가운데 R1을 벗어난 run(EV-1006 · EV-1007 · EV-1009)이 사건이 되고, 세 사건 모두 기본 분석을 대기열에 둔다(Agent가 처리).
+ * 데이터 팩의 현재 로트 가운데 R1을 벗어난 run(EV-1006 · EV-1007 · EV-1009)과 우선순위 추가 묶음의 단일 센서 편차(EV-1011)가 사건이 된다.
+ * 현재 사건은 이상 이벤트 접수와 같이 우선순위 최초 평가 · 새 이상 알림 · 기본 분석을 등록한다(판정은 각 Worker · Agent가 한다).
  * 과거 사건(EV-1018~1023)은 보고서 시연용 합성 조사 서술이다. LOT·설비는 화면상 맥락이며 실제 wafer/run과 연결하지 않는다.
+ * EV-1018 · 1019 · 1020 · 1021은 서술에 맞는 원인 분류로 보고서를 확정해 원인 통계에 4M이 고르게 보이게 한다.
  * 실제 Agent 분석이나 4M 분류를 수행하지 않고, 공정 원본·RAG·현재 이상 사건 생성 경로는 바꾸지 않는다.
  */
 @Slf4j
@@ -70,6 +74,8 @@ public class SeedRunner implements ApplicationRunner {
 	private final ApprovalService approvalService;
 	private final DataVersion dataVersion;
 	private final PackStore pack;
+	private final PriorityEvaluationService priorityEvaluations;
+	private final NotificationEvents notificationEvents;
 
 	@Override
 	public void run(ApplicationArguments args) {
@@ -97,31 +103,41 @@ public class SeedRunner implements ApplicationRunner {
 		AuthUser cmp = user(SeedCatalog.CMP_ENGINEER);
 		AuthUser manager = user(SeedCatalog.MANAGER);
 		// ---- 과거 합성 조사 사례 — 표시 LOT만 맞추며 센서·계측 연결이나 4M 분류를 만들지 않는다.
-		seedClosedHistory(now, manager);
+		seedClosedHistory(now, cvd, cmp);
 		seedOpenHistory(now, cvd, cmp, manager);
 		seedCurrentIncidents();
 	}
 
-	/** 종료된 과거 사건 EV-1018 · EV-1019 · EV-1020 */
-	private void seedClosedHistory(Instant now, AuthUser manager) {
-		Instant d18 = now.minus(Duration.ofDays(12));
+	/** 보고서 확정으로 종료된 과거 사건 EV-1018(Man) · EV-1019(Material) · EV-1020(Method) — 원인 통계 시연용 */
+	private void seedClosedHistory(Instant now, AuthUser cvd, AuthUser cmp) {
+		// EV-1018은 지난달로 두어 원인 통계 월별 막대가 한 달에 몰리지 않게 한다
+		Instant d18 = now.minus(Duration.ofDays(35));
 		Incident ev1018 = incident(1018, "PAD_TEMP_DRIFT", "LOW", "CMP", d18);
-		close(ev1018, manager, d18.plus(Duration.ofHours(20)), "합성 조사 사례의 확인 절차·인수인계 검토 내용 정리 완료");
+		closedWithReport(ev1018, cmp, d18, new Closing("PROCEDURE_CHECK",
+			"정비 후 확인 체크리스트 재작성 및 인수인계 확인 서명 단계 추가", VerificationStatus.IMPROVED,
+			"이후 정비 건의 확인 항목 누락이 재발하지 않음", "MAN", List.of()));
 
 		Instant d19 = now.minus(Duration.ofDays(6));
 		Incident ev1019 = incident(1019, "DEP_RATE_DRIFT", "MEDIUM", "CVD", d19);
-		close(ev1019, manager, d19.plus(Duration.ofHours(30)), "합성 조사 사례의 원료 배치·사용 조건 검토 내용 정리 완료");
+		closedWithReport(ev1019, cvd, d19, new Closing("MATERIAL_CHECK",
+			"변경된 원료 배치 사용 중지 및 이전 배치와 성적서 비교 검토", VerificationStatus.IMPROVED,
+			"이전 배치로 되돌린 뒤 증착 결과가 기준 범위로 복귀", "MATERIAL", List.of()));
 
 		Instant d20 = now.minus(Duration.ofDays(5));
 		Incident ev1020 = incident(1020, "PRESSURE_FLUCTUATION", "MEDIUM", "CMP", d20);
-		close(ev1020, manager, d20.plus(Duration.ofHours(10)), "합성 조사 사례의 작업 방법·적용 절차 검토 내용 정리 완료");
+		closedWithReport(ev1020, cmp, d20, new Closing("METHOD_REVIEW",
+			"개정 작업 지침의 확인 순서 재검토 및 적용 전 검토 단계 추가", VerificationStatus.IMPROVED,
+			"개정 지침 적용 후 후속 run에서 같은 편차가 관측되지 않음", "METHOD", List.of()));
 	}
 
 	/** 보고서까지 끝난 EV-1021 · 보류된 EV-1022 · 확인 요청 제안이 승인 대기인 EV-1023 */
 	private void seedOpenHistory(Instant now, AuthUser cvd, AuthUser cmp, AuthUser manager) {
 		Instant d21 = now.minus(Duration.ofDays(3));
 		Incident ev1021 = incident(1021, "SLURRY_FLOW_DROP", "HIGH", "CMP", d21);
-		resolvedWithReport(ev1021, cmp, d21);
+		closedWithReport(ev1021, cmp, d21, new Closing("PART_CHECK", "슬러리 공급 라인 점검 및 필터 교체",
+			VerificationStatus.IMPROVED, "후속 12 run의 슬러리 유량이 기준 수준으로 회복",
+			// 원인 분류는 기록된 조치(슬러리 공급 라인 점검 · 필터 교체)에 맞춘다
+			"MACHINE", List.of("slurry_flow")));
 
 		Instant d22 = now.minus(Duration.ofDays(2));
 		Incident ev1022 = incident(1022, "PRESSURE_FLUCTUATION", "LOW", "CMP", d22);
@@ -144,11 +160,30 @@ public class SeedRunner implements ApplicationRunner {
 		for (RouteRun run : catalog.currentOutOfControl()) {
 			int seq = 1000 + Integer.parseInt(run.getLotId().substring(run.getLotId().length() - 3));
 			Incident incident = fromRun(seq, run);
-			// 기본 분석을 하지 않은 채 대기열에 둔다 — 서버를 띄우면 Agent(외부 Worker 또는 시뮬레이터 대역)가 바로 처리한다.
-			// 판정은 Agent 한 곳에서만 한다(시드가 결과를 미리 만들지 않는다)
 			at(run.getMetrologyAvailableAt().plusSeconds(60));
-			jobService.enqueue(incident, JobKind.BASIC, "svc_detector", null, null, Map.of(), null, null);
+			register(incident);
 		}
+		// 우선순위 추가 묶음의 이벤트 후보(data/priority-addon-l011-l012-v1/event-candidates) 중 L011 — 단일 센서 짧은 편차.
+		// L012(회전계 동반 편차)는 시연에서 실시간 알림으로 보내려고 시드에 넣지 않는다
+		Instant d11 = Instant.parse("2026-10-18T20:16:01.100Z");
+		Incident ev1011 = create(1011, "SENSOR_DEVIATION", "MEDIUM", "CMP", "CMP-PM3", "CURRENT-L011",
+			List.of("W-CURRENT-011-3"), List.of("RUN-W-CURRENT-011-3-CMP"), List.of("head_pressure"),
+			Map.of("detectorVersion", "DEMO-PRIORITY-SEGMENT-V1",
+				"observationEvidenceIds", List.of("E-PRSEG-RUN-W-CURRENT-011-3-CMP-head_pressure")),
+			d11, "합성 센서 편차 관측. 원인·고장·정비 완료는 미확정.", "CMP 센서 편차 확인");
+		// 우선순위 평가는 등록 시각까지 공개된 자료로 판정한다 — 관리한계 이탈 사건처럼 해당 run의 계측이 나온 뒤에 등록한다
+		at(catalog.run("RUN-W-CURRENT-011-3-CMP").getMetrologyAvailableAt().plusSeconds(60));
+		register(ev1011);
+	}
+
+	/**
+	 * 이상 이벤트 접수(EventService)와 같은 후속 등록 — 우선순위 최초 평가 · 새 이상 알림 · 기본 분석 대기열.
+	 * 시드가 판정·분석 결과를 미리 만들지 않는다. 서버를 띄우면 평가 Worker와 Agent가 바로 처리한다.
+	 */
+	private void register(Incident incident) {
+		priorityEvaluations.enqueue(incident);
+		notificationEvents.incidentCreated(incident);
+		jobService.enqueue(incident, JobKind.BASIC, "svc_detector", null, null, Map.of(), null, null);
 	}
 
 	/** R1 이탈 run 하나 → 사건. 이상 탐지 서비스는 판정만 넘기고 원인은 Agent가 조사한다 */
@@ -177,13 +212,18 @@ public class SeedRunner implements ApplicationRunner {
 		return String.format(java.util.Locale.ROOT, "%,.1f", v);
 	}
 
-	private void resolvedWithReport(Incident incident, AuthUser engineer, Instant d) {
+	/** 과거 사건의 조치 · 효과 확인 · 보고서 확정에 쓰는 내용. 원인 분류는 서술과 기록된 조치에 맞춘다 */
+	private record Closing(String actionType, String action, VerificationStatus verification, String verifyNote,
+			String category, List<String> equipmentParameters) {
+	}
+
+	private void closedWithReport(Incident incident, AuthUser engineer, Instant d, Closing c) {
 		at(d.plus(Duration.ofHours(2)));
-		var action = actionService.record(incident.getIncidentId(), engineer, new ActionInput("PART_CHECK",
-			"슬러리 공급 라인 점검 및 필터 교체", d.plus(Duration.ofMinutes(90)), List.of(), true, incident.getVersion()));
+		var action = actionService.record(incident.getIncidentId(), engineer, new ActionInput(c.actionType(), c.action(),
+			d.plus(Duration.ofMinutes(90)), List.of(), true, incident.getVersion()));
 		at(d.plus(Duration.ofHours(20)));
-		actionService.verify(action.actionId(), engineer, new VerificationInput(VerificationStatus.IMPROVED,
-			"후속 12 run의 슬러리 유량이 기준 수준으로 회복", List.of(), true, action.version()));
+		actionService.verify(action.actionId(), engineer,
+			new VerificationInput(c.verification(), c.verifyNote(), List.of(), true, action.version()));
 		at(d.plus(Duration.ofHours(21)));
 		Job reportJob = jobRepository.save(Job.builder().jobId(Ids.next("job")).incidentId(incident.getIncidentId())
 			.kind(JobKind.REPORT).attempt(1).threadId(Ids.next("thr")).requestedBy(engineer.userId())
@@ -191,9 +231,8 @@ public class SeedRunner implements ApplicationRunner {
 		Report report = reportService.createDraft(incident, reportJob);
 		jobService.succeed(reportJob, incident, new Ref("REPORT", report.getReportId()));
 		at(d.plus(Duration.ofHours(22)));
-		// 원인 분류는 기록된 조치(슬러리 공급 라인 점검 · 필터 교체)에 맞춘다
 		reportService.confirm(report.getReportId(), engineer, new ReportConfirm(report.getContentRevision(), true,
-			new CauseClassificationInput("MACHINE", List.of("slurry_flow"))));
+			new CauseClassificationInput(c.category(), c.equipmentParameters())));
 		// 확정이 사건 종료까지 한다 — 따로 닫지 않는다
 	}
 
@@ -368,10 +407,6 @@ public class SeedRunner implements ApplicationRunner {
 				List.of("새로운 회신·원인 확정·후속 공정 측정은 생성하지 않았습니다."));
 			default -> throw new IllegalArgumentException("Unknown historical story: " + seq);
 		};
-	}
-
-	private void close(Incident incident, AuthUser manager, Instant at, String reason) {
-		restoreLegacyStatus(incident, manager, at, IncidentStatus.CLOSED, reason);
 	}
 
 	/**

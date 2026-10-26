@@ -129,6 +129,10 @@ class SeedCatalog {
 		changeRepository.saveAll(changes);
 	}
 
+	RouteRun run(String runId) {
+		return routeRepository.findByRunId(runId).orElseThrow();
+	}
+
 	/** 현재 로트에서 R1(관리한계)을 벗어난 run — 이상 탐지 서비스가 사건으로 올리는 대상 */
 	List<RouteRun> currentOutOfControl() {
 		return routeRepository.findByPhase("CURRENT").stream().filter(RouteRun::isOocR1)

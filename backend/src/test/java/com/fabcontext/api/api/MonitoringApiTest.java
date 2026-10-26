@@ -141,13 +141,17 @@ class MonitoringApiTest extends ApiTestSupport {
 
 	@ParameterizedTest
 	@ValueSource(strings = {"CURRENT-L011", "CURRENT-L012"})
-	void addedLotsHaveRunsButNoIncidents(String lot) throws Exception {
-		// 두께가 모든 공정에서 관리한계 안이라 시드가 사건으로 올리지 않는다 — 짧은 센서 편차는 3번 wafer의 CMP-PM3 run에 있다
+	void addedLotsHaveRunsAndOnlyL011SensorEventIsSeeded(String lot) throws Exception {
+		// 두께는 모든 공정에서 관리한계 안이고 짧은 센서 편차가 3번 wafer의 CMP-PM3 run에 있다.
+		// 시드는 L011 이벤트 후보만 사건(EV-1011)으로 올린다. L012는 시연 중 실시간 알림용으로 남긴다(ops/demo/send_anomaly.py)
+		boolean seeded = lot.equals("CURRENT-L011");
 		getAs(cmp(), "/api/monitoring/lots/{lot}/summary?processCode=CMP", lot)
 			.andExpect(jsonPath("$.data.dataVersion").value(DATA_VERSION))
 			.andExpect(jsonPath("$.data.runs", hasSize(3)))
 			.andExpect(jsonPath("$.data.runs[2].equipmentId").value("CMP-PM3"))
-			.andExpect(jsonPath("$.data.runs[*].incidentId", everyItem(nullValue())))
+			.andExpect(jsonPath("$.data.runs[0].incidentId").value(nullValue()))
+			.andExpect(jsonPath("$.data.runs[1].incidentId").value(nullValue()))
+			.andExpect(jsonPath("$.data.runs[2].incidentId").value(seeded ? notNullValue() : nullValue()))
 			.andExpect(jsonPath("$.data.runs[2].sites", hasSize(5)));
 	}
 

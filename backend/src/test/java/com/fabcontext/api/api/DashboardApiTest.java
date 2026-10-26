@@ -24,7 +24,9 @@ class DashboardApiTest extends ApiTestSupport {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.period").value("7d"))
 			.andExpect(jsonPath("$.data.bucket").value("DAY"))
-			.andExpect(jsonPath("$.data.counts.total").value(greaterThanOrEqualTo(4)))
+			// 기간 집계는 발견 시각 기준이다. 데이터 팩 사건(EV-1006 등)은 발견 시각이 팩 날짜로 고정돼 날이 지나면 7일 밖으로 빠진다.
+			// 시드 과거 사건 EV-1020 · 1021 · 1022(CMP)는 실행 시각 기준 5 · 3 · 2일 전이라 언제 돌려도 7일 안에 있다
+			.andExpect(jsonPath("$.data.counts.total").value(greaterThanOrEqualTo(3)))
 			.andExpect(jsonPath("$.data.counts.active").value(greaterThanOrEqualTo(2)))
 			.andExpect(jsonPath("$.data.byStatus.CLOSED").value(greaterThanOrEqualTo(3)))
 			.andExpect(jsonPath("$.data.byProcess[*].processCode", contains("CMP")))

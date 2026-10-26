@@ -149,8 +149,11 @@ class IncidentApiTest extends ApiTestSupport {
 	void legacyHistoryIsPreserved() throws Exception {
 		Session mgr = manager();
 		getAs(mgr, "/api/incidents/{id}", seededIncident(mgr, "EV-1022")).andExpect(jsonPath("$.data.status").value("ON_HOLD"));
-		String closedWithoutReport = seededIncident(mgr, "EV-1018");
-		getAs(mgr, "/api/incidents/{id}", closedWithoutReport).andExpect(jsonPath("$.data.status").value("CLOSED"));
-		getAs(mgr, "/api/incidents/{id}/reports", closedWithoutReport).andExpect(jsonPath("$.data.items", hasSize(0)));
+		// 과거 종료 사건은 보고서 확정으로 닫힌다(원인 통계 시연용) — EV-1018은 원인 Man
+		String closedWithReport = seededIncident(mgr, "EV-1018");
+		getAs(mgr, "/api/incidents/{id}", closedWithReport).andExpect(jsonPath("$.data.status").value("CLOSED"));
+		getAs(mgr, "/api/incidents/{id}/reports", closedWithReport)
+			.andExpect(jsonPath("$.data.items", hasSize(1)))
+			.andExpect(jsonPath("$.data.items[0].status").value("CONFIRMED"));
 	}
 }
